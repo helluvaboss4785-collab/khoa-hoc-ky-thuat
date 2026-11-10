@@ -1,0 +1,102 @@
+# =====================================================================
+# config.yaml - HẰNG SỐ VẬT LÍ, HÌNH HỌC, NGƯỠNG
+# Mọi giá trị dưới đây là XẤP XỈ / GIẢ ĐỊNH, KHÔNG phải kết quả đo.
+# Phải xác nhận bằng tài liệu tham khảo và đường chuẩn thực nghiệm.
+# =====================================================================
+quang_hoc:
+  goc_dinh_A_do: 40.0            # góc đỉnh lăng kính (độ) - cấu hình được
+  khoang_cach_man_D_m: 1.0       # tổng quãng đường từ lăng kính tới màn (m) - cần đo lại
+  chiet_suat_nuoc_ngot: 1.333    # n nước ngọt - cần xác nhận bằng tài liệu và đường chuẩn thực nghiệm
+  dn_dS_moi_phan_nghin: 1.8e-4   # dn/dS (mỗi ‰) - cần xác nhận bằng tài liệu và đường chuẩn thực nghiệm
+  dn_dT_moi_do_C: -1.0e-4        # dn/dT (mỗi °C) - cần xác nhận bằng tài liệu và đường chuẩn thực nghiệm
+  nhiet_do_tham_chieu_C: 20.0    # GIẢ ĐỊNH: nhiệt độ ứng với n = 1,333 - cần xác nhận
+  bien_an_toan_TIR: 0.02         # cảnh báo khi n*sin(A) > 1 - biên này (gần phản xạ toàn phần)
+
+anh:
+  kich_thuoc_pixel_mm: 0.05      # GIẢ ĐỊNH để vẽ biểu đồ - PHẢI đo lại bằng thước đặt trên màn
+
+phan_tich_sai_so:                # GIẢ ĐỊNH đầu vào cho ngân sách sai số, KHÔNG phải số đo
+  sai_so_tim_tam_px: 0.05        # độ lệch chuẩn của Δy do tìm tâm (px) - sẽ lấy từ Cột mốc 2/3
+  lech_nhiet_do_hai_ngan_C: 0.5  # chênh nhiệt độ giữa hai ngăn (°C) - cần đo
+  sai_so_goc_A_do: 0.05          # sai số góc A (độ) - cần đo
+  troi_laser_chung_px: 5.0       # trôi chung của cả hai vạch (px) - cần đo
+  he_so_triet_chung: 0.01        # phần trôi chung còn lọt vào Δy sau đo vi sai (0..1) - cần đo
+
+xu_ly_anh:                       # Tham số thuật toán tìm tâm và đánh giá chất lượng ảnh
+  nguong_bao_hoa: 250            # mức xám coi là bão hòa (trên thang 0-255)
+  ti_le_bao_hoa_toi_da: 0.02     # tỉ lệ pixel bão hòa tối đa cho phép trong ROI (2%)
+  snr_toi_thieu: 3.0             # tỉ số tín hiệu / nhiễu tối thiểu để coi là có vạch
+  r2_gauss_toi_thieu: 0.80       # hệ số xác định R² tối thiểu khi khớp Gauss
+  fwhm_toi_thieu_px: 1.5         # độ rộng FWHM tối thiểu (px)
+  fwhm_toi_da_px: 60.0           # độ rộng FWHM tối đa (px)
+  phuong_phap_mac_dinh: "gauss"  # "gauss" (khớp Gauss) hoặc "centroid" (trọng tâm)
+
+hieu_chuan:                      # Tham số dựng đường chuẩn (Cột mốc 4)
+  ti_le_tap_test: 0.25           # tỉ lệ điểm giữ lại làm tập kiểm tra (không dùng để khớp)
+  so_fold_kiem_dinh_cheo: 5      # số phần (fold) khi kiểm định chéo
+  nguong_cai_thien_bac2: 0.10    # chỉ chọn bậc 2 khi RMSE kiểm định chéo giảm ≥ 10% so với bậc 1 (chống quá khớp)
+  he_so_phu_k: 2.0               # bất định mở rộng U = k·u (k = 2 ≈ 95% nếu sai số phân bố chuẩn)
+  sai_so_nhiet_ke_C: 0.5         # GIẢ ĐỊNH độ chính xác nhiệt kế - PHẢI lấy từ thông số nhiệt kế thật
+  nguong_lech_T_khong_bu_C: 1.0  # cảnh báo nếu đường chuẩn không có bù nhiệt mà T lệch quá ngưỡng này
+  seed: 0                        # hạt giống ngẫu nhiên để chia train/test tái lập được
+
+
+# =====================================================================
+# NGƯỠNG AN TOÀN NƯỚC THEO ĐỐI TƯỢNG (LOÀI NUÔI TRỒNG)
+# Chỉ đưa vào ngưỡng có nguồn trích dẫn tài liệu kỹ thuật nông/thủy sản.
+# Các loài chưa xác thực nguồn bắt buộc để trống (null) để người dùng tự điền.
+# =====================================================================
+nguong_loai:
+  tom_the_chan_trang:
+    ten: "Tôm thẻ chân trắng (Litopenaeus vannamei)"
+    an_toan: [10.0, 25.0]
+    canh_bao_thap: [5.0, 10.0]
+    canh_bao_cao: [25.0, 35.0]
+    nguy_hiem_duoi: 5.0
+    nguy_hiem_tren: 35.0
+    nguon_tham_khao: "TCVN 10257:2014 & Hướng dẫn kỹ thuật nuôi tôm nước lợ - Tổng cục Thủy sản"
+
+  tom_su:
+    ten: "Tôm sú (Penaeus monodon)"
+    an_toan: [15.0, 25.0]
+    canh_bao_thap: [10.0, 15.0]
+    canh_bao_cao: [25.0, 30.0]
+    nguy_hiem_duoi: 10.0
+    nguy_hiem_tren: 30.0
+    nguon_tham_khao: "Quy chuẩn kỹ thuật quốc gia QCVN 02-19:2014/BNNPTNT"
+
+  ca_tra:
+    ten: "Cá tra (Pangasianodon hypophthalmus)"
+    an_toan: [0.0, 2.0]
+    canh_bao_thap: null
+    canh_bao_cao: [2.0, 6.0]
+    nguy_hiem_duoi: null
+    nguy_hiem_tren: 6.0
+    nguon_tham_khao: "Viện Nghiên cứu Nuôi trồng Thủy sản II - Khuyến cáo chịu mặn cá tra ĐBSCL"
+
+  lua:
+    ten: "Lúa (giai đoạn đòng - trổ bông)"
+    an_toan: [0.0, 1.0]
+    canh_bao_thap: null
+    canh_bao_cao: [1.0, 2.0]
+    nguy_hiem_duoi: null
+    nguy_hiem_tren: 2.0
+    nguon_tham_khao: "Viện Lúa Đồng bằng sông Cửu Long (CLRRI) - Ngưỡng độ mặn nước tưới lúa"
+
+  sau_rieng:
+    ten: "Cây sầu riêng (cực kỳ nhạy cảm mặn)"
+    an_toan: [0.0, 0.5]
+    canh_bao_thap: null
+    canh_bao_cao: [0.5, 1.0]
+    nguy_hiem_duoi: null
+    nguy_hiem_tren: 1.0
+    nguon_tham_khao: "Viện Cây ăn quả miền Nam (SOFRI) - Khuyến cáo bảo vệ sầu riêng mùa hạn mặn"
+
+  cua_bien:
+    ten: "Cua biển (chưa có tài liệu chuẩn)"
+    an_toan: null
+    canh_bao_thap: null
+    canh_bao_cao: null
+    nguy_hiem_duoi: null
+    nguy_hiem_tren: null
+    nguon_tham_khao: "" # ĐỂ TRỐNG: Yêu cầu người dùng điền nguồn tài liệu thực nghiệm địa phương
