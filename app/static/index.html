@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0b1d3a" />
+  <title>Đo Độ Mặn Quang Học Vi Sai 2.5D | KHKT</title>
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="/static/logo.svg" />
+  <link rel="alternate icon" type="image/png" href="/static/favicon.png" />
+  <link rel="shortcut icon" href="/favicon.ico" />
+  <link rel="apple-touch-icon" href="/static/favicon.png" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body class="ui-simple">
+  <div class="app-shell">
+    <!-- ==================== THANH BÊN THIẾT BỊ 2.5D ==================== -->
+    <aside class="sidebar-25d">
+      <div class="sb-brand">
+        <div class="sb-logo-25d"><img src="/static/logo.svg" alt="Logo Quang Học Vi Sai" /></div>
+        <div>
+          <div class="sb-title">ĐO ĐỘ MẶN <span>VI SAI</span></div>
+          <div class="sb-subtitle">Nông nghiệp &amp; Công nghiệp</div>
+        </div>
+      </div>
+
+      <div class="ui-mode-switch" role="group" aria-label="Chế độ giao diện">
+        <button type="button" class="ui-mode-btn active" data-ui-mode="simple">🌾 Dễ dùng</button>
+        <button type="button" class="ui-mode-btn" data-ui-mode="pro">🔬 Kỹ thuật</button>
+      </div>
+
+      <div class="sb-card-25d">
+        <div class="sb-card-head">🏠 Hộ nuôi / Xưởng đang chọn</div>
+        <div class="sb-profile-row">
+          <select id="sb-profile-select" class="sb-select-25d" title="Tách riêng nhật kí và hiệu chuẩn theo hộ nuôi hoặc xưởng"></select>
+          <button type="button" id="btn-add-profile" class="btn-25d btn-sidebar-25d btn-sm sb-profile-add" title="Tạo hồ sơ hộ nuôi / xưởng mới">➕</button>
+        </div>
+      </div>
+
+      <div id="sb-calib-status" class="sb-card-25d status-sim">
+        <div class="sb-card-head">📊 Trạng thái máy đo</div>
+        <div id="sb-calib-body">Đang tải thông tin mô hình...</div>
+      </div>
+
+      <div class="sb-card-25d pro-only">
+        <div class="sb-card-head">📐 Cấu hình quang học</div>
+        <div id="sb-optics-specs">
+          • Góc đỉnh A: <b>40.0°</b><br />
+          • Khoảng cách màn D: <b>1.0 m</b><br />
+          • Laser đỏ: <b>650 nm (≤ 1 mW)</b>
+        </div>
+      </div>
+
+      <button type="button" id="btn-open-guide" class="btn-25d btn-sidebar-25d btn-sm">
+        📖 Hướng dẫn sử dụng
+      </button>
+
+      <label class="sb-toggle-row pro-only">
+        <span>🧭 Hiện trợ lý 4 bước</span>
+        <input type="checkbox" id="toggle-coach" />
+      </label>
+    </aside>
+
+    <!-- ==================== BẢNG ĐIỀU KHIỂN CHÍNH ==================== -->
+    <main class="main-console">
+      <!-- Thanh Tiêu Đề Gọn 2.5D -->
+      <header class="hero-console-25d">
+        <div class="hero-compact-row">
+          <div>
+            <h1 class="hero-title">Kiểm Tra Độ Mặn &amp; Chất Lượng Nước</h1>
+            <p class="hero-sub">
+              Đo nhanh bằng camera • Cảnh báo an toàn cho thủy sản, cây trồng &amp; sản xuất
+            </p>
+          </div>
+          <div class="hero-badges">
+            <span class="pill-25d pill-green" id="net-status-pill">🟢 Trực tuyến</span>
+            <span class="pill-25d pill-amber" id="offline-queue-pill" style="display:none; cursor:pointer;" title="Nhấn để đồng bộ ngay">🔄 <span id="offline-queue-count">0</span> chờ đồng bộ</span>
+            <span class="pill-25d pill-glass pro-only" id="badge-prism">📐 A = 40.0°</span>
+            <span class="pill-25d pill-amber" id="badge-model-mode">🧪 CHƯA HIỆU CHUẨN</span>
+            <span class="pill-25d pill-teal">📒 <span id="hero-log-count">0</span> bản ghi</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Thanh Trợ Lý Quy Trình 4 Bước (ẩn mặc định để giao diện gọn) -->
+      <section id="coach-bar" class="coach-bar-25d" style="display:none;">
+        <div class="coach-top">
+          <div class="coach-head">
+            <div class="coach-badge-icon" id="coach-icon">👋</div>
+            <div>
+              <div style="font-weight:800; color:#0b1d3a; font-size:0.88rem;" id="coach-title">
+                Bước 1/4: Sẵn sàng thu nhận ảnh vạch laser
+              </div>
+              <div style="font-size:0.78rem; color:#475569;" id="coach-desc">
+                Chọn nguồn ảnh rồi nhấn Đo độ mặn.
+              </div>
+            </div>
+          </div>
+          <button type="button" id="btn-coach-quickstart" class="btn-25d btn-teal-25d btn-sm">
+            ⚡ Thử mẫu 16.5 ‰
+          </button>
+        </div>
+        <div class="coach-steps">
+          <div class="coach-step active" id="cs-1">1. Nguồn ảnh</div>
+          <div class="coach-step" id="cs-2">2. Đo Δy</div>
+          <div class="coach-step" id="cs-3">3. Loài</div>
+          <div class="coach-step" id="cs-4">4. Nhật kí</div>
+        </div>
+      </section>
+
+      <!-- Hàng Tab Nổi 2.5D -->
+      <nav class="tab-dock-25d" role="tablist">
+        <button type="button" class="tab-btn-25d active" data-tab="tab-1">💧 Đo Nước</button>
+        <button type="button" class="tab-btn-25d" data-tab="tab-2">🦐 Kiểm Tra Loài</button>
+        <button type="button" class="tab-btn-25d" data-tab="tab-3">📒 Nhật Kí Đo</button>
+        <button type="button" class="tab-btn-25d pro-only" data-tab="tab-4">📊 Hiệu Chuẩn</button>
+        <button type="button" class="tab-btn-25d pro-only" data-tab="tab-5">📐 Mô Phỏng</button>
+        <button type="button" class="tab-btn-25d pro-only" data-tab="tab-6">⚖️ Đối Chứng</button>
+      </nav>
+
+      <!-- ================================================================
+           TAB 1: ĐO ĐỘ MẶN & ĐỘ ĐỤC TỪ ẢNH
+           ================================================================ -->
+      <section id="tab-1" class="tab-pane active">
+        <div class="grid-12">
+          <!-- Khung Trái: Bảng Điều Khiển Đầu Vào Gọn -->
+          <div class="col-4">
+            <div class="chassis-panel-25d">
+              <div class="step-badge-title"><span class="step-num-25d">1</span> Chọn cách đưa ảnh vào</div>
+
+              <div class="segmented-25d">
+                <button type="button" class="seg-btn active" data-img-mode="sim">🧪 Thử mẫu</button>
+                <button type="button" class="seg-btn" data-img-mode="upload">🖼️ Chọn ảnh</button>
+                <button type="button" class="seg-btn" data-img-mode="camera">📷 Camera</button>
+              </div>
+
+              <!-- Chế độ Mô phỏng -->
+              <div id="t1-mode-sim">
+                <div class="control-group">
+                  <div class="control-label">
+                    <span>Độ mặn mẫu thử</span>
+                    <span class="control-val-chip" id="val-sim-s">16.5 ‰</span>
+                  </div>
+                  <input type="range" id="sim-s" class="slider-25d" min="0" max="35" step="0.5" value="16.5" />
+                </div>
+
+                <div class="control-group">
+                  <div class="control-label">
+                    <span>Nhiệt độ nước</span>
+                    <span class="control-val-chip" id="val-sim-t">26.0 °C</span>
+                  </div>
+                  <input type="range" id="sim-t" class="slider-25d" min="15" max="35" step="0.5" value="26.0" />
+                </div>
+
+                <div class="control-group">
+                  <div class="control-label">
+                    <span>Độ đục của nước</span>
+                    <span class="control-val-chip" id="val-sim-duc">0.15</span>
+                  </div>
+                  <input type="range" id="sim-duc" class="slider-25d" min="0" max="1" step="0.05" value="0.15" />
+                </div>
+
+                <div class="control-group pro-only">
+                  <div class="control-label">
+                    <span>Rung camera / Trôi laser δy</span>
+                    <span class="control-val-chip" id="val-sim-drift">+4.0 px</span>
+                  </div>
+                  <input type="range" id="sim-drift" class="slider-25d" min="-15" max="15" step="1" value="4" />
+                </div>
+
+                <details class="accordion-25d pro-only">
+                  <summary>⚙️ Gây nhiễu cực đoan &amp; Bố trí ngăn</summary>
+                  <div style="padding-top:8px;">
+                    <label class="checkbox-row">
+                      <input type="checkbox" id="sim-saturate" />
+                      <span>Cố tình gây cháy sáng bão hòa (255)</span>
+                    </label>
+                    <div class="control-group" style="margin-top:8px;">
+                      <div class="control-label"><span>Bố trí 2 ngăn trên ảnh</span></div>
+                      <select id="sim-layout" class="select-25d">
+                        <option value="ngang">Ngang (Trái: Nước cất | Phải: Mẫu)</option>
+                        <option value="doc">Dọc (Trên: Nước cất | Dưới: Mẫu)</option>
+                      </select>
+                    </div>
+                  </div>
+                </details>
+              </div>
+
+              <!-- Ô chọn file dùng chung (đặt ngoài các khối ẩn/hiện để nhãn bấm luôn hoạt động) -->
+              <input type="file" id="file-laser-img" accept="image/png,image/jpeg,image/webp" style="display:none;" />
+              <input type="file" id="file-laser-capture" accept="image/*" capture="environment" style="display:none;" />
+
+              <!-- Chế độ Tải ảnh -->
+              <div id="t1-mode-upload" style="display:none;">
+                <div class="upload-choice-row">
+                  <label class="dropzone-25d upload-choice" for="file-laser-img">
+                    <div class="upload-choice-icon">🖼️</div>
+                    <div class="upload-choice-title">Chọn ảnh có sẵn</div>
+                    <div class="upload-choice-sub">Từ thư viện / máy tính</div>
+                  </label>
+                  <label class="dropzone-25d upload-choice" for="file-laser-capture">
+                    <div class="upload-choice-icon">📱</div>
+                    <div class="upload-choice-title">Chụp bằng điện thoại</div>
+                    <div class="upload-choice-sub">Mở camera sau của máy</div>
+                  </label>
+                </div>
+                <div class="upload-file-name" id="upload-img-name">Chưa chọn ảnh</div>
+                <div id="upload-preview-box" class="upload-preview-box" style="display:none;">
+                  <img id="upload-preview-img" alt="Ảnh xem trước vừa chọn" />
+                  <div class="upload-preview-actions">
+                    <button type="button" id="btn-upload-clear" class="btn-25d btn-sm">✖ Bỏ ảnh này</button>
+                    <button type="button" id="btn-upload-remeasure" class="btn-25d btn-navy-25d btn-sm">🔄 Đo lại ảnh này</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Chế độ Camera -->
+              <div id="t1-mode-camera" style="display:none;">
+                <div class="media-frame-25d camera-frame" style="margin-bottom:8px;">
+                  <video id="camera-video" autoplay playsinline muted></video>
+                  <div id="camera-placeholder" class="camera-placeholder">📷 Camera đang tắt</div>
+                  <div id="camera-live-dot" class="camera-live-dot" style="display:none;">● ĐANG BẬT</div>
+                </div>
+                <div class="camera-btn-row">
+                  <button type="button" id="btn-cam-start" class="btn-25d btn-navy-25d btn-sm">📷 Bật Camera</button>
+                  <button type="button" id="btn-cam-snap" class="btn-25d btn-primary-25d btn-sm" disabled>📸 Chụp &amp; Đo</button>
+                  <button type="button" id="btn-cam-stop" class="btn-25d btn-sm" disabled>⏹️ Tắt Camera</button>
+                </div>
+                <div id="cam-status" class="cam-status">
+                  Nhấn <b>Bật Camera</b>, hướng vào màn hứng 2 vạch laser trong chỗ tối rồi nhấn <b>Chụp &amp; Đo</b>.
+                </div>
+                <div id="cam-fallback" class="banner-25d warn" style="display:none; margin-top:8px;">
+                  <div class="banner-icon">📱</div>
+                  <div>
+                    Trình duyệt chỉ cho phép camera trực tiếp khi mở bằng <b>localhost</b> hoặc <b>https</b>.
+                    Bạn vẫn có thể đo bằng cách
+                    <label for="file-laser-capture" class="inline-link-btn">📸 chụp ảnh bằng camera điện thoại</label>.
+                  </div>
+                </div>
+              </div>
+              <hr class="panel-divider" />
+
+              <div class="step-badge-title"><span class="step-num-25d">2</span> Thông tin mẫu nước</div>
+
+              <div class="control-row-2">
+                <div class="control-group">
+                  <div class="control-label"><span>Nhiệt độ nước (°C)</span></div>
+                  <input type="number" id="meas-temp" class="input-25d" min="5" max="50" step="0.5" value="26.0" />
+                </div>
+                <div class="control-group">
+                  <div class="control-label"><span>Tên ao / vị trí đo</span></div>
+                  <input type="text" id="meas-location" class="input-25d" value="Ao nuôi tôm số 1" list="location-suggestions" autocomplete="off" />
+                  <datalist id="location-suggestions"></datalist>
+                </div>
+              </div>
+
+              <details class="accordion-25d pro-only">
+                <summary>⚙️ Tùy chọn nâng cao (Thuật toán, Ghi chú, ROI)</summary>
+                <div style="padding-top:8px;">
+                  <div class="control-group">
+                    <div class="control-label"><span>Thuật toán tâm</span></div>
+                    <select id="meas-method" class="select-25d">
+                      <option value="gauss">Khớp Gauss (Sub-px)</option>
+                      <option value="centroid">Trọng tâm trừ nền</option>
+                    </select>
+                  </div>
+                  <div class="control-group">
+                    <div class="control-label"><span>Ghi chú mẫu</span></div>
+                    <input type="text" id="meas-note" class="input-25d" value="Nước mặt ao sau mưa" />
+                  </div>
+                  <label class="checkbox-row">
+                    <input type="checkbox" id="roi-manual-enable" />
+                    <span>Bật tọa độ ROI thủ công [y0, y1]</span>
+                  </label>
+                  <div class="control-row-2" style="margin-top:6px;">
+                    <div class="control-group">
+                      <div class="control-label"><span>TC y0 → y1</span></div>
+                      <div style="display:flex; gap:4px;">
+                        <input type="number" id="roi-tc-y0" class="input-25d" value="35" />
+                        <input type="number" id="roi-tc-y1" class="input-25d" value="140" />
+                      </div>
+                    </div>
+                    <div class="control-group">
+                      <div class="control-label"><span>Mẫu y0 → y1</span></div>
+                      <div style="display:flex; gap:4px;">
+                        <input type="number" id="roi-m-y0" class="input-25d" value="40" />
+                        <input type="number" id="roi-m-y1" class="input-25d" value="260" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </details>
+
+              <label class="checkbox-row">
+                <input type="checkbox" id="meas-live" checked />
+                <span>⚡ Tự động cập nhật khi kéo thanh trượt</span>
+              </label>
+
+              <button type="button" id="btn-run-measure" class="btn-25d btn-primary-25d btn-full btn-lg-friendly" style="margin-top:10px;">
+                💧 KIỂM TRA NƯỚC NGAY
+              </button>
+            </div>
+          </div>
+
+          <!-- Khung Phải: Kết Quả KPI + Đồ Thị + Lưu Nhật Kí -->
+          <div class="col-8">
+            <!-- Thẻ KPI 2.5D -->
+            <div class="kpi-row-4">
+              <div class="kpi-card-25d tone-crimson">
+                <div class="kpi-label">ĐỘ MẶN NƯỚC ĐO ĐƯỢC</div>
+                <div class="kpi-value"><span id="kpi-s-val">--</span><small>‰</small></div>
+                <div class="kpi-pm" id="kpi-s-u">± -- ‰</div>
+                <div class="kpi-sub" id="kpi-s-sub">Chưa đo</div>
+              </div>
+              <div class="kpi-card-25d tone-teal pro-only">
+                <div class="kpi-label">ĐỘ LỆCH ĐỨNG VI SAI (Δy)</div>
+                <div class="kpi-value"><span id="kpi-dy-val">--</span><small>px</small></div>
+                <div class="kpi-pm" id="kpi-dy-err">± -- px</div>
+                <div class="kpi-sub" id="kpi-dy-sub">--</div>
+              </div>
+              <div class="kpi-card-25d tone-amber">
+                <div class="kpi-label">TÌNH TRẠNG ĐỘ ĐỤC</div>
+                <div class="kpi-value"><span id="kpi-duc-val">--</span></div>
+                <div class="kpi-pm" id="kpi-duc-level" style="color:#b45309;">--</div>
+                <div class="kpi-sub pro-only" id="kpi-duc-sub">FWHM: -- px</div>
+              </div>
+              <div class="kpi-card-25d tone-emerald pro-only" id="kpi-qual-card">
+                <div class="kpi-label">CHẤT LƯỢNG &amp; SNR</div>
+                <div class="kpi-value" style="font-size:1.42rem;" id="kpi-qual-val">--</div>
+                <div class="kpi-pm" id="kpi-qual-snr">SNR = --</div>
+                <div class="kpi-sub" id="kpi-qual-sub">Bão hòa: --%</div>
+              </div>
+            </div>
+
+            <!-- Thanh Đối Chiếu Loài & Lưu Nhật Kí -->
+            <div class="chassis-panel-25d" style="margin-bottom:14px;">
+              <div class="species-action-row">
+                <div class="control-group" style="margin-bottom:0; flex:1;">
+                  <div class="control-label"><span>🦐 Kiểm tra an toàn cho loài / cây trồng</span></div>
+                  <select id="t1-species-select" class="select-25d"></select>
+                </div>
+                <button type="button" id="btn-save-log" class="btn-25d btn-teal-25d">
+                  💾 Lưu kết quả
+                </button>
+                <button type="button" id="btn-go-logs" class="btn-25d simple-only">
+                  📒 Xem Nhật kí
+                </button>
+              </div>
+              <div id="t1-species-verdict" class="banner-25d info" style="margin-top:10px;">
+                <div class="banner-icon">🔎</div>
+                <div>Kết quả đánh giá an toàn sẽ hiển thị tại đây.</div>
+              </div>
+              <div id="t1-warnings-box"></div>
+            </div>
+
+            <div class="simple-only simple-guide-strip">
+              💡 <b>Hướng dẫn nhanh:</b> Chọn ảnh hoặc chụp camera chứa 2 vạch laser → Nhấn <b>Kiểm tra nước ngay</b> → Xem cảnh báo an toàn &amp; bấm <b>Lưu kết quả</b> để theo dõi theo từng ao nuôi.
+            </div>
+
+            <!-- Ảnh Đánh Dấu (hiện ở cả 2 chế độ) + Mặt Cắt Gauss (chỉ chế độ Kỹ thuật) -->
+            <div class="grid-12" style="margin-bottom:14px;">
+              <div class="col-5 t1-img-col">
+                <div class="chassis-panel-25d">
+                  <div class="step-badge-title">📸 Ảnh đã nhận diện 2 vạch laser</div>
+                  <div class="media-frame-25d">
+                    <img id="t1-annotated-img" alt="Ảnh đánh dấu 2 vạch laser" />
+                    <div class="media-caption" id="t1-img-caption">
+                      Vạch xanh: nước chuẩn (0 ‰) • Vạch cam: mẫu nước • Vàng: khoảng lệch Δy
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-7 pro-only">
+                <div class="chassis-panel-25d">
+                  <div class="step-badge-title">📈 Mặt cắt cường độ Gauss I(y)</div>
+                  <div class="chart-canvas-wrap">
+                    <canvas id="canvas-gauss-profile"></canvas>
+                    <div class="chart-tooltip" id="tip-gauss-profile"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Phân tích chuyên sâu (thu gọn mặc định để giao diện thoáng) -->
+            <details id="t1-advanced-details" class="advanced-drawer-25d pro-only">
+              <summary>🔬 Xem phân tích chuyên sâu (Hồi quy đường tâm, Bất định GUM &amp; Bảng thông số 2 vạch)</summary>
+              <div class="grid-12" style="margin-top:12px;">
+                <div class="col-6">
+                  <div class="chassis-panel-25d">
+                    <div class="step-badge-title">📐 Hồi quy đường tâm vạch y(x) = ax + b</div>
+                    <div class="chart-canvas-wrap">
+                      <canvas id="canvas-line-fit"></canvas>
+                      <div class="chart-tooltip" id="tip-line-fit"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-6">
+                  <div class="chassis-panel-25d" style="margin-bottom:14px;">
+                    <div class="step-badge-title">📊 Phân rã ngân sách bất định GUM u(S)</div>
+                    <div class="chart-canvas-wrap">
+                      <canvas id="canvas-gum-bar"></canvas>
+                      <div class="chart-tooltip" id="tip-gum-bar"></div>
+                    </div>
+                  </div>
+                  <div class="chassis-panel-25d">
+                    <div class="step-badge-title">📋 Thông số chi tiết 2 vạch laser</div>
+                    <div class="table-scroll-25d">
+                      <table class="data-table-25d">
+                        <thead>
+                          <tr>
+                            <th>Thông số</th>
+                            <th>Vạch TC (0 ‰)</th>
+                            <th>Vạch Mẫu</th>
+                          </tr>
+                        </thead>
+                        <tbody id="t1-line-stats-body"></tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================
+           TAB 2: CẢNH BÁO AN TOÀN THEO LOÀI
+           ================================================================ -->
+      <section id="tab-2" class="tab-pane">
+
+        <div class="grid-12">
+          <div class="col-4">
+            <div class="chassis-panel-25d">
+              <div class="step-badge-title"><span class="step-num-25d">1</span> Chọn loài &amp; Độ mặn kiểm tra</div>
+              <div class="control-group">
+                <div class="control-label"><span>Đối tượng nuôi trồng / cây trồng</span></div>
+                <select id="t2-species-select" class="select-25d"></select>
+              </div>
+              <div class="control-group">
+                <div class="control-label">
+                  <span>Độ mặn cần đánh giá (‰)</span>
+                  <span class="control-val-chip" id="t2-s-chip">15.0 ‰</span>
+                </div>
+                <input type="number" id="t2-s-input" class="input-25d" min="0" max="45" step="0.1" value="15.0" />
+              </div>
+              <button type="button" id="t2-use-tab1" class="btn-25d btn-navy-25d btn-full" style="margin-top:6px;">
+                📥 Lấy kết quả vừa đo từ Tab 1
+              </button>
+              <button type="button" id="t2-eval-btn" class="btn-25d btn-primary-25d btn-full" style="margin-top:8px;">
+                🔎 Đánh giá ngưỡng sinh học
+              </button>
+            </div>
+          </div>
+
+          <div class="col-8">
+            <div class="chassis-panel-25d" style="margin-bottom:14px;">
+              <div class="step-badge-title"><span class="step-num-25d">2</span> Kết quả phân tích &amp; Phổ thích nghi 2.5D</div>
+              <div id="t2-verdict-box" class="banner-25d info">
+                <div class="banner-icon">ℹ️</div>
+                <div>Chọn loài để xem kết quả đánh giá.</div>
+              </div>
+              <div id="t2-spectrum-container"></div>
+              <div id="t2-citation-box" style="font-size:0.83rem; color:#475569; margin-top:6px;"></div>
+            </div>
+
+            <div class="chassis-panel-25d" style="margin-bottom:14px;">
+              <div class="step-badge-title"><span class="step-num-25d">3</span> Ma trận kiểm tra nhanh tất cả các loài tại mức S đang chọn</div>
+              <div class="table-scroll-25d">
+                <table class="data-table-25d">
+                  <thead>
+                    <tr>
+                      <th>Loài / Cây trồng</th>
+                      <th>Trạng thái</th>
+                      <th>Kết luận</th>
+                      <th>Khoảng tối ưu</th>
+                    </tr>
+                  </thead>
+                  <tbody id="t2-matrix-body"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="chassis-panel-25d">
+              <div class="step-badge-title"><span class="step-num-25d">4</span> Bảng ngưỡng đầy đủ trong config.yaml (có nguồn tham khảo)</div>
+              <div class="table-scroll-25d">
+                <table class="data-table-25d">
+                  <thead>
+                    <tr>
+                      <th>Đối tượng</th>
+                      <th>An toàn tối ưu</th>
+                      <th>Cảnh báo thấp</th>
+                      <th>Cảnh báo cao</th>
+                      <th>Ngưỡng nguy hiểm</th>
+                      <th>Nguồn tham khảo</th>
+                    </tr>
+                  </thead>
+                  <tbody id="t2-full-table-body"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <details id="t2-edit-species-drawer" class="advanced-drawer-25d" style="margin-top:14px;">
+              <summary>✏️ Thêm hoặc cập nhật ngưỡng loài trong config.yaml</summary>
+              <div style="padding-top:12px;">
+                <div class="control-row-2">
+                  <div class="control-group">
+                    <div class="control-label"><span>Chọn loài để sửa (hoặc thêm mới)</span></div>
+                    <select id="t2-edit-preset" class="select-25d">
+                      <option value="__new__">➕ Thêm loài / cây trồng mới</option>
+                    </select>
+                  </div>
+                  <div class="control-group">
+                    <div class="control-label"><span>Mã loài (tùy chọn, tự tạo nếu trống)</span></div>
+                    <input type="text" id="t2-sp-code" class="input-25d" placeholder="vd: cua_bien" />
+                  </div>
+                </div>
+                <div class="control-group">
+                  <div class="control-label"><span>Tên hiển thị loài / cây trồng *</span></div>
+                  <input type="text" id="t2-sp-name" class="input-25d" placeholder="vd: Cua biển (Scylla serrata)" />
+                </div>
+                <div class="control-row-2">
+                  <div class="control-group">
+                    <div class="control-label"><span>An toàn từ (‰)</span></div>
+                    <input type="number" id="t2-sp-at-min" class="input-25d" step="0.5" placeholder="vd: 10" />
+                  </div>
+                  <div class="control-group">
+                    <div class="control-label"><span>An toàn đến (‰)</span></div>
+                    <input type="number" id="t2-sp-at-max" class="input-25d" step="0.5" placeholder="vd: 25" />
+                  </div>
+                </div>
+                <div class="control-row-2">
+                  <div class="control-group">
+                    <div class="control-label"><span>Cảnh báo thấp (từ – đến ‰)</span></div>
+                    <div style="display:flex; gap:6px;">
+                      <input type="number" id="t2-sp-cbt-min" class="input-25d" step="0.5" placeholder="Thấp" />
+                      <input type="number" id="t2-sp-cbt-max" class="input-25d" step="0.5" placeholder="Cao" />
+                    </div>
+                  </div>
+                  <div class="control-group">
+                    <div class="control-label"><span>Cảnh báo cao (từ – đến ‰)</span></div>
+                    <div style="display:flex; gap:6px;">
+                      <input type="number" id="t2-sp-cbc-min" class="input-25d" step="0.5" placeholder="Thấp" />
+                      <input type="number" id="t2-sp-cbc-max" class="input-25d" step="0.5" placeholder="Cao" />
+                    </div>
+                  </div>
+                </div>
+                <div class="control-row-2">
+                  <div class="control-group">
+                    <div class="control-label"><span>Nguy hiểm dưới (&lt; ‰)</span></div>
+                    <input type="number" id="t2-sp-nh-duoi" class="input-25d" step="0.5" placeholder="Để trống nếu không" />
+                  </div>
+                  <div class="control-group">
+                    <div class="control-label"><span>Nguy hiểm trên (&gt; ‰)</span></div>
+                    <input type="number" id="t2-sp-nh-tren" class="input-25d" step="0.5" placeholder="vd: 35" />
+                  </div>
+                </div>
+                <div class="control-group">
+                  <div class="control-label"><span>Nguồn tài liệu trích dẫn</span></div>
+                  <input type="text" id="t2-sp-source" class="input-25d" placeholder="vd: TCVN / QCVN hoặc tài liệu khuyến nông" />
+                </div>
+                <button type="button" id="t2-btn-save-species" class="btn-25d btn-teal-25d btn-full">
+                  💾 Lưu ngưỡng loài vào config.yaml
+                </button>
+              </div>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================
+           TAB 3: NHẬT KÍ QUAN TRẮC & XUẤT CSV
+           ================================================================ -->
+      <section id="tab-3" class="tab-pane">
+
+        <div class="chassis-panel-25d" style="margin-bottom:14px;">
+          <div class="step-badge-title"><span class="step-num-25d">1</span> Lọc &amp; Quản lý dữ liệu</div>
+          <div class="log-filter-grid">
+            <div>
+              <div class="control-label"><span>🏞️ Ao / vị trí đo</span></div>
+              <select id="t3-filter-location" class="select-25d">
+                <option value="ALL">Tất cả ao / vị trí</option>
+              </select>
+            </div>
+            <div>
+              <div class="control-label"><span>🦐 Loài nuôi / cây trồng</span></div>
+              <select id="t3-filter-species" class="select-25d">
+                <option value="ALL">Tất cả đối tượng</option>
+              </select>
+            </div>
+            <div class="pro-only">
+              <div class="control-label"><span>Nguồn dữ liệu</span></div>
+              <select id="t3-filter-source" class="select-25d">
+                <option value="ALL">Tất cả nguồn</option>
+              </select>
+            </div>
+            <div class="log-filter-actions">
+              <button type="button" id="t3-btn-reset-filter" class="btn-25d btn-sm">↺ Bỏ lọc</button>
+              <a id="t3-btn-csv" href="/api/logs/csv" class="btn-25d btn-navy-25d btn-sm">📥 Xuất CSV</a>
+              <button type="button" id="t3-btn-sample" class="btn-25d btn-teal-25d btn-sm pro-only">🧪 Nạp 10 mẫu MP</button>
+              <button type="button" id="t3-btn-clear" class="btn-25d btn-danger-25d btn-sm">🗑️ Xóa hết</button>
+            </div>
+          </div>
+          <div id="t3-filter-hint" class="log-filter-hint">Đang hiển thị toàn bộ nhật kí.</div>
+        </div>
+
+        <div class="kpi-row-4">
+          <div class="kpi-card-25d tone-crimson">
+            <div class="kpi-label">TỔNG SỐ BẢN GHI</div>
+            <div class="kpi-value" id="t3-kpi-count">0</div>
+            <div class="kpi-sub">Theo bộ lọc hiện tại</div>
+          </div>
+          <div class="kpi-card-25d tone-teal">
+            <div class="kpi-label">ĐỘ MẶN TRUNG BÌNH</div>
+            <div class="kpi-value"><span id="t3-kpi-mean">0.00</span><small>‰</small></div>
+            <div class="kpi-sub">Trung bình số học</div>
+          </div>
+          <div class="kpi-card-25d tone-amber">
+            <div class="kpi-label">ĐỈNH MẶN GHI NHẬN</div>
+            <div class="kpi-value"><span id="t3-kpi-max">0.00</span><small>‰</small></div>
+            <div class="kpi-sub">Giá trị cực đại</div>
+          </div>
+          <div class="kpi-card-25d tone-emerald">
+            <div class="kpi-label">ĐỘ ĐỤC TƯƠNG ĐỐI TB</div>
+            <div class="kpi-value" id="t3-kpi-duc">0.00</div>
+            <div class="kpi-sub">Thang tương đối [0–1]</div>
+          </div>
+        </div>
+
+        <div class="chassis-panel-25d" style="margin-bottom:14px;">
+          <div class="step-badge-title"><span class="step-num-25d">2</span> Chuỗi thời gian độ mặn kèm dải bất định mở rộng ±U₉₅%</div>
+          <div class="chart-canvas-wrap">
+            <canvas id="canvas-log-series"></canvas>
+            <div class="chart-tooltip" id="tip-log-series"></div>
+          </div>
+        </div>
+
+        <div class="chassis-panel-25d">
+          <div class="step-badge-title"><span class="step-num-25d">3</span> Bảng dữ liệu nhật kí chi tiết</div>
+          <div class="table-scroll-25d" style="max-height:360px;">
+            <table class="data-table-25d">
+              <thead>
+                <tr>
+                  <th class="pro-only">ID</th>
+                  <th>Thời gian</th>
+                  <th>Ao / Vị trí</th>
+                  <th>Loài</th>
+                  <th class="pro-only">Δy (px)</th>
+                  <th>Độ mặn (‰)</th>
+                  <th class="pro-only">±U₉₅%</th>
+                  <th>Nhiệt độ (°C)</th>
+                  <th>Độ đục</th>
+                  <th class="pro-only">Nguồn</th>
+                  <th>Ghi chú</th>
+                  <th style="text-align:center;">Xóa</th>
+                </tr>
+              </thead>
+              <tbody id="t3-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================
+           TAB 4: HIỆU CHUẨN & BÙ NHIỆT ĐỘ
+           ================================================================ -->
+      <section id="tab-4" class="tab-pane">
+
+        <div class="grid-12" style="margin-bottom:14px;">
+          <div class="col-6">
+            <div class="chassis-panel-25d">
+              <div class="step-badge-title"><span class="step-num-25d">1</span> Nạp tập dữ liệu dung dịch chuẩn NaCl</div>
+              <label class="dropzone-25d" for="file-calib-csv">
+                <div style="font-size:1.3rem;">📄</div>
+                <div style="font-weight:700; font-size:0.84rem; color:#0b1d3a;">Tải file CSV hiệu chuẩn (đủ 7 cột quy định)</div>
+                <div style="font-size:0.75rem; color:#64748b;" id="t4-csv-filename">Chưa chọn file CSV — đang sẵn sàng nạp dữ liệu mô phỏng</div>
+                <input type="file" id="file-calib-csv" accept=".csv,text/csv" style="display:none;" />
+              </label>
+              <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+                <button type="button" id="t4-btn-sim" class="btn-25d btn-teal-25d btn-sm">🧪 Nạp 72 điểm chuẩn mô phỏng</button>
+                <a href="/api/calibrate/template-csv" class="btn-25d btn-sm">📥 Tải CSV mẫu chuẩn (7 cột)</a>
+              </div>
+              <div id="t4-source-banner" class="banner-25d warn" style="margin-top:10px;">
+                <div class="banner-icon">🧪</div>
+                <div>Sẵn sàng dựng đường chuẩn từ 72 điểm mô phỏng Snell.</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-6">
+            <div class="chassis-panel-25d">
+              <div class="step-badge-title"><span class="step-num-25d">2</span> Chiến lược bậc đa thức &amp; Kích hoạt</div>
+              <div class="control-group">
+                <div class="control-label"><span>Chọn bậc đa thức Δy = f(S, T)</span></div>
+                <select id="t4-degree" class="select-25d">
+                  <option value="auto">Tự động chọn (Kiểm định chéo 5-fold chống quá khớp)</option>
+                  <option value="1">Ép Bậc 1 (Tuyến tính: c₀ + c_S·S + c_T·ΔT)</option>
+                  <option value="2">Ép Bậc 2 (Đa thức bậc 2 đầy đủ)</option>
+                </select>
+              </div>
+              <div class="control-row-2" style="margin-top:10px;">
+                <button type="button" id="t4-btn-fit" class="btn-25d btn-primary-25d btn-full">⚡ Dựng đường chuẩn</button>
+                <button type="button" id="t4-btn-activate" class="btn-25d btn-navy-25d btn-full">💾 Lưu &amp; Áp dụng mặc định</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="kpi-row-4">
+          <div class="kpi-card-25d tone-crimson">
+            <div class="kpi-label">HỆ SỐ XÁC ĐỊNH R²</div>
+            <div class="kpi-value" id="t4-kpi-r2">--</div>
+            <div class="kpi-sub" id="t4-kpi-pts">-- điểm</div>
+          </div>
+          <div class="kpi-card-25d tone-teal">
+            <div class="kpi-label">BẬC ĐA THỨC CHỌN</div>
+            <div class="kpi-value" id="t4-kpi-deg">--</div>
+            <div class="kpi-sub" id="t4-kpi-reason">--</div>
+          </div>
+          <div class="kpi-card-25d tone-amber">
+            <div class="kpi-label">RMSE TẬP KIỂM TRA (TEST)</div>
+            <div class="kpi-value"><span id="t4-kpi-rmsetest">--</span><small>‰</small></div>
+            <div class="kpi-sub" id="t4-kpi-rmsepx">RMSE ảnh: -- px</div>
+          </div>
+          <div class="kpi-card-25d tone-emerald">
+            <div class="kpi-label">ĐỘ LỆCH CHUẨN s_res</div>
+            <div class="kpi-value"><span id="t4-kpi-sres">--</span><small>px</small></div>
+            <div class="kpi-sub" id="t4-kpi-dof">Bậc tự do ν = --</div>
+          </div>
+        </div>
+
+        <div class="chassis-panel-25d" style="margin-bottom:14px;">
+          <div class="step-badge-title"><span class="step-num-25d">3</span> Phương trình đường chuẩn &amp; Cảnh báo trung thực</div>
+          <div id="t4-model-warning"></div>
+          <div class="equation-box-25d" id="t4-equation-box">Đang chờ tính toán phương trình...</div>
+        </div>
+
+        <div class="grid-12" style="margin-bottom:14px;">
+          <div class="col-6">
+            <div class="chassis-panel-25d">
+              <div class="step-badge-title"><span class="step-num-25d">4A</span> Đồ thị đường chuẩn đa nhiệt độ Δy = f(S, T)</div>
+              <div class="chart-canvas-wrap">
+                <canvas id="canvas-calib-curve"></canvas>
+                <div class="chart-tooltip" id="tip-calib-curve"></div>
+              </div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="chassis-panel-25d">
+              <div class="step-badge-title"><span class="step-num-25d">4B</span> Đồ thị phần dư chuẩn hóa (Residuals)</div>
+              <div class="chart-canvas-wrap">
+                <canvas id="canvas-calib-res"></canvas>
+                <div class="chart-tooltip" id="tip-calib-res"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="chassis-panel-25d">
+          <div class="step-badge-title"><span class="step-num-25d">5</span> Bảng phân tích sai số từng mức độ mặn chuẩn</div>
+          <div class="table-scroll-25d">
+            <table class="data-table-25d">
+              <thead>
+                <tr>
+                  <th>S chuẩn (‰)</th>
+                  <th>Số điểm</th>
+                  <th>Δy TB (px)</th>
+                  <th>Độ lệch chuẩn (px)</th>
+                  <th>Phần dư TB (px)</th>
+                  <th>S ước lượng TB (‰)</th>
+                  <th>Sai số TB (‰)</th>
+                  <th>Sai số Max (‰)</th>
+                </tr>
+              </thead>
+              <tbody id="t4-level-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================
+           TAB 5: MÔ PHỎNG QUANG HỌC SNELL & NGÂN SÁCH SAI SỐ RSS
+           ================================================================ -->
+      <section id="tab-5" class="tab-pane">
+
+        <div class="grid-12" style="margin-bottom:14px;">
+          <div class="col-4">
+            <div class="chassis-panel-25d">
+              <div class="step-badge-title"><span class="step-num-25d">1</span> Cấu hình hình học lăng kính</div>
+
+              <div class="control-group">
+                <div class="control-label"><span>Góc đỉnh lăng kính A</span><span class="control-val-chip" id="val-t5-a">40.0°</span></div>
+                <input type="range" id="t5-a" class="slider-25d" min="25" max="48.5" step="0.5" value="40.0" />
+              </div>
+
+              <div class="control-group">
+                <div class="control-label"><span>Khoảng cách tới màn D</span><span class="control-val-chip" id="val-t5-d">1.0 m</span></div>
+                <input type="range" id="t5-d" class="slider-25d" min="0.4" max="2.5" step="0.1" value="1.0" />
+              </div>
+
+              <div class="control-group">
+                <div class="control-label"><span>Kích thước pixel trên màn (mm/px)</span></div>
+                <input type="number" id="t5-pxmm" class="input-25d" step="0.005" min="0.01" max="0.5" value="0.05" />
+              </div>
+
+              <div class="control-group">
+                <div class="control-label"><span>Độ mặn mẫu khảo sát S</span><span class="control-val-chip" id="val-t5-s">20.0 ‰</span></div>
+                <input type="range" id="t5-s" class="slider-25d" min="0" max="40" step="1" value="20" />
+              </div>
+
+              <div class="control-group">
+                <div class="control-label"><span>Nhiệt độ khảo sát T</span><span class="control-val-chip" id="val-t5-t">25.0 °C</span></div>
+                <input type="range" id="t5-t" class="slider-25d" min="10" max="40" step="1" value="25" />
+              </div>
+
+              <hr class="panel-divider" />
+              <button type="button" id="t5-btn-save-config" class="btn-25d btn-navy-25d btn-full btn-sm">
+                💾 Lưu A, D, mm/px vào config.yaml
+              </button>
+            </div>
+          </div>
+
+          <div class="col-8">
+            <div class="chassis-panel-25d">
+              <div class="step-badge-title"><span class="step-num-25d">2</span> Sơ đồ tia sáng 2.5D &amp; Kết quả định luật Snell</div>
+              <div id="t5-svg-container"></div>
+              <div id="t5-tir-alert"></div>
+              <div class="kpi-row-3" style="margin-top:12px; margin-bottom:0;">
+                <div class="kpi-card-25d tone-emerald">
+                  <div class="kpi-label">GÓC LÓ θ_ra</div>
+                  <div class="kpi-value"><span id="t5-kpi-theta">--</span><small>°</small></div>
+                  <div class="kpi-sub" id="t5-kpi-n">n_mẫu = --</div>
+                </div>
+                <div class="kpi-card-25d tone-teal">
+                  <div class="kpi-label">GÓC LỆCH δ</div>
+                  <div class="kpi-value"><span id="t5-kpi-delta">--</span><small>°</small></div>
+                  <div class="kpi-sub" id="t5-kpi-dy">Δy = -- px</div>
+                </div>
+                <div class="kpi-card-25d tone-crimson">
+                  <div class="kpi-label">ĐỘ NHẠY HỆ THỐNG</div>
+                  <div class="kpi-value"><span id="t5-kpi-sens">--</span><small>px/‰</small></div>
+                  <div class="kpi-sub" id="t5-kpi-sens-sub">--</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-12" style="margin-bottom:14px;">
+          <div class="col-6">
+            <div class="chassis-panel-25d">
+              <div class="step-badge-title"><span class="step-num-25d">3A</span> Độ nhạy quang học theo góc đỉnh A</div>
+              <div class="chart-canvas-wrap">
+                <canvas id="canvas-opt-sens"></canvas>
+                <div class="chart-tooltip" id="tip-opt-sens"></div>
+              </div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="chassis-panel-25d">
+              <div class="step-badge-title"><span class="step-num-25d">3B</span> Đường đáp ứng lí thuyết Δy(S) ở 20 °C &amp; 30 °C</div>
+              <div class="chart-canvas-wrap">
+                <canvas id="canvas-opt-resp"></canvas>
+                <div class="chart-tooltip" id="tip-opt-resp"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="chassis-panel-25d">
+          <div class="step-badge-title"><span class="step-num-25d">4</span> Ngân sách sai số thiết kế (Error Budget RSS — Quy đổi sang ‰)</div>
+          <div class="grid-12">
+            <div class="col-4">
+              <div class="control-group">
+                <div class="control-label"><span>Sai số tìm tâm vạch (px)</span></div>
+                <input type="number" id="t5-err-tam" class="input-25d" step="0.01" value="0.05" />
+              </div>
+              <div class="control-group">
+                <div class="control-label"><span>Chênh nhiệt độ 2 ngăn (°C)</span></div>
+                <input type="number" id="t5-err-t" class="input-25d" step="0.1" value="0.5" />
+              </div>
+              <div class="control-group">
+                <div class="control-label"><span>Sai số gia công góc A (độ)</span></div>
+                <input type="number" id="t5-err-a" class="input-25d" step="0.01" value="0.05" />
+              </div>
+              <div class="control-row-2">
+                <div class="control-group">
+                  <div class="control-label"><span>Trôi chung (px)</span></div>
+                  <input type="number" id="t5-err-troi" class="input-25d" step="0.5" value="5.0" />
+                </div>
+                <div class="control-group">
+                  <div class="control-label"><span>Hệ số lọt</span></div>
+                  <input type="number" id="t5-err-triet" class="input-25d" step="0.005" value="0.01" />
+                </div>
+              </div>
+            </div>
+            <div class="col-8">
+              <div class="table-scroll-25d" style="margin-bottom:10px;">
+                <table class="data-table-25d">
+                  <thead>
+                    <tr>
+                      <th>Nguồn sai số</th>
+                      <th>Bất định quy đổi 1σ (‰)</th>
+                    </tr>
+                  </thead>
+                  <tbody id="t5-rss-body"></tbody>
+                </table>
+              </div>
+              <div id="t5-rss-banner" class="banner-25d ok">
+                <div class="banner-icon">🎯</div>
+                <div>Tổng bất định thiết kế sẽ hiển thị tại đây.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================
+           TAB 6: ĐỐI CHỨNG KHÚC XẠ KẾ (BLAND–ALTMAN)
+           ================================================================ -->
+      <section id="tab-6" class="tab-pane">
+
+        <div class="grid-12" style="margin-bottom:14px;">
+          <div class="col-4">
+            <div class="chassis-panel-25d">
+              <div class="step-badge-title"><span class="step-num-25d">1</span> Nạp số liệu đối chứng song song</div>
+              <button type="button" id="t6-btn-sample" class="btn-25d btn-teal-25d btn-full" style="margin-bottom:10px;">
+                📋 Nạp 24 cặp mẫu đối chứng (Mô phỏng)
+              </button>
+              <label class="dropzone-25d" for="file-ba-csv">
+                <div style="font-size:1.25rem;">📄</div>
+                <div style="font-weight:700; font-size:0.83rem; color:#0b1d3a;">Hoặc tải CSV 2 cột (S_thiet_bi, S_khuc_xa_ke)</div>
+                <input type="file" id="file-ba-csv" accept=".csv,text/csv" style="display:none;" />
+              </label>
+              <button type="button" id="t6-btn-add-row" class="btn-25d btn-sm btn-full" style="margin-top:10px;">
+                ➕ Thêm 1 cặp đo vào bảng bên phải
+              </button>
+            </div>
+          </div>
+
+          <div class="col-8">
+            <div class="chassis-panel-25d">
+              <div class="step-badge-title"><span class="step-num-25d">2</span> Bảng dữ liệu đối chứng (Chỉnh sửa trực tiếp)</div>
+              <div class="table-scroll-25d" style="max-height:220px;">
+                <table class="data-table-25d">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>S Thiết bị dự án (‰)</th>
+                      <th>S Khúc xạ kế (‰)</th>
+                      <th>Chênh lệch (‰)</th>
+                    </tr>
+                  </thead>
+                  <tbody id="t6-pairs-body"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="kpi-row-4">
+          <div class="kpi-card-25d tone-crimson">
+            <div class="kpi-label">SAI LỆCH TRUNG BÌNH (BIAS)</div>
+            <div class="kpi-value"><span id="t6-kpi-bias">--</span><small>‰</small></div>
+            <div class="kpi-sub">Độ lệch hệ thống 2 máy</div>
+          </div>
+          <div class="kpi-card-25d tone-teal">
+            <div class="kpi-label">ĐỘ LỆCH CHUẨN HIỆU SỐ (SD)</div>
+            <div class="kpi-value"><span id="t6-kpi-sd">--</span><small>‰</small></div>
+            <div class="kpi-sub" id="t6-kpi-n">Trên -- cặp đo</div>
+          </div>
+          <div class="kpi-card-25d tone-amber">
+            <div class="kpi-label">GIỚI HẠN ĐỒNG THUẬN 95%</div>
+            <div class="kpi-value" style="font-size:1.28rem;" id="t6-kpi-loa">[--, --]</div>
+            <div class="kpi-sub">Mean ± 1.96·SD</div>
+          </div>
+          <div class="kpi-card-25d tone-emerald">
+            <div class="kpi-label">HỆ SỐ TƯƠNG QUAN r</div>
+            <div class="kpi-value" id="t6-kpi-r">--</div>
+            <div class="kpi-sub" id="t6-kpi-r2">R² = --</div>
+          </div>
+        </div>
+
+        <div class="grid-12" style="margin-bottom:14px;">
+          <div class="col-6">
+            <div class="chassis-panel-25d">
+              <div class="step-badge-title"><span class="step-num-25d">3A</span> Đồ thị tương quan tuyến tính (y = x)</div>
+              <div class="chart-canvas-wrap">
+                <canvas id="canvas-ba-corr"></canvas>
+                <div class="chart-tooltip" id="tip-ba-corr"></div>
+              </div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="chassis-panel-25d">
+              <div class="step-badge-title"><span class="step-num-25d">3B</span> Đồ thị Bland–Altman</div>
+              <div class="chart-canvas-wrap">
+                <canvas id="canvas-ba-diff"></canvas>
+                <div class="chart-tooltip" id="tip-ba-diff"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="t6-conclusion-box" class="banner-25d ok">
+          <div class="banner-icon">🎯</div>
+          <div>Kết luận thống kê Bland–Altman sẽ hiển thị tại đây.</div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ==================== MODAL HƯỚNG DẪN 4 BƯỚC 2.5D ==================== -->
+  <div id="guide-modal-backdrop" class="modal-backdrop">
+    <div class="modal-25d">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+        <h3 style="margin:0; font-size:1.15rem; color:#0b1d3a;">📖 Hướng Dẫn Quy Trình Đo Độ Mặn Quang Học (4 Bước)</h3>
+        <button type="button" id="btn-close-guide" class="btn-25d btn-sm">✖ Đóng</button>
+      </div>
+      <div class="guide-cards-grid">
+        <div class="guide-card">
+          <h4>Bước 1 — Thu nhận ảnh 2 vạch laser</h4>
+          <p>Chụp màn hứng 2 đoạn vạch laser (ngăn nước cất 0 ‰ và ngăn mẫu nước cần đo), hoặc dùng thanh trượt <b>Mô phỏng</b> ngay ở Tab 1 để kiểm thử thuật toán.</p>
+        </div>
+        <div class="guide-card">
+          <h4>Bước 2 — Định vị tâm dưới pixel &amp; Giải ngược S</h4>
+          <p>Thuật toán khớp hàm Gauss theo từng cột cho độ phân giải &lt; 0.05 px, đo hiệu vị trí vi sai <b>Δy = y_mẫu − y_tc</b> giúp khử rung tay cầm và trôi nhiệt laser.</p>
+        </div>
+        <div class="guide-card">
+          <h4>Bước 3 — Đối chiếu ngưỡng sinh học</h4>
+          <p>Chọn đối tượng (Tôm thẻ, Tôm sú, Cá tra, Lúa, Sầu riêng...) để xem cảnh báo kèm trích dẫn TCVN/QCVN và nguồn khoa học chính thức.</p>
+        </div>
+        <div class="guide-card">
+          <h4>Bước 4 — Lưu Nhật kí &amp; Hiệu chuẩn thực tế</h4>
+          <p>Lưu kết quả vào cơ sở dữ liệu SQLite (Tab 3) hoặc tải dữ liệu chuẩn 7 cột NaCl ở Tab 4 để dựng đường chuẩn thực nghiệm cho thiết bị thật.</p>
+        </div>
+      </div>
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <button type="button" id="btn-modal-start-tour" class="btn-25d btn-teal-25d">
+          🧭 Chạy hướng dẫn từng bước trực tiếp
+        </button>
+        <button type="button" id="btn-modal-quickstart" class="btn-25d btn-primary-25d">
+          ⚡ Chạy ngay mẫu thử 16.5 ‰
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== HƯỚNG DẪN THỜI GIAN THỰC (SPOTLIGHT TOUR) ==================== -->
+  <div id="live-tour-ring" class="live-tour-ring" aria-hidden="true"></div>
+  <aside id="live-tour-card" class="live-tour-card" role="dialog" aria-live="polite" aria-label="Hướng dẫn từng bước">
+    <div class="tour-card-head">
+      <span class="tour-step-badge" id="tour-step-badge">Bước 1/18</span>
+      <span class="tour-timer-pill" id="tour-countdown">⏳ Tự chuyển sau 10s</span>
+    </div>
+    <h4 class="tour-card-title" id="tour-step-title">Chọn nguồn ảnh</h4>
+    <p class="tour-card-desc" id="tour-step-desc"></p>
+    <div class="tour-action-hint" id="tour-action-hint"></div>
+    <div class="tour-progress-track">
+      <div class="tour-progress-fill" id="tour-progress-fill"></div>
+    </div>
+    <div class="tour-card-actions">
+      <div class="tour-actions-left">
+        <button type="button" id="btn-tour-skip" class="btn-25d btn-sm">⏭️ Bỏ qua</button>
+        <button type="button" id="btn-tour-pause" class="btn-25d btn-sm" title="Tạm dừng đếm ngược để đọc kỹ">⏸️ Dừng</button>
+      </div>
+      <div class="tour-actions-right">
+        <button type="button" id="btn-tour-prev" class="btn-25d btn-sm">← Trước</button>
+        <button type="button" id="btn-tour-next" class="btn-25d btn-teal-25d btn-sm">Tiếp theo →</button>
+      </div>
+    </div>
+  </aside>
+
+  <div id="toast-tray" class="toast-tray"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

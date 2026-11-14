@@ -48,15 +48,21 @@
 ### 2.2. Cài đặt các thư viện phụ thuộc
 Mở terminal / PowerShell tại thư mục dự án và chạy lệnh:
 ```bash
-python -m pip install numpy scipy pandas matplotlib opencv-python-headless streamlit pyyaml pytest
+python -m pip install numpy scipy pandas matplotlib opencv-python-headless starlette uvicorn pyyaml pytest streamlit
 ```
 
-### 2.3. Khởi chạy giao diện người dùng Streamlit
-Chạy lệnh sau từ thư mục `salinity/`:
+### 2.3. Khởi chạy giao diện Web 2.5D độc lập (Khuyến nghị - Không dùng Streamlit)
+Chạy lệnh sau từ thư mục dự án:
+```bash
+python app/web_app.py
+```
+Trình duyệt sẽ tự động mở tại địa chỉ: `http://127.0.0.1:8000` (giao diện 2.5D mượt mà, phản hồi thanh trượt tức thì).
+
+*Tùy chọn phụ*: Nếu muốn chạy giao diện Streamlit truyền thống:
 ```bash
 python -m streamlit run app/streamlit_app.py
 ```
-Trình duyệt sẽ tự động mở trang web tại địa chỉ: `http://localhost:8501`.
+Trình duyệt sẽ mở tại địa chỉ: `http://localhost:8501`.
 
 ---
 

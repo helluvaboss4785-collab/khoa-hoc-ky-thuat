@@ -1,0 +1,22 @@
+{
+  "name": "Hệ Thống Đo Độ Mặn Quang Học Vi Sai",
+  "short_name": "Đo Độ Mặn",
+  "description": "Đo độ mặn, độ đục bằng camera và cảnh báo an toàn thủy sản, cây trồng",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#060f1e",
+  "theme_color": "#0b1d3a",
+  "lang": "vi",
+  "icons": [
+    {
+      "src": "/static/favicon.png",
+      "sizes": "128x128",
+      "type": "image/png"
+    },
+    {
+      "src": "/static/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

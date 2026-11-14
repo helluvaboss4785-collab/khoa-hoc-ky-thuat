@@ -14,6 +14,7 @@ Bao gồm:
 """
 from __future__ import annotations
 
+import base64
 import io
 import math
 import sqlite3
@@ -64,10 +65,12 @@ from core import thresholds as th
 from core.measure import KetQuaDoDeltaY, chuyen_anh_xam, do_delta_y_tu_anh
 from sim.synth import ThamSoMoPhong, sinh_anh_hai_vach_mo_phong, sinh_du_lieu_hieu_chuan_mo_phong
 
+_ICON_PATH = THU_MUC_GOC / "app" / "static" / "favicon.png"
+
 # Cấu hình trang Streamlit
 st.set_page_config(
     page_title="Đo Độ Mặn Quang Học Vi Sai | KHKT",
-    page_icon="🔬",
+    page_icon=str(_ICON_PATH) if _ICON_PATH.exists() else "🔬",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -283,15 +286,19 @@ def load_model() -> cal.MoHinhHieuChuan:
 mh_hien_tai = load_model()
 
 # ---------------------------------------------------------------------------
-# Khởi tạo trạng thái phiên làm việc (Session State) & Hướng dẫn lần đầu
+# Khởi tạo trạng thái phiên làm việc (Session State)
 # ---------------------------------------------------------------------------
 if "da_xem_huong_dan" not in st.session_state:
     st.session_state["da_xem_huong_dan"] = False
-    st.session_state["mo_huong_dan"] = True
+    st.session_state["mo_huong_dan"] = False
     st.session_state["bat_tro_ly_thoi_gian_thuc"] = True
     st.session_state["nguon_anh_radio"] = "Tạo ảnh mô phỏng thử nghiệm"
     st.session_state["tu_dong_do_live"] = True
     st.session_state["da_luu_nhat_ki_phien_nay"] = False
+    st.session_state["sim_s_ppt"] = 16.5
+    st.session_state["sim_t_c"] = 26.0
+    st.session_state["sim_duc"] = 0.15
+    st.session_state["sim_drift"] = 4.0
 
 if st.session_state.get("mo_huong_dan", False):
     hop_thoai_huong_dan()
@@ -329,10 +336,24 @@ hero(
 # Sidebar: Điều khiển Hướng dẫn Thời gian thực & Trạng thái Hệ thống
 # ---------------------------------------------------------------------------
 with st.sidebar:
-    hien("""
-    <div class="sb-logo">🔬 QUANG HỌC <b>VI SAI</b></div>
-    <div style="font-size: 0.84rem; color: #CBD5E1; margin-bottom: 10px;">
-      Hệ thống đo độ mặn & độ đục bằng camera
+    _logo_b64 = (
+        base64.b64encode(_ICON_PATH.read_bytes()).decode("ascii")
+        if _ICON_PATH.exists()
+        else ""
+    )
+    _logo_img = (
+        f'<img src="data:image/png;base64,{_logo_b64}" width="40" height="40" '
+        f'alt="Logo" style="border-radius:10px;flex-shrink:0;box-shadow:0 4px 10px rgba(2,6,23,.45);" />'
+        if _logo_b64
+        else "🔬"
+    )
+    hien(f"""
+    <div class="sb-logo" style="display:flex;align-items:center;gap:10px;">
+      {_logo_img}
+      <div>QUANG HỌC <b>VI SAI</b></div>
+    </div>
+    <div style="font-size: 0.83rem; color: #CBD5E1; margin: 6px 0 12px;">
+      Hệ thống đo độ mặn &amp; độ đục bằng camera
     </div>
     """)
 
@@ -342,7 +363,7 @@ with st.sidebar:
         st.rerun()
 
     bat_coach = st.toggle(
-        "🧭 Trợ lý Hướng dẫn thời gian thực",
+        "🧭 Trợ lý quy trình (4 bước)",
         value=st.session_state.get("bat_tro_ly_thoi_gian_thuc", True),
         help="Hiển thị thanh chỉ dẫn từng bước theo thời gian thực ngay đầu trang",
     )
@@ -352,7 +373,7 @@ with st.sidebar:
 
     st.divider()
 
-    hien('<div class="sb-tt">📊 Trạng thái đường chuẩn hiện tại:</div>')
+    hien('<div class="sb-tt" style="font-weight:700; color:#fff; margin-bottom:6px;">📊 Trạng thái đường chuẩn hiện tại:</div>')
     if mh_hien_tai.la_mo_phong:
         bang(
             "vang",
@@ -384,21 +405,8 @@ with st.sidebar:
     </div>
     """)
 
-# ---------------------------------------------------------------------------
-# Hiển thị Thanh Trợ lý Hướng dẫn Thời gian thực (Live Onboarding Coach)
-# ---------------------------------------------------------------------------
-kq_do_saved: KetQuaDoDeltaY | None = st.session_state.get("kq_do_hien_tai")
-kq_man_saved: cal.KetQuaDoMan | None = st.session_state.get("kq_man_hien_tai")
-
-thanh_tro_ly_thoi_gian_thuc(
-    co_anh=st.session_state.get("co_anh_dau_vao", True),
-    da_do=(kq_do_saved is not None),
-    hop_le_anh=(kq_do_saved.chat_luong.hop_le if kq_do_saved is not None else True),
-    da_luu_nhat_ki=bool(st.session_state.get("da_luu_nhat_ki_phien_nay", False)),
-    s_do_duoc=(kq_man_saved.S_ppt if kq_man_saved is not None else None),
-    u_do_duoc=(kq_man_saved.U_S_ppt if kq_man_saved is not None else None),
-    canh_bao_anh=(kq_do_saved.chat_luong.canh_bao if kq_do_saved is not None else None),
-)
+# Khung giữ chỗ cho Thanh Trợ lý Hướng dẫn (được cập nhật đồng bộ ngay sau khi Tab 1 xử lí xong)
+coach_container = st.container()
 
 # ---------------------------------------------------------------------------
 # Các Tab chức năng chính
@@ -423,140 +431,149 @@ with tab_do:
         "Thu nhận ảnh hai đoạn vạch sáng, khớp hàm Gauss dưới pixel và giải ngược độ mặn kèm bất định chuẩn GUM",
     )
 
+    # Vùng 1: Bảng điều khiển đầu vào (2 khung 2.5D cân xứng)
     col_inp1, col_inp2 = st.columns([1.15, 1], gap="medium")
 
     with col_inp1:
-        nhan_buoc("1", "Chọn nguồn ảnh chụp màn hứng 2 vạch laser")
-        cac_nguon = ["Tải ảnh lên", "Chụp bằng Camera", "Tạo ảnh mô phỏng thử nghiệm"]
-        idx_mac_dinh = cac_nguon.index(st.session_state.get("nguon_anh_radio", "Tạo ảnh mô phỏng thử nghiệm"))
-        nguon_anh = st.radio(
-            "Nguồn ảnh:",
-            cac_nguon,
-            index=idx_mac_dinh,
-            horizontal=True,
-            label_visibility="collapsed",
-        )
-        st.session_state["nguon_anh_radio"] = nguon_anh
-
-        anh_input: np.ndarray | None = None
-        la_anh_mo_phong = False
-        thong_tin_chan_li_mp: dict | None = None
-
-        if nguon_anh == "Tải ảnh lên":
-            file_upload = st.file_uploader("Chọn file ảnh chụp màn hứng (JPG, PNG)", type=["jpg", "jpeg", "png"])
-            if file_upload:
-                file_bytes = np.asarray(bytearray(file_upload.read()), dtype=np.uint8)
-                anh_input = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-
-        elif nguon_anh == "Chụp bằng Camera":
-            camera_img = st.camera_input("Chụp trực tiếp màn hứng vạch laser trong hộp tối")
-            if camera_img:
-                file_bytes = np.asarray(bytearray(camera_img.read()), dtype=np.uint8)
-                anh_input = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-
-        else:
-            la_anh_mo_phong = True
-            bang(
-                "duong",
-                "<b>Chế độ mô phỏng quang học thời gian thực:</b> Kéo thanh trượt để thay đổi độ mặn, nhiệt độ, độ đục hoặc gây rung lắc camera và quan sát phản ứng tức thì của hệ thống!",
-                icon="🧪",
-                la_html=True,
+        with st.container(border=True, key="panel_t1_inp1"):
+            nhan_buoc("1", "Nguồn ảnh chụp màn hứng 2 vạch laser")
+            cac_nguon = ["Tải ảnh lên", "Chụp bằng Camera", "Tạo ảnh mô phỏng thử nghiệm"]
+            idx_mac_dinh = cac_nguon.index(st.session_state.get("nguon_anh_radio", "Tạo ảnh mô phỏng thử nghiệm"))
+            nguon_anh = st.radio(
+                "Nguồn ảnh:",
+                cac_nguon,
+                index=idx_mac_dinh,
+                horizontal=True,
+                label_visibility="collapsed",
             )
-            c_s1, c_s2 = st.columns(2)
-            s_mp = c_s1.slider(
-                "Độ mặn mẫu mô phỏng S (‰)",
-                0.0, 35.0, float(st.session_state.get("sim_s_ppt", 16.5)), 0.5,
-                key="slider_s_mp",
-            )
-            t_mp = c_s2.slider(
-                "Nhiệt độ mẫu T (°C)",
-                15.0, 35.0, float(st.session_state.get("sim_t_c", 26.0)), 0.5,
-                key="slider_t_mp",
-            )
-            duc_mp = c_s1.slider(
-                "Độ đục mẫu (0: trong, 1: rất đục)",
-                0.0, 1.0, float(st.session_state.get("sim_duc", 0.15)), 0.05,
-                key="slider_duc_mp",
-            )
-            drift_mp = c_s2.slider(
-                "Rung camera / Trôi laser chung δy (px)",
-                -15.0, 15.0, float(st.session_state.get("sim_drift", 4.0)), 1.0,
-                key="slider_drift_mp",
-            )
-            st.session_state["sim_s_ppt"] = s_mp
-            st.session_state["sim_t_c"] = t_mp
-            st.session_state["sim_duc"] = duc_mp
-            st.session_state["sim_drift"] = drift_mp
+            st.session_state["nguon_anh_radio"] = nguon_anh
 
-            with st.expander("⚙️ Tùy chọn gây nhiễu cực đoan (Kiểm thử độ bền thuật toán)"):
-                c_ex1, c_ex2 = st.columns(2)
-                gay_bao_hoa = c_ex1.checkbox("Cố tình gây cháy sáng bão hòa (pixel = 255)", value=False)
-                bo_tri_vach = c_ex2.selectbox("Bố trí 2 ngăn trên ảnh", ["ngang", "doc"], format_func=lambda v: "Ngang (Trái: Nước cất | Phải: Mẫu)" if v == "ngang" else "Dọc (Trên: Nước cất | Dưới: Mẫu)")
+            anh_input: np.ndarray | None = None
+            la_anh_mo_phong = False
+            thong_tin_chan_li_mp: dict | None = None
 
-            p_synth = ThamSoMoPhong(
-                S_ppt=s_mp,
-                T_C=t_mp,
-                T_tham_chieu_C=t_mp,
-                drift_chung_px=drift_mp,
-                do_duc=duc_mp,
-                bo_tri=bo_tri_vach,
-                cho_phep_bao_hoa=gay_bao_hoa,
-                seed=42,
-            )
-            anh_mp_obj = sinh_anh_hai_vach_mo_phong(p_synth, load_config(), gan_watermark=False)
-            anh_input = cv2.cvtColor(anh_mp_obj.anh, cv2.COLOR_GRAY2BGR)
-            thong_tin_chan_li_mp = {
-                "S_chan_li": s_mp,
-                "T_chan_li": t_mp,
-                "delta_y_snell": anh_mp_obj.delta_y_ly_thuyet_px,
-                "drift_px": drift_mp,
-            }
+            if nguon_anh == "Tải ảnh lên":
+                file_upload = st.file_uploader("Chọn file ảnh chụp màn hứng (JPG, PNG)", type=["jpg", "jpeg", "png"])
+                if file_upload:
+                    file_bytes = np.asarray(bytearray(file_upload.read()), dtype=np.uint8)
+                    anh_input = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+                else:
+                    bang(
+                        "duong",
+                        "Tải lên ảnh chụp màn hứng hai vạch laser rõ nét (tránh lóa trắng 255).",
+                        icon="🖼️",
+                    )
 
-        st.session_state["co_anh_dau_vao"] = (anh_input is not None)
+            elif nguon_anh == "Chụp bằng Camera":
+                camera_img = st.camera_input("Chụp trực tiếp màn hứng vạch laser trong hộp tối")
+                if camera_img:
+                    file_bytes = np.asarray(bytearray(camera_img.read()), dtype=np.uint8)
+                    anh_input = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+
+            else:
+                la_anh_mo_phong = True
+                bang(
+                    "duong",
+                    "<b>Chế độ mô phỏng quang học thời gian thực:</b> Kéo thanh trượt để kiểm chứng khả năng khử rung và độ chính xác dưới pixel.",
+                    icon="🧪",
+                    la_html=True,
+                )
+                c_s1, c_s2 = st.columns(2, gap="small")
+                s_mp = c_s1.slider(
+                    "Độ mặn mẫu mô phỏng S (‰)",
+                    0.0, 35.0, float(st.session_state.get("sim_s_ppt", 16.5)), 0.5,
+                    key="slider_s_mp",
+                )
+                t_mp = c_s2.slider(
+                    "Nhiệt độ mẫu T (°C)",
+                    15.0, 35.0, float(st.session_state.get("sim_t_c", 26.0)), 0.5,
+                    key="slider_t_mp",
+                )
+                duc_mp = c_s1.slider(
+                    "Độ đục mẫu (0: trong, 1: rất đục)",
+                    0.0, 1.0, float(st.session_state.get("sim_duc", 0.15)), 0.05,
+                    key="slider_duc_mp",
+                )
+                drift_mp = c_s2.slider(
+                    "Rung camera / Trôi laser δy (px)",
+                    -15.0, 15.0, float(st.session_state.get("sim_drift", 4.0)), 1.0,
+                    key="slider_drift_mp",
+                )
+                st.session_state["sim_s_ppt"] = s_mp
+                st.session_state["sim_t_c"] = t_mp
+                st.session_state["sim_duc"] = duc_mp
+                st.session_state["sim_drift"] = drift_mp
+
+                with st.expander("⚙️ Tùy chọn gây nhiễu cực đoan (Kiểm thử độ bền thuật toán)"):
+                    c_ex1, c_ex2 = st.columns(2, gap="small")
+                    gay_bao_hoa = c_ex1.checkbox("Cố tình gây cháy sáng bão hòa (pixel = 255)", value=False)
+                    bo_tri_vach = c_ex2.selectbox("Bố trí 2 ngăn trên ảnh", ["ngang", "doc"], format_func=lambda v: "Ngang (Trái: Nước cất | Phải: Mẫu)" if v == "ngang" else "Dọc (Trên: Nước cất | Dưới: Mẫu)")
+
+                p_synth = ThamSoMoPhong(
+                    S_ppt=s_mp,
+                    T_C=t_mp,
+                    T_tham_chieu_C=t_mp,
+                    drift_chung_px=drift_mp,
+                    do_duc=duc_mp,
+                    bo_tri=bo_tri_vach,
+                    cho_phep_bao_hoa=gay_bao_hoa,
+                    seed=42,
+                )
+                anh_mp_obj = sinh_anh_hai_vach_mo_phong(p_synth, load_config(), gan_watermark=False)
+                anh_input = cv2.cvtColor(anh_mp_obj.anh, cv2.COLOR_GRAY2BGR)
+                thong_tin_chan_li_mp = {
+                    "S_chan_li": s_mp,
+                    "T_chan_li": t_mp,
+                    "delta_y_snell": anh_mp_obj.delta_y_ly_thuyet_px,
+                    "drift_px": drift_mp,
+                }
+
+            st.session_state["co_anh_dau_vao"] = (anh_input is not None)
 
     with col_inp2:
-        nhan_buoc("2", "Thông số môi trường, thuật toán & Vị trí lấy mẫu")
-        c_env1, c_env2 = st.columns(2)
-        nhiet_do_mac_dinh = float(st.session_state.get("sim_t_c", 25.0)) if la_anh_mo_phong else 25.0
-        nhiet_do_do = c_env1.number_input(
-            "Nhiệt độ mẫu đo bằng nhiệt kế (°C)",
-            min_value=5.0,
-            max_value=50.0,
-            value=nhiet_do_mac_dinh,
-            step=0.5,
-        )
-        phuong_phap_tam = c_env2.selectbox(
-            "Thuật toán định vị tâm vạch:",
-            options=["gauss", "centroid"],
-            format_func=lambda m: "Khớp hàm Gauss phi tuyến (Sub-pixel)" if m == "gauss" else "Trọng tâm có trừ nền (Centroid)",
-        )
+        with st.container(border=True, key="panel_t1_inp2"):
+            nhan_buoc("2", "Thông số môi trường, thuật toán & Thực thi đo")
+            c_env1, c_env2 = st.columns(2, gap="small")
+            nhiet_do_mac_dinh = float(st.session_state.get("sim_t_c", 25.0)) if la_anh_mo_phong else 25.0
+            nhiet_do_do = c_env1.number_input(
+                "Nhiệt độ mẫu đo bằng nhiệt kế (°C)",
+                min_value=5.0,
+                max_value=50.0,
+                value=nhiet_do_mac_dinh,
+                step=0.5,
+            )
+            phuong_phap_tam = c_env2.selectbox(
+                "Thuật toán định vị tâm vạch:",
+                options=["gauss", "centroid"],
+                format_func=lambda m: "Khớp hàm Gauss phi tuyến (Sub-pixel)" if m == "gauss" else "Trọng tâm có trừ nền (Centroid)",
+            )
 
-        c_loc1, c_loc2 = st.columns(2)
-        vi_tri_do = c_loc1.text_input("Vị trí lấy mẫu / Tên ao hồ", value="Ao nuôi tôm số 1")
-        ghi_chu_do = c_loc2.text_input("Ghi chú mẫu nước", value="Nước mặt ao sau mưa")
+            c_loc1, c_loc2 = st.columns(2, gap="small")
+            vi_tri_do = c_loc1.text_input("Vị trí lấy mẫu / Tên ao hồ", value="Ao nuôi tôm số 1")
+            ghi_chu_do = c_loc2.text_input("Ghi chú mẫu nước", value="Nước mặt ao sau mưa")
 
-        with st.expander("🛠️ Tùy chỉnh vùng chọn ROI thủ công (nếu ảnh có ánh sáng tạp)"):
-            che_do_roi = st.checkbox("Bật chọn tọa độ ROI thủ công", value=False)
-            roi_tc_custom, roi_mau_custom = None, None
-            if che_do_roi and anh_input is not None:
-                h_img, w_img = anh_input.shape[:2]
-                st.caption("Tọa độ ROI: [y_min, y_max, x_min, x_max]")
-                c_r1, c_r2 = st.columns(2)
-                y_tc_min = c_r1.slider("Vạch tham chiếu y_min", 0, h_img - 30, 35)
-                y_tc_max = c_r1.slider("Vạch tham chiếu y_max", y_tc_min + 15, h_img, min(h_img, 140))
-                y_m_min = c_r2.slider("Vạch mẫu y_min", 0, h_img - 30, 40)
-                y_m_max = c_r2.slider("Vạch mẫu y_max", y_m_min + 15, h_img, min(h_img, 260))
-                roi_tc_custom = (y_tc_min, y_tc_max, 5, w_img // 2 - 8)
-                roi_mau_custom = (y_m_min, y_m_max, w_img // 2 + 8, w_img - 5)
+            with st.expander("🛠️ Tùy chỉnh vùng chọn ROI thủ công (nếu ảnh có ánh sáng tạp)"):
+                che_do_roi = st.checkbox("Bật chọn tọa độ ROI thủ công", value=False)
+                roi_tc_custom, roi_mau_custom = None, None
+                if che_do_roi and anh_input is not None:
+                    h_img, w_img = anh_input.shape[:2]
+                    st.caption("Tọa độ ROI: [y_min, y_max, x_min, x_max]")
+                    c_r1, c_r2 = st.columns(2, gap="small")
+                    y_tc_min = c_r1.slider("Vạch tham chiếu y_min", 0, h_img - 30, 35)
+                    y_tc_max = c_r1.slider("Vạch tham chiếu y_max", y_tc_min + 15, h_img, min(h_img, 140))
+                    y_m_min = c_r2.slider("Vạch mẫu y_min", 0, h_img - 30, 40)
+                    y_m_max = c_r2.slider("Vạch mẫu y_max", y_m_min + 15, h_img, min(h_img, 260))
+                    roi_tc_custom = (y_tc_min, y_tc_max, 5, w_img // 2 - 8)
+                    roi_mau_custom = (y_m_min, y_m_max, w_img // 2 + 8, w_img - 5)
 
-        tu_dong_do = st.checkbox(
-            "⚡ Tự động đo thời gian thực khi thay đổi thông số / nguồn ảnh",
-            value=st.session_state.get("tu_dong_do_live", True),
-            help="Khi bật, mọi thay đổi trên thanh trượt hoặc ảnh tải lên đều được phân tích ngay lập tức",
-        )
-        st.session_state["tu_dong_do_live"] = tu_dong_do
+            tu_dong_do = st.checkbox(
+                "⚡ Tự động đo thời gian thực khi thay đổi thông số / nguồn ảnh",
+                value=st.session_state.get("tu_dong_do_live", True),
+                help="Khi bật, mọi thay đổi trên thanh trượt hoặc ảnh tải lên đều được phân tích ngay lập tức",
+            )
+            st.session_state["tu_dong_do_live"] = tu_dong_do
 
-        nut_do = st.button("🚀 TIẾN HÀNH ĐO ĐỘ MẶN NGAY", type="primary", width="stretch")
+            nut_do = st.button("🚀 TIẾN HÀNH ĐO ĐỘ MẶN NGAY", type="primary", width="stretch")
 
     # -----------------------------------------------------------------------
     # Thực hiện phép đo (khi nhấn nút, hoặc khi bật Tự động đo thời gian thực)
@@ -596,17 +613,16 @@ with tab_do:
         except Exception as ex:
             st.error(f"Lỗi khi xử lí ảnh hoặc giải ngược độ mặn: {ex}")
 
-    st.divider()
-
-    # Lấy kết quả từ Session State để hiển thị bền vững (không bị mất khi bấm nút Lưu)
+    # Lấy kết quả từ Session State để hiển thị bền vững
     kq_do: KetQuaDoDeltaY | None = st.session_state.get("kq_do_hien_tai")
     kq_man: cal.KetQuaDoMan | None = st.session_state.get("kq_man_hien_tai")
     anh_hien_thi: np.ndarray | None = st.session_state.get("anh_da_do", anh_input)
     chan_li_mp: dict | None = st.session_state.get("thong_tin_chan_li_da_do")
 
     if kq_do is not None and anh_hien_thi is not None:
-        # 1. Hiển thị 4 thẻ KPI kết quả chính
-        c_k1, c_k2, c_k3, c_k4 = st.columns(4)
+        # Vùng 2: Bảng chỉ số KPI & Trạm lưu Nhật kí
+        st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
+        c_k1, c_k2, c_k3, c_k4 = st.columns(4, gap="small")
 
         with c_k1:
             if kq_man is not None:
@@ -661,106 +677,118 @@ with tab_do:
                 kieu="vien-xanh" if cq.hop_le else "vien-do",
             ))
 
-        # 2. Khu vực Cảnh báo, Đánh giá nhanh theo loài & Lưu Nhật Kí
-        st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
-        col_save1, col_save2 = st.columns([1.35, 1], gap="medium")
+        st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
+        with st.container(border=True, key="panel_t1_save"):
+            col_save1, col_save2 = st.columns([1.2, 1], gap="medium")
 
-        with col_save1:
-            if cq.canh_bao:
-                for cb in cq.canh_bao:
-                    bang("vang", cb, icon="⚠️")
-            if kq_man and kq_man.canh_bao:
-                for cb in kq_man.canh_bao:
-                    bang("do" if "NGOÀI" in cb else "vang", cb, icon="🚨")
-            bang("duong", f"<b>Phạm vi khoa học:</b> {cal.HAN_CHE_NACL}", icon="📌", la_html=True)
-
-        with col_save2:
-            ds_loai_all = th.doc_danh_sach_loai()
-            loai_chon = st.selectbox(
-                "🦐 Chọn đối tượng nuôi trồng để đối chiếu & lưu Nhật kí:",
-                options=list(ds_loai_all.keys()),
-                format_func=lambda k: ds_loai_all[k].ten_hien_thi,
-                key="select_loai_tab1",
-            )
-            if kq_man is not None:
-                dg_nhanh = th.danh_gia_do_man_loai(kq_man.S_ppt, ds_loai_all[loai_chon])
-                mau_bang = "xanh" if dg_nhanh.trang_thai == "AN_TOAN" else ("vang" if dg_nhanh.trang_thai == "CANH_BAO" else ("do" if dg_nhanh.trang_thai == "NGUY_HIEM" else "duong"))
-                bang(mau_bang, f"<b>{dg_nhanh.tieu_de}</b>", icon="🔎", la_html=True)
-
-            if st.button("💾 Lưu kết quả đo này vào Nhật Kí Quan Trắc", type="primary", width="stretch"):
+            with col_save1:
+                ds_loai_all = th.doc_danh_sach_loai()
+                loai_chon = st.selectbox(
+                    "🦐 Đối tượng nuôi trồng cần đối chiếu & lưu Nhật kí:",
+                    options=list(ds_loai_all.keys()),
+                    format_func=lambda k: ds_loai_all[k].ten_hien_thi,
+                    key="select_loai_tab1",
+                )
                 if kq_man is not None:
-                    nguon_luu = (
-                        "MÔ PHỎNG"
-                        if st.session_state.get("la_anh_mo_phong_da_do", True) or mh_hien_tai.la_mo_phong
-                        else "ĐO THẬT"
-                    )
-                    luu_nhat_ki(
-                        vi_tri=vi_tri_do,
-                        loai_nuoi=ds_loai_all[loai_chon].ten_hien_thi,
-                        delta_y_px=round(kq_do.delta_y_px, 3),
-                        do_man_ppt=round(kq_man.S_ppt, 3),
-                        bat_dinh_U_ppt=round(kq_man.U_S_ppt, 3),
-                        nhiet_do_C=nhiet_do_do,
-                        do_duc=round(kq_do.chi_so_do_duc_tuong_doi, 3),
-                        chat_luong_hop_le=cq.hop_le,
-                        nguon_du_lieu=nguon_luu,
-                        ghi_chu=ghi_chu_do,
-                    )
-                    st.session_state["da_luu_nhat_ki_phien_nay"] = True
-                    st.toast("✅ Đã lưu bản ghi vào cơ sở dữ liệu Nhật kí!", icon="💾")
-                    st.success("✅ Đã lưu kết quả thành công vào Nhật Kí Quan Trắc (xem tại Tab 3)!")
+                    dg_nhanh = th.danh_gia_do_man_loai(kq_man.S_ppt, ds_loai_all[loai_chon])
+                    mau_bang = "xanh" if dg_nhanh.trang_thai == "AN_TOAN" else ("vang" if dg_nhanh.trang_thai == "CANH_BAO" else ("do" if dg_nhanh.trang_thai == "NGUY_HIEM" else "duong"))
+                    bang(mau_bang, f"<b>{dg_nhanh.tieu_de}</b>", icon="🔎", la_html=True)
 
-        # 3. Trực quan hóa Ảnh định vị tâm vạch & Đồ thị mặt cắt Gauss dưới pixel
-        st.divider()
-        col_vis1, col_vis2 = st.columns([1.05, 1.25], gap="medium")
+                if cq.canh_bao:
+                    for cb in cq.canh_bao:
+                        bang("vang", cb, icon="⚠️")
+                if kq_man and kq_man.canh_bao:
+                    for cb in kq_man.canh_bao:
+                        bang("do" if "NGOÀI" in cb else "vang", cb, icon="🚨")
+
+            with col_save2:
+                bang("duong", f"<b>Phạm vi khoa học:</b> {cal.HAN_CHE_NACL}", icon="📌", la_html=True)
+                if st.button("💾 Lưu kết quả đo này vào Nhật Kí Quan Trắc", type="primary", width="stretch"):
+                    if kq_man is not None:
+                        nguon_luu = (
+                            "MÔ PHỎNG"
+                            if st.session_state.get("la_anh_mo_phong_da_do", True) or mh_hien_tai.la_mo_phong
+                            else "ĐO THẬT"
+                        )
+                        luu_nhat_ki(
+                            vi_tri=vi_tri_do,
+                            loai_nuoi=ds_loai_all[loai_chon].ten_hien_thi,
+                            delta_y_px=round(kq_do.delta_y_px, 3),
+                            do_man_ppt=round(kq_man.S_ppt, 3),
+                            bat_dinh_U_ppt=round(kq_man.U_S_ppt, 3),
+                            nhiet_do_C=nhiet_do_do,
+                            do_duc=round(kq_do.chi_so_do_duc_tuong_doi, 3),
+                            chat_luong_hop_le=cq.hop_le,
+                            nguon_du_lieu=nguon_luu,
+                            ghi_chu=ghi_chu_do,
+                        )
+                        st.session_state["da_luu_nhat_ki_phien_nay"] = True
+                        st.toast("✅ Đã lưu bản ghi vào cơ sở dữ liệu Nhật kí!", icon="💾")
+                        st.success("✅ Đã lưu kết quả thành công vào Nhật Kí Quan Trắc (xem tại Tab 3)!")
+
+        # Vùng 3: Phân tích chuyên sâu Quang học & Bất định (Ma trận 2x2 khung 2.5D cân xứng)
+        st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
+        col_vis1, col_vis2 = st.columns([1, 1.25], gap="medium")
 
         with col_vis1:
-            st.markdown("##### 🎯 Ảnh định vị đường tâm hai vạch laser dưới pixel")
-            if kq_do.anh_danh_dau is not None:
-                st.image(
-                    cv2.cvtColor(kq_do.anh_danh_dau, cv2.COLOR_BGR2RGB),
-                    caption=(
-                        "Đường xanh lá: Tâm vạch tham chiếu (0 ‰) | "
-                        "Đường cam: Tâm vạch mẫu | Đoạn vàng: Độ lệch đứng vi sai Δy"
-                    ),
-                    width="stretch",
-                )
-            if kq_man is not None:
-                st.pyplot(ve_do_thi_bat_dinh(kq_man))
+            with st.container(border=True, key="panel_t1_vis_img"):
+                nhan_buoc("3A", "Ảnh định vị đường tâm hai vạch laser dưới pixel")
+                if kq_do.anh_danh_dau is not None:
+                    st.image(
+                        cv2.cvtColor(kq_do.anh_danh_dau, cv2.COLOR_BGR2RGB),
+                        caption=(
+                            "Đường xanh lá: Tâm vạch tham chiếu (0 ‰) | "
+                            "Đường cam: Tâm vạch mẫu | Đoạn vàng: Độ lệch đứng vi sai Δy"
+                        ),
+                        width="stretch",
+                    )
 
         with col_vis2:
-            st.markdown("##### 📈 Mặt cắt cường độ Gauss I(y) & Hồi quy đường tâm y(x)")
-            st.pyplot(ve_do_thi_mat_cat_gauss(anh_hien_thi, kq_do))
+            with st.container(border=True, key="panel_t1_vis_gauss"):
+                nhan_buoc("3B", "Mặt cắt cường độ Gauss I(y) & Hồi quy đường tâm y(x)")
+                st.pyplot(ve_do_thi_mat_cat_gauss(anh_hien_thi, kq_do))
 
-            # Bảng thông số kỹ thuật chi tiết của 2 vạch
-            df_chi_tiet_vach = pd.DataFrame([
-                {
-                    "Thông số quang học": "Tọa độ tâm tại x_ref (px)",
-                    "Vạch Tham Chiếu (Nước cất 0 ‰)": f"{kq_do.vach_tham_chieu.y_tam:.3f} ± {kq_do.vach_tham_chieu.sai_so_y:.3f}",
-                    "Vạch Mẫu (Nước cần đo)": f"{kq_do.vach_mau.y_tam:.3f} ± {kq_do.vach_mau.sai_so_y:.3f}",
-                },
-                {
-                    "Thông số quang học": "Độ rộng nửa cực đại FWHM (px)",
-                    "Vạch Tham Chiếu (Nước cất 0 ‰)": f"{kq_do.vach_tham_chieu.fwhm_trung_binh:.2f}",
-                    "Vạch Mẫu (Nước cần đo)": f"{kq_do.vach_mau.fwhm_trung_binh:.2f}",
-                },
-                {
-                    "Thông số quang học": "Biên độ đỉnh trung bình (mức xám)",
-                    "Vạch Tham Chiếu (Nước cất 0 ‰)": f"{kq_do.vach_tham_chieu.cuong_do_dinh_tb:.1f}",
-                    "Vạch Mẫu (Nước cần đo)": f"{kq_do.vach_mau.cuong_do_dinh_tb:.1f}",
-                },
-                {
-                    "Thông số quang học": "Hệ số xác định R² khớp Gauss",
-                    "Vạch Tham Chiếu (Nước cất 0 ‰)": f"{kq_do.vach_tham_chieu.r2_trung_binh:.4f}",
-                    "Vạch Mẫu (Nước cần đo)": f"{kq_do.vach_mau.r2_trung_binh:.4f}",
-                },
-                {
-                    "Thông số quang học": "Số cột ảnh hợp lệ đưa vào khớp",
-                    "Vạch Tham Chiếu (Nước cất 0 ‰)": f"{kq_do.vach_tham_chieu.so_cot_hop_le} / {kq_do.vach_tham_chieu.so_cot_tong}",
-                    "Vạch Mẫu (Nước cần đo)": f"{kq_do.vach_mau.so_cot_hop_le} / {kq_do.vach_mau.so_cot_tong}",
-                },
-            ])
-            st.dataframe(df_chi_tiet_vach, width="stretch", hide_index=True)
+        col_bot1, col_bot2 = st.columns([1, 1.25], gap="medium")
+
+        with col_bot1:
+            with st.container(border=True, key="panel_t1_bot_gum"):
+                nhan_buoc("3C", "Phân rã ngân sách bất định chuẩn GUM u(S)")
+                if kq_man is not None:
+                    st.pyplot(ve_do_thi_bat_dinh(kq_man))
+                else:
+                    bang("vang", "Không đủ dữ liệu để phân rã bất định chuẩn GUM.", icon="⚠️")
+
+        with col_bot2:
+            with st.container(border=True, key="panel_t1_bot_tbl"):
+                nhan_buoc("3D", "Bảng thông số kỹ thuật chi tiết của 2 vạch laser")
+                df_chi_tiet_vach = pd.DataFrame([
+                    {
+                        "Thông số quang học": "Tọa độ tâm tại x_ref (px)",
+                        "Vạch Tham Chiếu (Nước cất 0 ‰)": f"{kq_do.vach_tham_chieu.y_tam:.3f} ± {kq_do.vach_tham_chieu.sai_so_y:.3f}",
+                        "Vạch Mẫu (Nước cần đo)": f"{kq_do.vach_mau.y_tam:.3f} ± {kq_do.vach_mau.sai_so_y:.3f}",
+                    },
+                    {
+                        "Thông số quang học": "Độ rộng nửa cực đại FWHM (px)",
+                        "Vạch Tham Chiếu (Nước cất 0 ‰)": f"{kq_do.vach_tham_chieu.fwhm_trung_binh:.2f}",
+                        "Vạch Mẫu (Nước cần đo)": f"{kq_do.vach_mau.fwhm_trung_binh:.2f}",
+                    },
+                    {
+                        "Thông số quang học": "Biên độ đỉnh trung bình (mức xám)",
+                        "Vạch Tham Chiếu (Nước cất 0 ‰)": f"{kq_do.vach_tham_chieu.cuong_do_dinh_tb:.1f}",
+                        "Vạch Mẫu (Nước cần đo)": f"{kq_do.vach_mau.cuong_do_dinh_tb:.1f}",
+                    },
+                    {
+                        "Thông số quang học": "Hệ số xác định R² khớp Gauss",
+                        "Vạch Tham Chiếu (Nước cất 0 ‰)": f"{kq_do.vach_tham_chieu.r2_trung_binh:.4f}",
+                        "Vạch Mẫu (Nước cần đo)": f"{kq_do.vach_mau.r2_trung_binh:.4f}",
+                    },
+                    {
+                        "Thông số quang học": "Số cột ảnh hợp lệ đưa vào khớp",
+                        "Vạch Tham Chiếu (Nước cất 0 ‰)": f"{kq_do.vach_tham_chieu.so_cot_hop_le} / {kq_do.vach_tham_chieu.so_cot_tong}",
+                        "Vạch Mẫu (Nước cần đo)": f"{kq_do.vach_mau.so_cot_hop_le} / {kq_do.vach_mau.so_cot_tong}",
+                    },
+                ])
+                st.dataframe(df_chi_tiet_vach, width="stretch", hide_index=True)
 
     else:
         bang(
@@ -769,6 +797,18 @@ with tab_do:
             icon="👈",
             la_html=True,
         )
+
+# Cập nhật Thanh Trợ lý Hướng dẫn Thời gian thực ngay đầu trang theo kết quả mới nhất
+with coach_container:
+    thanh_tro_ly_thoi_gian_thuc(
+        co_anh=st.session_state.get("co_anh_dau_vao", True),
+        da_do=(kq_do is not None),
+        hop_le_anh=(kq_do.chat_luong.hop_le if kq_do is not None else True),
+        da_luu_nhat_ki=bool(st.session_state.get("da_luu_nhat_ki_phien_nay", False)),
+        s_do_duoc=(kq_man.S_ppt if kq_man is not None else None),
+        u_do_duoc=(kq_man.U_S_ppt if kq_man is not None else None),
+        canh_bao_anh=(kq_do.chat_luong.canh_bao if kq_do is not None else None),
+    )
 
 
 # ===========================================================================
@@ -782,82 +822,91 @@ with tab_loai:
     )
 
     ds_loai = th.doc_danh_sach_loai()
-    col_l1, col_l2 = st.columns([1.05, 1.75], gap="medium")
+    col_l1, col_l2 = st.columns([1.0, 1.8], gap="medium")
 
     with col_l1:
-        nhan_buoc("1", "Chọn đối tượng và mức độ mặn cần kiểm tra")
-        loai_key = st.selectbox(
-            "Đối tượng nuôi trồng:",
-            options=list(ds_loai.keys()),
-            format_func=lambda k: ds_loai[k].ten_hien_thi,
-        )
+        with st.container(border=True, key="panel_t2_inp"):
+            nhan_buoc("1", "Chọn đối tượng & mức độ mặn kiểm tra")
+            loai_key = st.selectbox(
+                "Đối tượng nuôi trồng:",
+                options=list(ds_loai.keys()),
+                format_func=lambda k: ds_loai[k].ten_hien_thi,
+            )
 
-        s_mac_dinh_loai = float(kq_man.S_ppt) if kq_man is not None else 15.0
-        if kq_man is not None:
-            if st.button(f"🔗 Lấy độ mặn vừa đo ở Tab 1 ({kq_man.S_ppt:.2f} ‰)", width="stretch"):
-                st.session_state["s_test_loai_input"] = round(float(kq_man.S_ppt), 2)
+            s_mac_dinh_loai = float(kq_man.S_ppt) if kq_man is not None else 15.0
+            if kq_man is not None:
+                if st.button(f"🔗 Lấy độ mặn vừa đo ở Tab 1 ({kq_man.S_ppt:.2f} ‰)", width="stretch"):
+                    st.session_state["s_test_loai_input"] = round(float(kq_man.S_ppt), 2)
 
-        s_test_loai = st.number_input(
-            "Độ mặn cần kiểm tra S (‰):",
-            value=float(st.session_state.get("s_test_loai_input", round(s_mac_dinh_loai, 2))),
-            min_value=0.0,
-            max_value=60.0,
-            step=0.5,
-            key="s_test_loai_input",
-        )
+            s_test_loai = st.number_input(
+                "Độ mặn cần kiểm tra S (‰):",
+                value=float(st.session_state.get("s_test_loai_input", round(s_mac_dinh_loai, 2))),
+                min_value=0.0,
+                max_value=60.0,
+                step=0.5,
+                key="s_test_loai_input",
+            )
 
     loai_info = ds_loai[loai_key]
     kq_danh_gia = th.danh_gia_do_man_loai(s_test_loai, loai_info)
 
     with col_l2:
-        nhan_buoc("2", "Kết luận an toàn & Phổ thích nghi sinh học")
-        if kq_danh_gia.trang_thai == "AN_TOAN":
-            bang("xanh", f"<b>{kq_danh_gia.tieu_de}</b><br>{kq_danh_gia.loi_khuyen}", icon="✅", la_html=True)
-        elif kq_danh_gia.trang_thai == "CANH_BAO":
-            bang("vang", f"<b>{kq_danh_gia.tieu_de}</b><br>{kq_danh_gia.loi_khuyen}", icon="⚠️", la_html=True)
-        elif kq_danh_gia.trang_thai == "NGUY_HIEM":
-            bang("do", f"<b>{kq_danh_gia.tieu_de}</b><br>{kq_danh_gia.loi_khuyen}", icon="🚨", la_html=True)
-        else:
-            bang("duong", f"<b>{kq_danh_gia.tieu_de}</b><br>{kq_danh_gia.loi_khuyen}", icon="ℹ️", la_html=True)
+        with st.container(border=True, key="panel_t2_res"):
+            nhan_buoc("2", "Kết luận an toàn & Phổ thích nghi sinh học")
+            if kq_danh_gia.trang_thai == "AN_TOAN":
+                bang("xanh", f"<b>{kq_danh_gia.tieu_de}</b><br>{kq_danh_gia.loi_khuyen}", icon="✅", la_html=True)
+            elif kq_danh_gia.trang_thai == "CANH_BAO":
+                bang("vang", f"<b>{kq_danh_gia.tieu_de}</b><br>{kq_danh_gia.loi_khuyen}", icon="⚠️", la_html=True)
+            elif kq_danh_gia.trang_thai == "NGUY_HIEM":
+                bang("do", f"<b>{kq_danh_gia.tieu_de}</b><br>{kq_danh_gia.loi_khuyen}", icon="🚨", la_html=True)
+            else:
+                bang("duong", f"<b>{kq_danh_gia.tieu_de}</b><br>{kq_danh_gia.loi_khuyen}", icon="ℹ️", la_html=True)
 
-        # Thanh phổ trực quan
-        pho_html = thanh_nguong_loai(s_test_loai, loai_info)
-        if pho_html:
-            hien(pho_html)
+            pho_html = thanh_nguong_loai(s_test_loai, loai_info)
+            if pho_html:
+                hien(pho_html)
 
-        st.markdown(f"**📚 Nguồn tài liệu kỹ thuật trích dẫn:**\n> *{kq_danh_gia.nguon_tham_khao}*")
+            st.markdown(f"**📚 Nguồn tài liệu kỹ thuật trích dẫn:**\n> *{kq_danh_gia.nguon_tham_khao}*")
 
-    st.divider()
-    st.subheader(f"🌐 Ma trận đánh giá nhanh toàn bộ các loài tại mức độ mặn S = {s_test_loai:.2f} ‰")
-    cols_matrix = st.columns(3)
-    for idx_m, (k_m, v_m) in enumerate(ds_loai.items()):
-        dg_m = th.danh_gia_do_man_loai(s_test_loai, v_m)
-        cls_m = "ok" if dg_m.trang_thai == "AN_TOAN" else ("warn" if dg_m.trang_thai == "CANH_BAO" else ("err" if dg_m.trang_thai == "NGUY_HIEM" else ""))
-        ic_m = "✅" if dg_m.trang_thai == "AN_TOAN" else ("⚠️" if dg_m.trang_thai == "CANH_BAO" else ("🚨" if dg_m.trang_thai == "NGUY_HIEM" else "ℹ️"))
-        with cols_matrix[idx_m % 3]:
-            hien(f"""
-            <div class="card-mini {cls_m}" style="margin-bottom:10px;">
-              <div class="card-mini-title">{ic_m} {v_m.ten_hien_thi}</div>
-              <div class="card-mini-desc">
-                <b>{dg_m.tieu_de}</b><br>
-                <span style="font-size:.77rem; color:#64748B;">Nguồn: {v_m.nguon_tham_khao or 'Chưa bổ sung'}</span>
-              </div>
-            </div>
-            """)
+    st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
+    with st.container(border=True, key="panel_t2_matrix"):
+        nhan_buoc("3", f"Ma trận đánh giá nhanh toàn bộ các loài tại mức S = {s_test_loai:.2f} ‰")
+        cols_matrix = st.columns(3, gap="small")
+        for idx_m, (k_m, v_m) in enumerate(ds_loai.items()):
+            dg_m = th.danh_gia_do_man_loai(s_test_loai, v_m)
+            cls_m = "ok" if dg_m.trang_thai == "AN_TOAN" else ("warn" if dg_m.trang_thai == "CANH_BAO" else ("err" if dg_m.trang_thai == "NGUY_HIEM" else ""))
+            ic_m = "✅" if dg_m.trang_thai == "AN_TOAN" else ("⚠️" if dg_m.trang_thai == "CANH_BAO" else ("🚨" if dg_m.trang_thai == "NGUY_HIEM" else "ℹ️"))
+            with cols_matrix[idx_m % 3]:
+                hien(f"""
+                <div class="card-mini {cls_m}" style="margin-bottom:10px;">
+                  <div class="card-mini-title">{ic_m} {v_m.ten_hien_thi}</div>
+                  <div class="card-mini-desc">
+                    <b>{dg_m.tieu_de}</b><br>
+                    <span style="font-size:.77rem; color:#64748B;">Nguồn: {v_m.nguon_tham_khao or 'Chưa bổ sung'}</span>
+                  </div>
+                </div>
+                """)
 
-    st.subheader("📋 Bảng tổng hợp ngưỡng kỹ thuật các loài (đọc từ config.yaml)")
-    bang_loai_data = []
-    for k, v in ds_loai.items():
-        bang_loai_data.append({
-            "Mã loài": k,
-            "Tên đối tượng": v.ten_hien_thi,
-            "Dải an toàn (‰)": f"{v.an_toan_min:g} – {v.an_toan_max:g}" if v.an_toan_min is not None else "Chưa có",
-            "Cảnh báo thấp (‰)": f"{v.canh_bao_thap[0]:g} – {v.canh_bao_thap[1]:g}" if v.canh_bao_thap else "—",
-            "Cảnh báo cao (‰)": f"{v.canh_bao_cao[0]:g} – {v.canh_bao_cao[1]:g}" if v.canh_bao_cao else "—",
-            "Ngưỡng nguy hiểm (‰)": f"< {v.nguy_hiem_duoi:g} hoặc > {v.nguy_hiem_tren:g}" if v.nguy_hiem_tren is not None else "Chưa có",
-            "Nguồn tham khảo": v.nguon_tham_khao if v.nguon_tham_khao else "⚠️ CHƯA CÓ NGUỒN (yêu cầu điền)",
-        })
-    st.dataframe(pd.DataFrame(bang_loai_data), width="stretch", hide_index=True)
+        with st.expander("📋 Xem bảng tổng hợp ngưỡng kỹ thuật các loài (đọc từ config.yaml)", expanded=False):
+            bang_loai_data = []
+            for k, v in ds_loai.items():
+                nguy_parts = []
+                if v.nguy_hiem_duoi is not None:
+                    nguy_parts.append(f"< {v.nguy_hiem_duoi:g}")
+                if v.nguy_hiem_tren is not None:
+                    nguy_parts.append(f"> {v.nguy_hiem_tren:g}")
+                nguy_str = " hoặc ".join(nguy_parts) if nguy_parts else "Chưa có"
+
+                bang_loai_data.append({
+                    "Mã loài": k,
+                    "Tên đối tượng": v.ten_hien_thi,
+                    "Dải an toàn (‰)": f"{v.an_toan_min:g} – {v.an_toan_max:g}" if v.an_toan_min is not None else "Chưa có",
+                    "Cảnh báo thấp (‰)": f"{v.canh_bao_thap[0]:g} – {v.canh_bao_thap[1]:g}" if v.canh_bao_thap else "—",
+                    "Cảnh báo cao (‰)": f"{v.canh_bao_cao[0]:g} – {v.canh_bao_cao[1]:g}" if v.canh_bao_cao else "—",
+                    "Ngưỡng nguy hiểm (‰)": nguy_str,
+                    "Nguồn tham khảo": v.nguon_tham_khao if v.nguon_tham_khao else "⚠️ CHƯA CÓ NGUỒN (yêu cầu điền)",
+                })
+            st.dataframe(pd.DataFrame(bang_loai_data), width="stretch", hide_index=True)
 
 
 # ===========================================================================
@@ -870,18 +919,39 @@ with tab_nhatki:
         "Lưu trữ lịch sử đo trong cơ sở dữ liệu SQLite, phân tích xu hướng xâm nhập mặn và xuất báo cáo CSV",
     )
 
-    c_act1, c_act2, _ = st.columns([1.2, 1.1, 1.5])
-    with c_act1:
-        if st.button("🧪 Nạp 10 bản ghi quan trắc mẫu (Mô phỏng)", width="stretch"):
-            nap_nhat_ki_mau_mo_phong(mh_hien_tai)
-            st.session_state["da_luu_nhat_ki_phien_nay"] = True
-            st.rerun()
-    with c_act2:
-        if st.button("🗑️ Xóa toàn bộ nhật kí hiện tại", width="stretch"):
-            xoa_toan_bo_nhat_ki()
-            st.rerun()
-
     df_nk = doc_lich_su_db()
+
+    with st.container(border=True, key="panel_t3_tools"):
+        nhan_buoc("1", "Thao tác dữ liệu & Bộ lọc quan trắc")
+        c_act1, c_act2, c_act3 = st.columns([1.2, 1.1, 1.3], gap="small")
+        with c_act1:
+            if st.button("🧪 Nạp 10 bản ghi quan trắc mẫu (Mô phỏng)", width="stretch"):
+                nap_nhat_ki_mau_mo_phong(mh_hien_tai)
+                st.session_state["da_luu_nhat_ki_phien_nay"] = True
+                st.rerun()
+        with c_act2:
+            if st.button("🗑️ Xóa toàn bộ nhật kí hiện tại", width="stretch"):
+                xoa_toan_bo_nhat_ki()
+                st.rerun()
+        with c_act3:
+            if not df_nk.empty:
+                csv_bytes_all = df_nk.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+                st.download_button(
+                    label="📥 Xuất nhanh toàn bộ CSV",
+                    data=csv_bytes_all,
+                    file_name="nhat_ki_do_do_man.csv",
+                    mime="text/csv",
+                    type="primary",
+                    width="stretch",
+                )
+
+        if not df_nk.empty:
+            col_f1, col_f2 = st.columns(2, gap="small")
+            loc_loai = col_f1.multiselect("Lọc theo đối tượng nuôi:", options=df_nk["loai_nuoi"].unique())
+            loc_nguon = col_f2.multiselect("Lọc theo nguồn dữ liệu:", options=df_nk["nguon_du_lieu"].unique())
+        else:
+            loc_loai, loc_nguon = [], []
+
     if df_nk.empty:
         bang(
             "duong",
@@ -891,65 +961,72 @@ with tab_nhatki:
             la_html=True,
         )
     else:
-        c_st1, c_st2, c_st3, c_st4 = st.columns(4)
-        with c_st1:
-            hien(the_so("TỔNG SỐ LẦN ĐO", f"{len(df_nk)}", don_vi="lần", kieu="vien-xanh"))
-        with c_st2:
-            so_hop_le = int(df_nk["chat_luong_hop_le"].sum()) if "chat_luong_hop_le" in df_nk else len(df_nk)
-            hien(the_so("TỈ LỆ ẢNH ĐẠT CHUẨN", f"{so_hop_le}/{len(df_nk)}", phu=f"Đạt {so_hop_le/len(df_nk)*100:.0f}%", kieu="vien-ngoc"))
-        with c_st3:
-            hien(the_so("ĐỘ MẶN TRUNG BÌNH", f"{df_nk['do_man_ppt'].mean():.2f}", don_vi="‰", phu=f"Min: {df_nk['do_man_ppt'].min():.1f} | Max: {df_nk['do_man_ppt'].max():.1f} ‰", kieu="nhan-manh"))
-        with c_st4:
-            hien(the_so("BẤT ĐỊNH MỞ RỘNG TB", f"±{df_nk['bat_dinh_U_ppt'].mean():.2f}", don_vi="‰", phu="Độ tin cậy k = 2 (≈95%)", kieu="vien-vang"))
-
-        col_f1, col_f2 = st.columns(2)
-        loc_loai = col_f1.multiselect("Lọc theo đối tượng nuôi:", options=df_nk["loai_nuoi"].unique())
-        loc_nguon = col_f2.multiselect("Lọc theo nguồn dữ liệu:", options=df_nk["nguon_du_lieu"].unique())
-
         df_hien_thi = df_nk.copy()
         if loc_loai:
             df_hien_thi = df_hien_thi[df_hien_thi["loai_nuoi"].isin(loc_loai)]
         if loc_nguon:
             df_hien_thi = df_hien_thi[df_hien_thi["nguon_du_lieu"].isin(loc_nguon)]
 
-        st.subheader("📈 Biểu đồ diễn biến độ mặn kèm dải bất định mở rộng ±U₉₅%")
-        df_plot = df_hien_thi.copy()
-        df_plot["thoi_gian_dt"] = pd.to_datetime(df_plot["thoi_gian"], errors="coerce")
-        df_plot = df_plot.sort_values("thoi_gian_dt")
+        st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
+        c_st1, c_st2, c_st3, c_st4 = st.columns(4, gap="small")
+        with c_st1:
+            hien(the_so("TỔNG SỐ LẦN ĐO", f"{len(df_hien_thi)}", don_vi="lần", phu=f"Tổng DB: {len(df_nk)} bản ghi", kieu="vien-xanh"))
+        with c_st2:
+            so_hop_le = int(df_hien_thi["chat_luong_hop_le"].sum()) if "chat_luong_hop_le" in df_hien_thi else len(df_hien_thi)
+            ti_le = (so_hop_le / len(df_hien_thi) * 100.0) if len(df_hien_thi) else 0.0
+            hien(the_so("TỈ LỆ ẢNH ĐẠT CHUẨN", f"{so_hop_le}/{len(df_hien_thi)}", phu=f"Đạt {ti_le:.0f}%", kieu="vien-ngoc"))
+        with c_st3:
+            tb_s = f"{df_hien_thi['do_man_ppt'].mean():.2f}" if not df_hien_thi.empty else "—"
+            phu_s_nk = f"Min: {df_hien_thi['do_man_ppt'].min():.1f} | Max: {df_hien_thi['do_man_ppt'].max():.1f} ‰" if not df_hien_thi.empty else "Không có bản ghi"
+            hien(the_so("ĐỘ MẶN TRUNG BÌNH", tb_s, don_vi="‰" if not df_hien_thi.empty else "", phu=phu_s_nk, kieu="nhan-manh"))
+        with c_st4:
+            tb_u = f"±{df_hien_thi['bat_dinh_U_ppt'].mean():.2f}" if not df_hien_thi.empty else "—"
+            hien(the_so("BẤT ĐỊNH MỞ RỘNG TB", tb_u, don_vi="‰" if not df_hien_thi.empty else "", phu="Độ tin cậy k = 2 (≈95%)", kieu="vien-vang"))
 
-        fig_time, ax_t = plt.subplots(figsize=(10.5, 3.8), dpi=110)
-        x_vals = np.arange(len(df_plot))
-        nhan_x = [t.strftime("%d/%m %H:%M") if pd.notna(t) else str(i) for i, t in enumerate(df_plot["thoi_gian_dt"])]
+        st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
+        with st.container(border=True, key="panel_t3_chart"):
+            nhan_buoc("2", "Biểu đồ diễn biến độ mặn kèm dải bất định mở rộng ±U₉₅%")
+            if not df_hien_thi.empty:
+                df_plot = df_hien_thi.copy()
+                df_plot["thoi_gian_dt"] = pd.to_datetime(df_plot["thoi_gian"], errors="coerce")
+                df_plot = df_plot.sort_values("thoi_gian_dt")
 
-        ax_t.plot(x_vals, df_plot["do_man_ppt"], marker="o", color="#E5383B", lw=2.2, label="Độ mặn đo được S (‰)")
-        ax_t.fill_between(
-            x_vals,
-            df_plot["do_man_ppt"] - df_plot["bat_dinh_U_ppt"],
-            df_plot["do_man_ppt"] + df_plot["bat_dinh_U_ppt"],
-            color="#E5383B",
-            alpha=0.18,
-            label="Dải bất định mở rộng ± U₉₅%",
-        )
-        ax_t.set_xticks(x_vals)
-        ax_t.set_xticklabels(nhan_x, rotation=25, ha="right", fontsize=8)
-        ax_t.set_ylabel("Độ mặn (‰)")
-        ax_t.set_xlabel("Thời điểm quan trắc")
-        ax_t.set_title("Chuỗi thời gian quan trắc độ mặn thực địa", fontsize=10.5)
-        ax_t.legend(loc="upper left")
-        fig_time.tight_layout()
-        st.pyplot(fig_time)
+                fig_time, ax_t = plt.subplots(figsize=(10.5, 3.6), dpi=110)
+                x_vals = np.arange(len(df_plot))
+                nhan_x = [t.strftime("%d/%m %H:%M") if pd.notna(t) else str(i) for i, t in enumerate(df_plot["thoi_gian_dt"])]
 
-        st.subheader("📋 Bảng dữ liệu chi tiết")
-        st.dataframe(df_hien_thi, width="stretch", hide_index=True)
+                ax_t.plot(x_vals, df_plot["do_man_ppt"], marker="o", color="#E5383B", lw=2.2, label="Độ mặn đo được S (‰)")
+                ax_t.fill_between(
+                    x_vals,
+                    df_plot["do_man_ppt"] - df_plot["bat_dinh_U_ppt"],
+                    df_plot["do_man_ppt"] + df_plot["bat_dinh_U_ppt"],
+                    color="#E5383B",
+                    alpha=0.18,
+                    label="Dải bất định mở rộng ± U₉₅%",
+                )
+                ax_t.set_xticks(x_vals)
+                ax_t.set_xticklabels(nhan_x, rotation=25, ha="right", fontsize=8)
+                ax_t.set_ylabel("Độ mặn (‰)")
+                ax_t.set_xlabel("Thời điểm quan trắc")
+                ax_t.set_title("Chuỗi thời gian quan trắc độ mặn thực địa", fontsize=10.5)
+                ax_t.legend(loc="upper left")
+                fig_time.tight_layout()
+                st.pyplot(fig_time)
+            else:
+                bang("vang", "Không có bản ghi nào khớp với bộ lọc hiện tại.", icon="🔍")
 
-        csv_bytes = df_hien_thi.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
-        st.download_button(
-            label="📥 Tải xuống báo cáo Nhật kí CSV (Mở trực tiếp bằng Excel)",
-            data=csv_bytes,
-            file_name="nhat_ki_do_do_man.csv",
-            mime="text/csv",
-            type="primary",
-        )
+        with st.container(border=True, key="panel_t3_table"):
+            nhan_buoc("3", "Bảng dữ liệu nhật kí chi tiết & Xuất báo cáo CSV")
+            st.dataframe(df_hien_thi, width="stretch", hide_index=True)
+
+            csv_bytes = df_hien_thi.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+            st.download_button(
+                label="📥 Tải xuống báo cáo Nhật kí CSV theo bộ lọc (Mở trực tiếp bằng Excel)",
+                data=csv_bytes,
+                file_name="nhat_ki_do_do_man.csv",
+                mime="text/csv",
+                type="primary",
+            )
 
 
 # ===========================================================================
@@ -965,73 +1042,74 @@ with tab_hieuchuan:
     col_h1, col_h2 = st.columns([1.15, 1], gap="medium")
 
     with col_h1:
-        nhan_buoc("1", "Nạp tập dữ liệu đo dung dịch chuẩn NaCl")
-        csv_hieu_chuan = st.file_uploader(
-            "Tải file CSV đo chuẩn thực nghiệm (đủ 7 cột quy định):",
-            type=["csv"],
-            key="csv_calib",
-        )
-
-        c_bcal1, c_bcal2 = st.columns(2)
-        with c_bcal1:
-            if st.button("🧪 Nạp bộ dữ liệu chuẩn mô phỏng (72 điểm)", width="stretch"):
-                st.session_state["df_calib_saved"] = sinh_du_lieu_hieu_chuan_mo_phong(seed=1)
-                st.session_state["ten_nguon_calib"] = "Bộ dữ liệu mô phỏng Snell (8 mức S × 3 mức T × 3 lần lặp)"
-                # Tự động chạy dựng đường chuẩn ngay khi nạp
-                st.session_state["auto_run_calib"] = True
-
-        with c_bcal2:
-            csv_mau_trong = (
-                "do_man_chuan_ppt,nhiet_do_C,delta_y_px,do_duc_tuong_doi,ghi_chu,id_thiet_bi,id_dien_thoai\n"
-                "0.0,25.0,0.05,0.01,Nuoc cat,TB01,DT01\n"
-                "5.0,25.0,24.80,0.01,NaCl 5 ppt,TB01,DT01\n"
-                "10.0,25.0,49.65,0.01,NaCl 10 ppt,TB01,DT01\n"
-                "15.0,25.0,74.50,0.01,NaCl 15 ppt,TB01,DT01\n"
-                "20.0,25.0,99.45,0.01,NaCl 20 ppt,TB01,DT01\n"
-                "25.0,25.0,124.50,0.01,NaCl 25 ppt,TB01,DT01\n"
-                "30.0,25.0,149.60,0.01,NaCl 30 ppt,TB01,DT01\n"
-            ).encode("utf-8-sig")
-            st.download_button(
-                "📥 Tải file CSV mẫu chuẩn (7 cột)",
-                data=csv_mau_trong,
-                file_name="mau_nhap_hieu_chuan_7_cot.csv",
-                mime="text/csv",
-                width="stretch",
+        with st.container(border=True, key="panel_t4_inp"):
+            nhan_buoc("1", "Nạp tập dữ liệu đo dung dịch chuẩn NaCl")
+            csv_hieu_chuan = st.file_uploader(
+                "Tải file CSV đo chuẩn thực nghiệm (đủ 7 cột quy định):",
+                type=["csv"],
+                key="csv_calib",
             )
 
-        if csv_hieu_chuan is not None:
-            try:
-                df_loaded = cal.doc_csv_hieu_chuan(csv_hieu_chuan)
-                st.session_state["df_calib_saved"] = df_loaded
-                st.session_state["ten_nguon_calib"] = f"File tải lên: {csv_hieu_chuan.name} ({len(df_loaded)} điểm)"
-            except Exception as e:
-                bang("do", f"Lỗi đọc file CSV: {e}", icon="🚨")
+            c_bcal1, c_bcal2 = st.columns(2, gap="small")
+            with c_bcal1:
+                if st.button("🧪 Nạp bộ dữ liệu chuẩn mô phỏng (72 điểm)", width="stretch"):
+                    st.session_state["df_calib_saved"] = sinh_du_lieu_hieu_chuan_mo_phong(seed=1)
+                    st.session_state["ten_nguon_calib"] = "Bộ dữ liệu mô phỏng Snell (8 mức S × 3 mức T × 3 lần lặp)"
+                    st.session_state["auto_run_calib"] = True
 
-        df_calib_input: pd.DataFrame | None = st.session_state.get("df_calib_saved")
-        if df_calib_input is not None:
-            ten_ng = st.session_state.get("ten_nguon_calib", "Dữ liệu đã nạp")
-            la_mp_df = cal.la_du_lieu_mo_phong(df_calib_input)
-            bang(
-                "vang" if la_mp_df else "xanh",
-                f"<b>Đang sẵn sàng:</b> {ten_ng} — Tổng số <b>{len(df_calib_input)} dòng</b> hợp lệ "
-                f"({'DỮ LIỆU MÔ PHỎNG' if la_mp_df else 'DỮ LIỆU ĐO THẬT'}).",
-                icon="🧪" if la_mp_df else "✅",
-                la_html=True,
-            )
+            with c_bcal2:
+                csv_mau_trong = (
+                    "do_man_chuan_ppt,nhiet_do_C,delta_y_px,do_duc_tuong_doi,ghi_chu,id_thiet_bi,id_dien_thoai\n"
+                    "0.0,25.0,0.05,0.01,Nuoc cat,TB01,DT01\n"
+                    "5.0,25.0,24.80,0.01,NaCl 5 ppt,TB01,DT01\n"
+                    "10.0,25.0,49.65,0.01,NaCl 10 ppt,TB01,DT01\n"
+                    "15.0,25.0,74.50,0.01,NaCl 15 ppt,TB01,DT01\n"
+                    "20.0,25.0,99.45,0.01,NaCl 20 ppt,TB01,DT01\n"
+                    "25.0,25.0,124.50,0.01,NaCl 25 ppt,TB01,DT01\n"
+                    "30.0,25.0,149.60,0.01,NaCl 30 ppt,TB01,DT01\n"
+                ).encode("utf-8-sig")
+                st.download_button(
+                    "📥 Tải file CSV mẫu chuẩn (7 cột)",
+                    data=csv_mau_trong,
+                    file_name="mau_nhap_hieu_chuan_7_cot.csv",
+                    mime="text/csv",
+                    width="stretch",
+                )
+
+            if csv_hieu_chuan is not None:
+                try:
+                    df_loaded = cal.doc_csv_hieu_chuan(csv_hieu_chuan)
+                    st.session_state["df_calib_saved"] = df_loaded
+                    st.session_state["ten_nguon_calib"] = f"File tải lên: {csv_hieu_chuan.name} ({len(df_loaded)} điểm)"
+                except Exception as e:
+                    bang("do", f"Lỗi đọc file CSV: {e}", icon="🚨")
+
+            df_calib_input: pd.DataFrame | None = st.session_state.get("df_calib_saved")
+            if df_calib_input is not None:
+                ten_ng = st.session_state.get("ten_nguon_calib", "Dữ liệu đã nạp")
+                la_mp_df = cal.la_du_lieu_mo_phong(df_calib_input)
+                bang(
+                    "vang" if la_mp_df else "xanh",
+                    f"<b>Đang sẵn sàng:</b> {ten_ng} — Tổng số <b>{len(df_calib_input)} dòng</b> hợp lệ "
+                    f"({'DỮ LIỆU MÔ PHỎNG' if la_mp_df else 'DỮ LIỆU ĐO THẬT'}).",
+                    icon="🧪" if la_mp_df else "✅",
+                    la_html=True,
+                )
 
     with col_h2:
-        nhan_buoc("2", "Lựa chọn bậc đa thức & Kiểm định chéo")
-        bac_lua_chon = st.radio(
-            "Chiến lược chọn bậc đa thức Δy = f(S, T):",
-            [
-                "Tự động chọn (Kiểm định chéo 5-fold chống quá khớp)",
-                "Ép Bậc 1 (Tuyến tính: c₀ + c_S·S + c_T·ΔT)",
-                "Ép Bậc 2 (Đa thức bậc hai đầy đủ)",
-            ],
-        )
-        bac_ep_val = 1 if "Bậc 1" in bac_lua_chon else (2 if "Bậc 2" in bac_lua_chon else None)
+        with st.container(border=True, key="panel_t4_cfg"):
+            nhan_buoc("2", "Lựa chọn bậc đa thức & Kiểm định chéo")
+            bac_lua_chon = st.radio(
+                "Chiến lược chọn bậc đa thức Δy = f(S, T):",
+                [
+                    "Tự động chọn (Kiểm định chéo 5-fold chống quá khớp)",
+                    "Ép Bậc 1 (Tuyến tính: c₀ + c_S·S + c_T·ΔT)",
+                    "Ép Bậc 2 (Đa thức bậc hai đầy đủ)",
+                ],
+            )
+            bac_ep_val = 1 if "Bậc 1" in bac_lua_chon else (2 if "Bậc 2" in bac_lua_chon else None)
 
-        nut_chay_calib = st.button("⚡ TIẾN HÀNH DỰNG ĐƯỜNG CHUẨN", type="primary", width="stretch")
+            nut_chay_calib = st.button("⚡ TIẾN HÀNH DỰNG ĐƯỜNG CHUẨN", type="primary", width="stretch")
 
     if (nut_chay_calib or st.session_state.pop("auto_run_calib", False)) and df_calib_input is not None:
         with st.spinner("Đang chạy kiểm định chéo k-fold và khớp bình phương tối thiểu..."):
@@ -1046,10 +1124,9 @@ with tab_hieuchuan:
     bc_cal: cal.BaoCaoHieuChuan | None = st.session_state.get("bc_cal_saved")
     if bc_cal is not None:
         mh_new = bc_cal.mo_hinh
-        st.divider()
-        st.subheader("📈 Báo cáo kết quả dựng đường chuẩn & Đánh giá độc lập trên tập Test")
+        st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
 
-        c_r1, c_r2, c_r3, c_r4 = st.columns(4)
+        c_r1, c_r2, c_r3, c_r4 = st.columns(4, gap="small")
         with c_r1:
             hien(the_so("HỆ SỐ XÁC ĐỊNH R²", f"{mh_new.R2:.5f}", phu=f"Khớp trên {mh_new.so_diem} điểm", kieu="nhan-manh"))
         with c_r2:
@@ -1060,29 +1137,36 @@ with tab_hieuchuan:
         with c_r4:
             hien(the_so("ĐỘ LỆCH CHUẨN s_res", f"{mh_new.s_res_px:.3f}", don_vi="px", phu=f"Bậc tự do ν = {mh_new.bac_tu_do}", kieu="vien-xanh"))
 
-        if mh_new.la_mo_phong:
-            bang("vang", cal.NHAN_CHUA_HIEU_CHUAN + ": Đường chuẩn này dựng từ dữ liệu mô phỏng, KHÔNG phải số đo thực nghiệm.", icon="⚠️")
-        else:
-            bang("xanh", "ĐÃ HIỆU CHUẨN THÀNH CÔNG TỪ DỮ LIỆU ĐO THỰC NGHIỆM!", icon="✅")
+        st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
+        with st.container(border=True, key="panel_t4_eq"):
+            nhan_buoc("3", "Phương trình đường chuẩn & Kích hoạt mô hình mặc định")
+            if mh_new.la_mo_phong:
+                bang("vang", cal.NHAN_CHUA_HIEU_CHUAN + ": Đường chuẩn này dựng từ dữ liệu mô phỏng, KHÔNG phải số đo thực nghiệm.", icon="⚠️")
+            else:
+                bang("xanh", "ĐÃ HIỆU CHUẨN THÀNH CÔNG TỪ DỮ LIỆU ĐO THỰC NGHIỆM!", icon="✅")
 
-        hs_str = " + ".join([f"({c:+.5g})·{h}" for h, c in zip(mh_new.hang, mh_new.he_so)])
-        st.code(f"Phương trình đường chuẩn:  Δy (px) = {hs_str}   [với ΔT = T − {mh_new.T_ref} °C]")
+            hs_str = " + ".join([f"({c:+.5g})·{h}" for h, c in zip(mh_new.hang, mh_new.he_so)])
+            st.code(f"Phương trình đường chuẩn:  Δy (px) = {hs_str}   [với ΔT = T − {mh_new.T_ref} °C]")
 
-        c_p1, c_p2 = st.columns(2)
+            if st.button("💾 Lưu & Áp dụng mô hình hiệu chuẩn này làm mặc định", type="primary", width="stretch"):
+                OUTPUTS_DIR.mkdir(exist_ok=True)
+                luu_path = HE_SO_MP_PATH if mh_new.la_mo_phong else HE_SO_JSON_PATH
+                mh_new.luu_json(luu_path)
+                st.toast(f"Đã lưu mô hình vào {luu_path.name}!", icon="✅")
+                st.success(f"✅ Đã lưu và kích hoạt mô hình hiệu chuẩn `{luu_path.name}` thành công!")
+
+        c_p1, c_p2 = st.columns(2, gap="medium")
         with c_p1:
-            st.pyplot(cal.ve_duong_chuan(bc_cal))
+            with st.container(border=True, key="panel_t4_plot1"):
+                nhan_buoc("4A", "Đồ thị đường chuẩn đa nhiệt độ Δy = f(S, T)")
+                st.pyplot(cal.ve_duong_chuan(bc_cal))
         with c_p2:
-            st.pyplot(cal.ve_phan_du(bc_cal))
+            with st.container(border=True, key="panel_t4_plot2"):
+                nhan_buoc("4B", "Đồ thị phân bố phần dư chuẩn hóa (Residuals)")
+                st.pyplot(cal.ve_phan_du(bc_cal))
 
         with st.expander("📋 Xem bảng phân tích sai số theo từng mức độ mặn chuẩn"):
             st.dataframe(bc_cal.sai_so_theo_muc.round(4), width="stretch", hide_index=True)
-
-        if st.button("💾 Lưu & Áp dụng mô hình hiệu chuẩn này làm mặc định", type="primary"):
-            OUTPUTS_DIR.mkdir(exist_ok=True)
-            luu_path = HE_SO_MP_PATH if mh_new.la_mo_phong else HE_SO_JSON_PATH
-            mh_new.luu_json(luu_path)
-            st.toast(f"Đã lưu mô hình vào {luu_path.name}!", icon="✅")
-            st.success(f"✅ Đã lưu và kích hoạt mô hình hiệu chuẩn `{luu_path.name}` thành công!")
 
 
 # ===========================================================================
@@ -1096,15 +1180,16 @@ with tab_mophong:
     )
 
     cfg_cur = load_config()
-    col_opt1, col_opt2 = st.columns([1, 1.15], gap="medium")
+    col_opt1, col_opt2 = st.columns([1, 1.2], gap="medium")
 
     with col_opt1:
-        nhan_buoc("1", "Cấu hình hình học lăng kính & Môi trường")
-        a_sim = st.slider("Góc đỉnh lăng kính A (độ)", 25.0, 48.5, float(cfg_cur.A_do), 0.5)
-        d_sim = st.slider("Khoảng cách từ lăng kính tới màn D (m)", 0.4, 2.5, float(cfg_cur.D_m), 0.1)
-        px_sim = st.number_input("Kích thước pixel quy đổi trên màn (mm/px)", value=float(cfg_cur.pixel_mm), step=0.005, format="%.4f")
-        s_eval = st.slider("Độ mặn mẫu khảo sát S (‰)", 0.0, 40.0, 20.0, 1.0)
-        t_eval = st.slider("Nhiệt độ khảo sát T (°C)", 10.0, 40.0, 25.0, 1.0)
+        with st.container(border=True, key="panel_t5_cfg"):
+            nhan_buoc("1", "Cấu hình hình học lăng kính & Môi trường")
+            a_sim = st.slider("Góc đỉnh lăng kính A (độ)", 25.0, 48.5, float(cfg_cur.A_do), 0.5)
+            d_sim = st.slider("Khoảng cách từ lăng kính tới màn D (m)", 0.4, 2.5, float(cfg_cur.D_m), 0.1)
+            px_sim = st.number_input("Kích thước pixel quy đổi trên màn (mm/px)", value=float(cfg_cur.pixel_mm), step=0.005, format="%.4f")
+            s_eval = st.slider("Độ mặn mẫu khảo sát S (‰)", 0.0, 40.0, 20.0, 1.0)
+            t_eval = st.slider("Nhiệt độ khảo sát T (°C)", 10.0, 40.0, 25.0, 1.0)
 
     cfg_sim = op.CauHinhQuangHoc(
         A_do=a_sim,
@@ -1118,110 +1203,113 @@ with tab_mophong:
     )
 
     with col_opt2:
-        nhan_buoc("2", "Sơ đồ đường truyền tia sáng & Kết quả định luật Snell")
-        n_calc = op.chiet_suat(s_eval, t_eval, cfg_sim)
-        n_tc_calc = op.chiet_suat(0.0, t_eval, cfg_sim)
+        with st.container(border=True, key="panel_t5_svg"):
+            nhan_buoc("2", "Sơ đồ đường truyền tia sáng & Kết quả định luật Snell")
+            n_calc = op.chiet_suat(s_eval, t_eval, cfg_sim)
+            n_tc_calc = op.chiet_suat(0.0, t_eval, cfg_sim)
 
-        try:
-            theta_ra = op.goc_ra(n_calc, a_sim)
-            delta_goc = op.goc_lech(n_calc, a_sim)
-            dy_px_sim = op.delta_y_vi_sai_px(s_eval, t_eval, t_eval, cfg_sim, A_do=a_sim)
-            sens_px = op.pixel_moi_phan_nghin(s_eval, t_eval, cfg_sim, A_do=a_sim, D_m=d_sim)
+            try:
+                theta_ra = op.goc_ra(n_calc, a_sim)
+                delta_goc = op.goc_lech(n_calc, a_sim)
+                dy_px_sim = op.delta_y_vi_sai_px(s_eval, t_eval, t_eval, cfg_sim, A_do=a_sim)
+                sens_px = op.pixel_moi_phan_nghin(s_eval, t_eval, cfg_sim, A_do=a_sim, D_m=d_sim)
 
-            hien(svg_he_quang_hoc(A_do=a_sim, S_ppt=s_eval, delta_y_px=dy_px_sim, drift_px=0.0, tir=False))
+                hien(svg_he_quang_hoc(A_do=a_sim, S_ppt=s_eval, delta_y_px=dy_px_sim, drift_px=0.0, tir=False))
 
-            c_o1, c_o2, c_o3 = st.columns(3)
-            with c_o1:
-                hien(the_so("GÓC LÓ θ_ra", f"{theta_ra:.2f}", don_vi="°", phu=f"n_mẫu = {n_calc:.5f}", kieu="vien-xanh"))
-            with c_o2:
-                hien(the_so("GÓC LỆCH δ", f"{delta_goc:.2f}", don_vi="°", phu=f"Δy = {dy_px_sim:.1f} px", kieu="vien-ngoc"))
-            with c_o3:
-                hien(the_so("ĐỘ NHẠY HỆ THỐNG", f"{sens_px:.2f}", don_vi="px/‰", phu=f"Tại A={a_sim:g}°, D={d_sim:g}m", kieu="nhan-manh"))
+                c_o1, c_o2, c_o3 = st.columns(3, gap="small")
+                with c_o1:
+                    hien(the_so("GÓC LÓ θ_ra", f"{theta_ra:.2f}", don_vi="°", phu=f"n_mẫu = {n_calc:.5f}", kieu="vien-xanh"))
+                with c_o2:
+                    hien(the_so("GÓC LỆCH δ", f"{delta_goc:.2f}", don_vi="°", phu=f"Δy = {dy_px_sim:.1f} px", kieu="vien-ngoc"))
+                with c_o3:
+                    hien(the_so("ĐỘ NHẠY HỆ THỐNG", f"{sens_px:.2f}", don_vi="px/‰", phu=f"Tại A={a_sim:g}°, D={d_sim:g}m", kieu="nhan-manh"))
 
-        except op.PhanXaToanPhanError:
-            hien(svg_he_quang_hoc(A_do=a_sim, S_ppt=s_eval, delta_y_px=0.0, drift_px=0.0, tir=True))
-            bang(
-                "do",
-                f"🚨 <b>PHẢN XẠ TOÀN PHẦN (TIR):</b> <code>n·sin(A) = {n_calc * math.sin(math.radians(a_sim)):.4f} ≥ 1</code>. "
-                "Tia laser bị phản xạ ngược vào trong lăng kính, không thể thoát ra ngoài màn hứng. Hãy giảm góc đỉnh A xuống ≤ 45°!",
-                icon="🚨",
-                la_html=True,
-            )
+            except op.PhanXaToanPhanError:
+                hien(svg_he_quang_hoc(A_do=a_sim, S_ppt=s_eval, delta_y_px=0.0, drift_px=0.0, tir=True))
+                bang(
+                    "do",
+                    f"🚨 <b>PHẢN XẠ TOÀN PHẦN (TIR):</b> <code>n·sin(A) = {n_calc * math.sin(math.radians(a_sim)):.4f} ≥ 1</code>. "
+                    "Tia laser bị phản xạ ngược vào trong lăng kính, không thể thoát ra ngoài màn hứng. Hãy giảm góc đỉnh A xuống ≤ 45°!",
+                    icon="🚨",
+                    la_html=True,
+                )
 
     # Đồ thị khảo sát độ nhạy theo góc A và theo độ mặn S
-    st.divider()
-    st.subheader("📈 Đồ thị khảo sát Độ nhạy quang học & Dịch chuyển vi sai lí thuyết")
-    c_pl1, c_pl2 = st.columns(2)
+    st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
+    c_pl1, c_pl2 = st.columns(2, gap="medium")
     with c_pl1:
-        cac_goc_a = np.linspace(25.0, 47.0, 90)
-        do_nhay_a = []
-        for a_val in cac_goc_a:
-            try:
-                do_nhay_a.append(op.pixel_moi_phan_nghin(s_eval, t_eval, cfg_sim, A_do=float(a_val), D_m=d_sim))
-            except op.PhanXaToanPhanError:
-                do_nhay_a.append(np.nan)
-        fig_sa, ax_sa = plt.subplots(figsize=(6, 3.4), dpi=110)
-        ax_sa.plot(cac_goc_a, do_nhay_a, color="#E5383B", lw=2.2, label="Độ nhạy d(Δy)/dS (px/‰)")
-        if a_sim <= 47.0:
-            ax_sa.axvline(a_sim, color="#1B4965", ls="--", lw=1.5, label=f"Góc A đang chọn = {a_sim:g}°")
-        ax_sa.set_xlabel("Góc đỉnh lăng kính A (độ)")
-        ax_sa.set_ylabel("Độ nhạy (px / ‰)")
-        ax_sa.set_title("Độ nhạy tăng phi tuyến khi tiến gần góc tới hạn TIR", fontsize=9.5)
-        ax_sa.legend(fontsize=8)
-        fig_sa.tight_layout()
-        st.pyplot(fig_sa)
+        with st.container(border=True, key="panel_t5_pl1"):
+            nhan_buoc("3A", "Độ nhạy quang học theo góc đỉnh lăng kính A")
+            cac_goc_a = np.linspace(25.0, 47.0, 90)
+            do_nhay_a = []
+            for a_val in cac_goc_a:
+                try:
+                    do_nhay_a.append(op.pixel_moi_phan_nghin(s_eval, t_eval, cfg_sim, A_do=float(a_val), D_m=d_sim))
+                except op.PhanXaToanPhanError:
+                    do_nhay_a.append(np.nan)
+            fig_sa, ax_sa = plt.subplots(figsize=(6, 3.3), dpi=110)
+            ax_sa.plot(cac_goc_a, do_nhay_a, color="#E5383B", lw=2.2, label="Độ nhạy d(Δy)/dS (px/‰)")
+            if a_sim <= 47.0:
+                ax_sa.axvline(a_sim, color="#1B4965", ls="--", lw=1.5, label=f"Góc A đang chọn = {a_sim:g}°")
+            ax_sa.set_xlabel("Góc đỉnh lăng kính A (độ)")
+            ax_sa.set_ylabel("Độ nhạy (px / ‰)")
+            ax_sa.set_title("Độ nhạy tăng phi tuyến khi tiến gần góc tới hạn TIR", fontsize=9.5)
+            ax_sa.legend(fontsize=8)
+            fig_sa.tight_layout()
+            st.pyplot(fig_sa)
 
     with c_pl2:
-        cac_muc_s_pl = np.linspace(0.0, 35.0, 71)
-        fig_ds, ax_ds = plt.subplots(figsize=(6, 3.4), dpi=110)
-        try:
-            dy_20 = [op.delta_y_vi_sai_px(float(sv), 20.0, 20.0, cfg_sim) for sv in cac_muc_s_pl]
-            dy_30 = [op.delta_y_vi_sai_px(float(sv), 30.0, 30.0, cfg_sim) for sv in cac_muc_s_pl]
-            ax_ds.plot(cac_muc_s_pl, dy_20, color="#14B8A6", lw=2.0, label="T = 20 °C")
-            ax_ds.plot(cac_muc_s_pl, dy_30, color="#F59E0B", lw=2.0, ls="--", label="T = 30 °C")
-            ax_ds.set_xlabel("Độ mặn S (‰)")
-            ax_ds.set_ylabel("Độ lệch vi sai Δy lí thuyết (px)")
-            ax_ds.set_title(f"Đường đáp ứng Δy(S) lí thuyết tại A = {a_sim:g}°, D = {d_sim:g} m", fontsize=9.5)
-            ax_ds.legend(fontsize=8)
-        except op.PhanXaToanPhanError:
-            ax_ds.text(0.5, 0.5, "Góc A vượt ngưỡng Phản xạ toàn phần", ha="center", va="center")
-        fig_ds.tight_layout()
-        st.pyplot(fig_ds)
+        with st.container(border=True, key="panel_t5_pl2"):
+            nhan_buoc("3B", "Đường đáp ứng dịch chuyển vi sai Δy(S) lí thuyết")
+            cac_muc_s_pl = np.linspace(0.0, 35.0, 71)
+            fig_ds, ax_ds = plt.subplots(figsize=(6, 3.3), dpi=110)
+            try:
+                dy_20 = [op.delta_y_vi_sai_px(float(sv), 20.0, 20.0, cfg_sim) for sv in cac_muc_s_pl]
+                dy_30 = [op.delta_y_vi_sai_px(float(sv), 30.0, 30.0, cfg_sim) for sv in cac_muc_s_pl]
+                ax_ds.plot(cac_muc_s_pl, dy_20, color="#14B8A6", lw=2.0, label="T = 20 °C")
+                ax_ds.plot(cac_muc_s_pl, dy_30, color="#F59E0B", lw=2.0, ls="--", label="T = 30 °C")
+                ax_ds.set_xlabel("Độ mặn S (‰)")
+                ax_ds.set_ylabel("Độ lệch vi sai Δy lí thuyết (px)")
+                ax_ds.set_title(f"Đường đáp ứng Δy(S) tại A = {a_sim:g}°, D = {d_sim:g} m", fontsize=9.5)
+                ax_ds.legend(fontsize=8)
+            except op.PhanXaToanPhanError:
+                ax_ds.text(0.5, 0.5, "Góc A vượt ngưỡng Phản xạ toàn phần", ha="center", va="center")
+            fig_ds.tight_layout()
+            st.pyplot(fig_ds)
 
-    st.divider()
-    st.subheader("🎯 Ngân sách sai số thiết kế (Error Budget RSS)")
-    st.caption("Quy đổi các nguồn sai số độc lập về độ lệch chuẩn độ mặn tương đương (‰)")
+    st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
+    with st.container(border=True, key="panel_t5_rss"):
+        nhan_buoc("4", "Ngân sách sai số thiết kế (Error Budget RSS — Quy đổi sang ‰)")
+        c_err1, c_err2 = st.columns([1, 1.6], gap="medium")
+        with c_err1:
+            err_tam = st.number_input("Sai số thuật toán tìm tâm vạch (px)", value=0.05, step=0.01, format="%.3f")
+            err_t = st.number_input("Chênh nhiệt độ giữa 2 ngăn (°C)", value=0.5, step=0.1)
+            err_a = st.number_input("Sai số chế tạo góc đỉnh A (độ)", value=0.05, step=0.01)
+            err_troi = st.number_input("Độ trôi chung của laser / rung camera (px)", value=5.0, step=0.5)
+            he_so_triet = st.number_input("Hệ số lọt sau đo vi sai (0..1)", value=0.01, step=0.005, format="%.3f")
 
-    c_err1, c_err2 = st.columns([1, 1.6], gap="medium")
-    with c_err1:
-        err_tam = st.number_input("Sai số thuật toán tìm tâm vạch (px)", value=0.05, step=0.01, format="%.3f")
-        err_t = st.number_input("Chênh nhiệt độ giữa 2 ngăn (°C)", value=0.5, step=0.1)
-        err_a = st.number_input("Sai số chế tạo góc đỉnh A (độ)", value=0.05, step=0.01)
-        err_troi = st.number_input("Độ trôi chung của laser / rung camera (px)", value=5.0, step=0.5)
-        he_so_triet = st.number_input("Hệ số lọt sau đo vi sai (0..1)", value=0.01, step=0.005, format="%.3f")
-
-    with c_err2:
-        try:
-            ngan_sach = op.ngan_sach_sai_so(
-                s_eval, t_eval, cfg_sim, err_tam, err_t, err_a, err_troi, he_so_triet
-            )
-            df_ns = pd.DataFrame([
-                {"Nguồn sai số": "1. Thuật toán định vị tâm vạch dưới pixel (px)", "Bất định quy đổi (‰)": f"{ngan_sach['tim_tam']:.4f}"},
-                {"Nguồn sai số": "2. Chênh lệch nhiệt độ giữa 2 ngăn (°C)", "Bất định quy đổi (‰)": f"{ngan_sach['nhiet_do']:.4f}"},
-                {"Nguồn sai số": "3. Sai số gia công góc đỉnh lăng kính A (độ)", "Bất định quy đổi (‰)": f"{ngan_sach['goc_A']:.4f}"},
-                {"Nguồn sai số": "4. Trôi laser & rung máy còn sót sau khử vi sai", "Bất định quy đổi (‰)": f"{ngan_sach['troi_laser']:.4f}"},
-                {"Nguồn sai số": "∑ TỔNG HỢP TOÀN PHƯƠNG (RSS 1σ)", "Bất định quy đổi (‰)": f"{ngan_sach['tong_RSS']:.4f}"},
-            ])
-            st.dataframe(df_ns, width="stretch", hide_index=True)
-            bang(
-                "xanh",
-                f"Tổng bất định chuẩn thiết kế (1σ): <b>± {ngan_sach['tong_RSS']:.3f} ‰</b> "
-                f"(Bất định mở rộng U₉₅% ≈ <b>± {2.0 * ngan_sach['tong_RSS']:.3f} ‰</b>)",
-                icon="🎯",
-                la_html=True,
-            )
-        except op.PhanXaToanPhanError:
-            bang("do", "Không tính được ngân sách sai số do góc A đang ở vùng phản xạ toàn phần.", icon="🚨")
+        with c_err2:
+            try:
+                ngan_sach = op.ngan_sach_sai_so(
+                    s_eval, t_eval, cfg_sim, err_tam, err_t, err_a, err_troi, he_so_triet
+                )
+                df_ns = pd.DataFrame([
+                    {"Nguồn sai số": "1. Thuật toán định vị tâm vạch dưới pixel (px)", "Bất định quy đổi (‰)": f"{ngan_sach['tim_tam']:.4f}"},
+                    {"Nguồn sai số": "2. Chênh lệch nhiệt độ giữa 2 ngăn (°C)", "Bất định quy đổi (‰)": f"{ngan_sach['nhiet_do']:.4f}"},
+                    {"Nguồn sai số": "3. Sai số gia công góc đỉnh lăng kính A (độ)", "Bất định quy đổi (‰)": f"{ngan_sach['goc_A']:.4f}"},
+                    {"Nguồn sai số": "4. Trôi laser & rung máy còn sót sau khử vi sai", "Bất định quy đổi (‰)": f"{ngan_sach['troi_laser']:.4f}"},
+                    {"Nguồn sai số": "∑ TỔNG HỢP TOÀN PHƯƠNG (RSS 1σ)", "Bất định quy đổi (‰)": f"{ngan_sach['tong_RSS']:.4f}"},
+                ])
+                st.dataframe(df_ns, width="stretch", hide_index=True)
+                bang(
+                    "xanh",
+                    f"Tổng bất định chuẩn thiết kế (1σ): <b>± {ngan_sach['tong_RSS']:.3f} ‰</b> "
+                    f"(Bất định mở rộng U₉₅% ≈ <b>± {2.0 * ngan_sach['tong_RSS']:.3f} ‰</b>)",
+                    icon="🎯",
+                    la_html=True,
+                )
+            except op.PhanXaToanPhanError:
+                bang("do", "Không tính được ngân sách sai số do góc A đang ở vùng phản xạ toàn phần.", icon="🚨")
 
 
 # ===========================================================================
@@ -1234,41 +1322,53 @@ with tab_so_sanh:
         "Phân tích tương quan tuyến tính và giới hạn đồng thuận 95% (Limits of Agreement) giữa 2 phương pháp đo",
     )
 
-    col_ba1, col_ba2 = st.columns([1, 1.2], gap="medium")
+    col_ba1, col_ba2 = st.columns([1, 1.25], gap="medium")
 
     with col_ba1:
-        nhan_buoc("1", "Nạp hoặc nhập dữ liệu đo song song 2 thiết bị")
-        if st.button("📋 Nạp bảng 24 cặp số liệu đối chứng mẫu (Mô phỏng)", width="stretch"):
-            rng_ba = np.random.default_rng(42)
-            s_true_vals = np.array([0, 5, 10, 15, 20, 25, 30, 35] * 3, dtype=float)
-            s_may_toi = s_true_vals + rng_ba.normal(0.0, 0.16, len(s_true_vals))
-            s_ref_opt = s_true_vals + rng_ba.normal(0.08, 0.35, len(s_true_vals))
-            st.session_state["df_ba_saved"] = pd.DataFrame({
-                "S_thiet_bi": np.round(s_may_toi, 2),
-                "S_khuc_xa_ke": np.round(s_ref_opt, 2),
-            })
+        with st.container(border=True, key="panel_t6_inp"):
+            nhan_buoc("1", "Nạp hoặc nhập dữ liệu đo song song 2 thiết bị")
+            if st.button("📋 Nạp bảng 24 cặp số liệu đối chứng mẫu (Mô phỏng)", width="stretch"):
+                rng_ba = np.random.default_rng(42)
+                s_true_vals = np.array([0, 5, 10, 15, 20, 25, 30, 35] * 3, dtype=float)
+                s_may_toi = s_true_vals + rng_ba.normal(0.0, 0.16, len(s_true_vals))
+                s_ref_opt = s_true_vals + rng_ba.normal(0.08, 0.35, len(s_true_vals))
+                st.session_state["df_ba_saved"] = pd.DataFrame({
+                    "S_thiet_bi": np.round(s_may_toi, 2),
+                    "S_khuc_xa_ke": np.round(s_ref_opt, 2),
+                })
 
-        csv_ba = st.file_uploader(
-            "Hoặc tải file CSV có 2 cột (S_thiet_bi, S_khuc_xa_ke):",
-            type=["csv"],
-            key="ba_upload",
-        )
-        if csv_ba is not None:
-            st.session_state["df_ba_saved"] = pd.read_csv(csv_ba)
+            csv_ba = st.file_uploader(
+                "Hoặc tải file CSV có 2 cột (S_thiet_bi, S_khuc_xa_ke):",
+                type=["csv"],
+                key="ba_upload",
+            )
+            if csv_ba is not None:
+                st.session_state["df_ba_saved"] = pd.read_csv(csv_ba)
 
     df_ba_cur: pd.DataFrame | None = st.session_state.get("df_ba_saved")
+    co_du_lieu_ba = df_ba_cur is not None and "S_thiet_bi" in df_ba_cur.columns and "S_khuc_xa_ke" in df_ba_cur.columns
 
-    if df_ba_cur is not None and "S_thiet_bi" in df_ba_cur.columns and "S_khuc_xa_ke" in df_ba_cur.columns:
-        with col_ba2:
+    with col_ba2:
+        with st.container(border=True, key="panel_t6_tbl"):
             nhan_buoc("2", "Bảng dữ liệu đối chứng (Có thể chỉnh sửa trực tiếp)")
-            df_ba_edit = st.data_editor(
-                df_ba_cur,
-                num_rows="dynamic",
-                width="stretch",
-                height=195,
-                key="ba_editor",
-            )
+            if co_du_lieu_ba:
+                df_ba_edit = st.data_editor(
+                    df_ba_cur,
+                    num_rows="dynamic",
+                    width="stretch",
+                    height=195,
+                    key="ba_editor",
+                )
+            else:
+                df_ba_edit = None
+                bang(
+                    "duong",
+                    "Nhấn nút <b>'📋 Nạp bảng 24 cặp số liệu đối chứng mẫu'</b> ở khung bên trái hoặc tải file CSV cặp giá trị để vẽ đồ thị tương quan và Bland–Altman.",
+                    icon="👈",
+                    la_html=True,
+                )
 
+    if df_ba_edit is not None:
         m1 = pd.to_numeric(df_ba_edit["S_thiet_bi"], errors="coerce").dropna().to_numpy(float)
         m2 = pd.to_numeric(df_ba_edit["S_khuc_xa_ke"], errors="coerce").dropna().to_numpy(float)
         n_pair = min(len(m1), len(m2))
@@ -1284,8 +1384,8 @@ with tab_so_sanh:
             loa_lower = mean_diff - 1.96 * std_diff
             r_corr = float(np.corrcoef(m1, m2)[0, 1]) if np.std(m1) > 0 and np.std(m2) > 0 else 1.0
 
-            st.divider()
-            c_b1, c_b2, c_b3, c_b4 = st.columns(4)
+            st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
+            c_b1, c_b2, c_b3, c_b4 = st.columns(4, gap="small")
             with c_b1:
                 hien(the_so("SAI LỆCH TRUNG BÌNH (BIAS)", f"{mean_diff:+.3f}", don_vi="‰", phu="Độ lệch hệ thống giữa 2 máy", kieu="nhan-manh"))
             with c_b2:
@@ -1295,32 +1395,37 @@ with tab_so_sanh:
             with c_b4:
                 hien(the_so("HỆ SỐ TƯƠNG QUAN r", f"{r_corr:.5f}", phu=f"R² = {r_corr**2:.5f}", kieu="vien-xanh"))
 
-            c_g1, c_g2 = st.columns(2)
+            st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
+            c_g1, c_g2 = st.columns(2, gap="medium")
             with c_g1:
-                fig_corr, ax_c = plt.subplots(figsize=(6.2, 4.2), dpi=110)
-                ax_c.scatter(m2, m1, color="#1B4965", s=36, alpha=0.85, label="Cặp điểm đo thực nghiệm")
-                lims = [min(m1.min(), m2.min()) - 1, max(m1.max(), m2.max()) + 1]
-                ax_c.plot(lims, lims, "r--", lw=1.5, label="Đường đồng nhất lí tưởng (y = x)")
-                ax_c.set_xlabel("Độ mặn Khúc xạ kế đối chứng (‰)")
-                ax_c.set_ylabel("Độ mặn Thiết bị đo vi sai (‰)")
-                ax_c.set_title(f"Đồ thị tương quan 2 phương pháp (R² = {r_corr**2:.4f})", fontsize=10)
-                ax_c.legend(fontsize=8, loc="upper left")
-                fig_corr.tight_layout()
-                st.pyplot(fig_corr)
+                with st.container(border=True, key="panel_t6_corr"):
+                    nhan_buoc("3A", f"Đồ thị tương quan tuyến tính (R² = {r_corr**2:.4f})")
+                    fig_corr, ax_c = plt.subplots(figsize=(6.2, 4.0), dpi=110)
+                    ax_c.scatter(m2, m1, color="#1B4965", s=36, alpha=0.85, label="Cặp điểm đo thực nghiệm")
+                    lims = [min(m1.min(), m2.min()) - 1, max(m1.max(), m2.max()) + 1]
+                    ax_c.plot(lims, lims, "r--", lw=1.5, label="Đường đồng nhất lí tưởng (y = x)")
+                    ax_c.set_xlabel("Độ mặn Khúc xạ kế đối chứng (‰)")
+                    ax_c.set_ylabel("Độ mặn Thiết bị đo vi sai (‰)")
+                    ax_c.set_title(f"Đồ thị tương quan 2 phương pháp (R² = {r_corr**2:.4f})", fontsize=10)
+                    ax_c.legend(fontsize=8, loc="upper left")
+                    fig_corr.tight_layout()
+                    st.pyplot(fig_corr)
 
             with c_g2:
-                fig_ba, ax_ba = plt.subplots(figsize=(6.2, 4.2), dpi=110)
-                ax_ba.scatter(tb_2_phuong_phap, hieu_so, color="#E5383B", s=36, alpha=0.85, label="Hiệu số (S_máy − S_kxk)")
-                ax_ba.axhline(mean_diff, color="#1B4965", linestyle="-", lw=1.8, label=f"Mean Bias = {mean_diff:+.3f} ‰")
-                ax_ba.axhline(loa_upper, color="#14B8A6", linestyle="--", lw=1.4, label=f"+1.96 SD = {loa_upper:+.3f} ‰")
-                ax_ba.axhline(loa_lower, color="#14B8A6", linestyle="--", lw=1.4, label=f"-1.96 SD = {loa_lower:+.3f} ‰")
-                ax_ba.axhline(0, color="gray", linestyle=":", lw=0.9)
-                ax_ba.set_xlabel("Trung bình 2 phương pháp: (S_thiết_bị + S_khúc_xạ_kế) / 2 (‰)")
-                ax_ba.set_ylabel("Sai khác: S_thiết_bị − S_khúc_xạ_kế (‰)")
-                ax_ba.set_title("Đồ thị Bland–Altman đánh giá mức độ đồng thuận", fontsize=10)
-                ax_ba.legend(fontsize=8, loc="upper right")
-                fig_ba.tight_layout()
-                st.pyplot(fig_ba)
+                with st.container(border=True, key="panel_t6_ba"):
+                    nhan_buoc("3B", "Đồ thị Bland–Altman đánh giá giới hạn đồng thuận")
+                    fig_ba, ax_ba = plt.subplots(figsize=(6.2, 4.0), dpi=110)
+                    ax_ba.scatter(tb_2_phuong_phap, hieu_so, color="#E5383B", s=36, alpha=0.85, label="Hiệu số (S_máy − S_kxk)")
+                    ax_ba.axhline(mean_diff, color="#1B4965", linestyle="-", lw=1.8, label=f"Mean Bias = {mean_diff:+.3f} ‰")
+                    ax_ba.axhline(loa_upper, color="#14B8A6", linestyle="--", lw=1.4, label=f"+1.96 SD = {loa_upper:+.3f} ‰")
+                    ax_ba.axhline(loa_lower, color="#14B8A6", linestyle="--", lw=1.4, label=f"-1.96 SD = {loa_lower:+.3f} ‰")
+                    ax_ba.axhline(0, color="gray", linestyle=":", lw=0.9)
+                    ax_ba.set_xlabel("Trung bình 2 phương pháp: (S_thiết_bị + S_khúc_xạ_kế) / 2 (‰)")
+                    ax_ba.set_ylabel("Sai khác: S_thiết_bị − S_khúc_xạ_kế (‰)")
+                    ax_ba.set_title("Đồ thị Bland–Altman đánh giá mức độ đồng thuận", fontsize=10)
+                    ax_ba.legend(fontsize=8, loc="upper right")
+                    fig_ba.tight_layout()
+                    st.pyplot(fig_ba)
 
             bang(
                 "xanh",
@@ -1330,10 +1435,3 @@ with tab_so_sanh:
                 icon="🎯",
                 la_html=True,
             )
-    else:
-        bang(
-            "duong",
-            "Nhấn nút <b>'📋 Nạp bảng 24 cặp số liệu đối chứng mẫu'</b> hoặc tải file CSV cặp giá trị để vẽ đồ thị tương quan và Bland–Altman.",
-            icon="👈",
-            la_html=True,
-        )

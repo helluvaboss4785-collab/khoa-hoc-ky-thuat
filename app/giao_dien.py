@@ -28,177 +28,259 @@ MAU = {
 
 CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
-html { font-size: 16.5px; scroll-behavior: smooth; }
+html { font-size: 16px; scroll-behavior: smooth; }
 .stApp {
   font-family: 'Be Vietnam Pro', 'Segoe UI', system-ui, -apple-system, sans-serif;
-  background:
-    radial-gradient(circle at 96% 2%, rgba(229,56,59,.09) 0, transparent 26%),
-    radial-gradient(circle at 4% 92%, rgba(20,184,166,.08) 0, transparent 28%),
-    #F3F6FB;
+  background-color: #EEF2F7;
+  background-image:
+    radial-gradient(circle at 96% 2%, rgba(229,56,59,.08) 0, transparent 28%),
+    radial-gradient(circle at 4% 92%, rgba(20,184,166,.08) 0, transparent 30%),
+    radial-gradient(rgba(15,23,42,.06) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 22px 22px;
 }
-.block-container { padding-top: 1.2rem; padding-bottom: 3.2rem; max-width: 1320px; }
+[data-testid="stHeader"] { background: transparent; }
+.block-container { padding-top: 1.0rem; padding-bottom: 2.8rem; max-width: 1340px; }
 #MainMenu, footer { visibility: hidden; }
 
-/* ---------- Banner đầu trang (Hero) ---------- */
+/* ---------- Khung Panel 2.5D (st.container(border=True)) ---------- */
+[data-testid="stVerticalBlockBorderWrapper"],
+[data-testid="stVerticalBlock"][class*="st-key-panel_"] {
+  background: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%) !important;
+  border: 1.5px solid #CBD5E1 !important;
+  border-radius: 20px !important;
+  padding: 18px 20px !important;
+  box-shadow:
+    0 5px 0 #CBD5E1,
+    0 12px 24px -8px rgba(15,23,42,.12),
+    inset 0 1px 0 #FFFFFF !important;
+}
+
+/* ---------- Banner đầu trang 2.5D (Instrument Console Header) ---------- */
 .hero {
-  position: relative; overflow: hidden; border-radius: 24px; padding: 28px 34px 46px; color: #fff;
+  position: relative; overflow: hidden; border-radius: 22px; padding: 20px 26px 34px; color: #fff;
   background:
     radial-gradient(circle at 88% 18%, rgba(229,56,59,.42), transparent 40%),
     radial-gradient(circle at 12% 105%, rgba(20,184,166,.28), transparent 42%),
-    linear-gradient(135deg, #071326 0%, #0B1D3A 48%, #163B5C 100%);
-  box-shadow: 0 22px 46px -20px rgba(11,29,58,.78), inset 0 1px 0 rgba(255,255,255,.12);
-  margin-bottom: 18px; border: 1px solid rgba(255,255,255,.08);
+    linear-gradient(135deg, #071326 0%, #0B1D3A 50%, #163B5C 100%);
+  box-shadow:
+    0 7px 0 #040B16,
+    0 22px 44px -16px rgba(11,29,58,.75),
+    inset 0 1.5px 0 rgba(255,255,255,.16);
+  margin-bottom: 14px; border: 1.5px solid rgba(255,255,255,.14);
 }
-.hero-grid { display: flex; justify-content: space-between; align-items: center; gap: 24px; flex-wrap: wrap; position: relative; z-index: 2; }
+.hero-grid { display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-wrap: wrap; position: relative; z-index: 2; }
 .hero-left { flex: 1 1 560px; }
 .hero-right {
-  flex: 0 0 290px; background: rgba(7,19,38,.58); border: 1px solid rgba(255,255,255,.15);
-  border-radius: 18px; padding: 14px 16px; backdrop-filter: blur(8px);
+  flex: 0 0 296px;
+  background: linear-gradient(180deg, rgba(15,35,68,.78) 0%, rgba(7,19,38,.9) 100%);
+  border: 1.5px solid rgba(255,255,255,.18);
+  border-radius: 16px; padding: 12px 15px; backdrop-filter: blur(8px);
+  box-shadow: 0 4px 0 rgba(2,6,23,.65), inset 0 1px 0 rgba(255,255,255,.15);
 }
 .hero-kicker {
   display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px;
-  background: rgba(229,56,59,.2); border: 1px solid rgba(252,165,165,.35);
-  font-size: .74rem; letter-spacing: .14em; text-transform: uppercase; color: #FECACA; font-weight: 700;
+  background: rgba(229,56,59,.24); border: 1px solid rgba(252,165,165,.42);
+  font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; color: #FECACA; font-weight: 700;
+  box-shadow: 0 2px 0 rgba(127,29,29,.55), inset 0 1px 0 rgba(255,255,255,.2);
 }
-.hero-title { font-size: 2.0rem; font-weight: 800; line-height: 1.22; margin: 10px 0 8px; letter-spacing: -.4px; color: #fff; }
-.hero-sub { font-size: .96rem; color: #CBD5E1; max-width: 780px; line-height: 1.55; }
-.hero-badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.hero-title { font-size: 1.78rem; font-weight: 800; line-height: 1.22; margin: 8px 0 6px; letter-spacing: -.4px; color: #fff; }
+.hero-sub { font-size: .9rem; color: #CBD5E1; max-width: 780px; line-height: 1.5; }
+.hero-badges { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 11px; }
 .tia {
   position: absolute; height: 3px; border-radius: 3px;
   background: linear-gradient(90deg, transparent, #ff4d4f 15%, #ffb3b3 50%, #ff4d4f 85%, transparent);
   box-shadow: 0 0 14px 3px rgba(255,77,79,.75); animation: nhap-nhay 3.2s ease-in-out infinite;
 }
-.tia.t1 { left: -2%; width: 49%; bottom: 25px; }
-.tia.t2 { left: 51%; width: 51%; bottom: 11px; animation-delay: 1.1s; }
-.tia-dy { position: absolute; left: 49.5%; bottom: 11px; height: 15px; border-left: 2px dashed #FDE047; }
-.tia-dy-nhan { position: absolute; left: 50.3%; bottom: 9px; font-size: .72rem; color: #FDE047; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+.tia.t1 { left: -2%; width: 49%; bottom: 20px; }
+.tia.t2 { left: 51%; width: 51%; bottom: 8px; animation-delay: 1.1s; }
+.tia-dy { position: absolute; left: 49.5%; bottom: 8px; height: 13px; border-left: 2px dashed #FDE047; }
+.tia-dy-nhan { position: absolute; left: 50.3%; bottom: 6px; font-size: .7rem; color: #FDE047; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
 @keyframes nhap-nhay { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
 
-/* ---------- Thanh Trợ lý Hướng dẫn Thời gian thực (Live Coach) ---------- */
+/* ---------- Thanh Trợ lý Hướng dẫn Thời gian thực 2.5D (Compact Workflow Strip) ---------- */
 .coach-wrap {
-  background: linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%);
+  background: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
   border: 1.5px solid #CBD5E1; border-left: 6px solid #E5383B;
-  border-radius: 20px; padding: 16px 20px; margin-bottom: 18px;
-  box-shadow: 0 14px 32px -18px rgba(11,29,58,.28);
+  border-radius: 18px; padding: 12px 16px; margin-bottom: 10px;
+  box-shadow: 0 5px 0 #CBD5E1, 0 12px 24px -12px rgba(11,29,58,.22), inset 0 1px 0 #FFFFFF;
   position: relative;
 }
-.coach-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+.coach-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 9px; }
 .coach-badge {
-  display: inline-flex; align-items: center; gap: 8px; background: linear-gradient(135deg, #E5383B, #C81D6B);
-  color: #fff; font-size: .76rem; font-weight: 800; text-transform: uppercase; letter-spacing: .08em;
-  padding: 5px 13px; border-radius: 999px; box-shadow: 0 4px 12px rgba(229,56,59,.35);
+  display: inline-flex; align-items: center; gap: 7px;
+  background: linear-gradient(180deg, #FF5255 0%, #E5383B 55%, #C81D55 100%);
+  color: #fff; font-size: .72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .07em;
+  padding: 4px 12px; border-radius: 999px; border: 1px solid #9F1239;
+  box-shadow: 0 3px 0 #881337, inset 0 1px 0 rgba(255,255,255,.35);
 }
 .coach-pulse {
-  width: 8px; height: 8px; border-radius: 50%; background: #fff;
+  width: 7px; height: 7px; border-radius: 50%; background: #fff;
   box-shadow: 0 0 0 0 rgba(255,255,255,.8); animation: pulse-dot 1.6s infinite;
 }
 @keyframes pulse-dot {
   0% { box-shadow: 0 0 0 0 rgba(255,255,255,.85); }
-  70% { box-shadow: 0 0 0 7px rgba(255,255,255,0); }
+  70% { box-shadow: 0 0 0 6px rgba(255,255,255,0); }
   100% { box-shadow: 0 0 0 0 rgba(255,255,255,0); }
 }
 .coach-steps {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 12px;
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 9px;
 }
 .c-step {
-  display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 13px;
-  background: #F1F5F9; border: 1px solid #E2E8F0; font-size: .82rem; color: #64748B; font-weight: 600;
-  transition: all .2s ease;
+  display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 12px;
+  background: linear-gradient(180deg, #F8FAFC 0%, #EEF2F7 100%);
+  border: 1.5px solid #CBD5E1; font-size: .79rem; color: #475569; font-weight: 700;
+  box-shadow: 0 2.5px 0 #CBD5E1, inset 0 1px 0 #FFFFFF;
+  transition: all .18s ease;
 }
 .c-step .c-num {
-  flex: 0 0 25px; height: 25px; border-radius: 50%; display: grid; place-items: center;
-  font-size: .76rem; font-weight: 800; background: #CBD5E1; color: #334155;
+  flex: 0 0 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+  font-size: .72rem; font-weight: 800; background: #CBD5E1; color: #334155;
+  box-shadow: inset 0 1px 2px rgba(15,23,42,.15);
 }
-.c-step.done { background: #ECFDF5; border-color: #A7F3D0; color: #065F46; }
-.c-step.done .c-num { background: #10B981; color: #fff; }
+.c-step.done {
+  background: linear-gradient(180deg, #ECFDF5 0%, #D1FAE5 100%);
+  border-color: #6EE7B7; color: #065F46; box-shadow: 0 2.5px 0 #10B981, inset 0 1px 0 #FFFFFF;
+}
+.c-step.done .c-num { background: #059669; color: #fff; box-shadow: 0 2px 0 #064E3B; }
 .c-step.active {
-  background: #FFF1F2; border-color: #FECDD3; color: #9F1239;
-  box-shadow: 0 4px 12px -4px rgba(229,56,59,.25); transform: translateY(-1px);
+  background: linear-gradient(180deg, #FFF1F2 0%, #FFE4E6 100%);
+  border-color: #FDA4AF; color: #9F1239;
+  box-shadow: 0 3px 0 #E5383B, 0 6px 12px -4px rgba(229,56,59,.25), inset 0 1px 0 #FFFFFF;
+  transform: translateY(-1px);
 }
-.c-step.active .c-num { background: linear-gradient(135deg, #E5383B, #C81D6B); color: #fff; }
+.c-step.active .c-num {
+  background: linear-gradient(180deg, #FF5255, #C81D55); color: #fff;
+  box-shadow: 0 2px 0 #881337;
+}
 .coach-body {
-  display: flex; align-items: flex-start; gap: 14px; background: #F8FAFC;
-  border: 1px dashed #CBD5E1; border-radius: 14px; padding: 12px 15px;
+  display: flex; align-items: center; gap: 12px;
+  background: #F1F5F9; border: 1px solid #CBD5E1; border-radius: 12px; padding: 9px 13px;
+  box-shadow: inset 0 2px 4px rgba(15,23,42,.06);
 }
-.coach-icon { font-size: 1.55rem; line-height: 1.1; }
-.coach-msg-title { font-weight: 800; color: #0B1D3A; font-size: .96rem; margin-bottom: 3px; }
-.coach-msg-desc { font-size: .88rem; color: #334155; line-height: 1.5; }
+.coach-icon { font-size: 1.35rem; line-height: 1; flex-shrink: 0; }
+.coach-msg-title { font-weight: 800; color: #0B1D3A; font-size: .9rem; margin-bottom: 1px; }
+.coach-msg-desc { font-size: .82rem; color: #334155; line-height: 1.42; }
 
-/* ---------- Huy hiệu ---------- */
+/* ---------- Huy hiệu 2.5D ---------- */
 .huy-hieu {
-  display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px;
-  font-size: .79rem; font-weight: 600; border: 1px solid transparent; line-height: 1.3;
+  display: inline-flex; align-items: center; gap: 5px; padding: 4px 11px; border-radius: 999px;
+  font-size: .76rem; font-weight: 700; border: 1.5px solid transparent; line-height: 1.3;
+  box-shadow: 0 2.5px 0 rgba(15,23,42,.15), inset 0 1px 0 rgba(255,255,255,.65);
 }
-.hh-do { background: #FDECEC; color: #B42318; border-color: #F8C9C9; }
-.hh-xanh { background: #E7F6EC; color: #166534; border-color: #BFE6CB; }
-.hh-vang { background: #FEF6E3; color: #92400E; border-color: #F8DFA6; }
-.hh-xam { background: #EEF1F5; color: #334155; border-color: #D9DEE6; }
-.hh-duong { background: #EAF2FF; color: #1E3A8A; border-color: #C7DBFF; }
-.hh-trong { background: rgba(255,255,255,.13); color: #fff; border-color: rgba(255,255,255,.28); backdrop-filter: blur(4px); }
+.hh-do { background: linear-gradient(180deg, #FEF2F2, #FEE2E2); color: #B42318; border-color: #FCA5A5; box-shadow: 0 2.5px 0 #EF4444, inset 0 1px 0 #FFF; }
+.hh-xanh { background: linear-gradient(180deg, #ECFDF5, #D1FAE5); color: #166534; border-color: #6EE7B7; box-shadow: 0 2.5px 0 #10B981, inset 0 1px 0 #FFF; }
+.hh-vang { background: linear-gradient(180deg, #FFFBEB, #FEF3C7); color: #92400E; border-color: #FCD34D; box-shadow: 0 2.5px 0 #D97706, inset 0 1px 0 #FFF; }
+.hh-xam { background: linear-gradient(180deg, #F8FAFC, #E2E8F0); color: #334155; border-color: #CBD5E1; box-shadow: 0 2.5px 0 #94A3B8, inset 0 1px 0 #FFF; }
+.hh-duong { background: linear-gradient(180deg, #EFF6FF, #DBEAFE); color: #1E3A8A; border-color: #93C5FD; box-shadow: 0 2.5px 0 #3B82F6, inset 0 1px 0 #FFF; }
+.hh-trong {
+  background: rgba(255,255,255,.15); color: #fff; border-color: rgba(255,255,255,.3); backdrop-filter: blur(4px);
+  box-shadow: 0 2.5px 0 rgba(2,6,23,.5), inset 0 1px 0 rgba(255,255,255,.25);
+}
 
-/* ---------- Tiêu đề mục ---------- */
+/* ---------- Tiêu đề mục & Nhãn bước 2.5D ---------- */
 .muc {
-  display: flex; align-items: center; gap: 14px; margin: 4px 0 16px;
-  padding-bottom: 10px; border-bottom: 1px solid #E2E8F0;
+  display: flex; align-items: center; gap: 14px; margin: 2px 0 14px;
+  padding: 10px 14px; border-radius: 16px;
+  background: linear-gradient(180deg, #FFFFFF 0%, #F1F5F9 100%);
+  border: 1.5px solid #CBD5E1;
+  box-shadow: 0 4px 0 #CBD5E1, inset 0 1px 0 #FFFFFF;
 }
 .muc-icon {
-  flex: 0 0 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; font-size: 1.45rem;
-  background: linear-gradient(135deg, #FDECEC, #FFE4F1); box-shadow: inset 0 0 0 1px #F8C9C9;
+  flex: 0 0 44px; height: 44px; border-radius: 13px; display: grid; place-items: center; font-size: 1.35rem;
+  background: linear-gradient(180deg, #FFF1F2 0%, #FFE4E6 100%);
+  border: 1.5px solid #FDA4AF;
+  box-shadow: 0 4px 0 #F43F5E, inset 0 1.5px 0 #FFFFFF;
 }
-.muc-tt { font-size: 1.35rem; font-weight: 800; color: #0B1D3A; line-height: 1.2; }
-.muc-mt { font-size: .9rem; color: #64748B; margin-top: 2px; }
-.nhan-buoc { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; color: #0B1D3A; margin: 4px 0 8px; font-size: .95rem; }
+.muc-tt { font-size: 1.24rem; font-weight: 800; color: #0B1D3A; line-height: 1.22; }
+.muc-mt { font-size: .86rem; color: #475569; margin-top: 2px; }
+.nhan-buoc {
+  display: flex; align-items: center; gap: 10px; font-weight: 800; color: #0B1D3A;
+  margin: 0 0 12px; font-size: .92rem; padding: 6px 12px 6px 7px; border-radius: 12px;
+  background: linear-gradient(180deg, #F8FAFC 0%, #EEF2F7 100%);
+  border: 1px solid #CBD5E1;
+  box-shadow: 0 2.5px 0 #CBD5E1, inset 0 1px 0 #FFFFFF;
+}
 .nhan-buoc span {
-  width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: .8rem;
-  color: #fff; background: linear-gradient(135deg, #E5383B, #C81D6B); box-shadow: 0 3px 8px rgba(229,56,59,.35);
+  flex: 0 0 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; font-size: .78rem; font-weight: 800;
+  color: #fff; background: linear-gradient(180deg, #FF5255, #E5383B, #C81D55);
+  border: 1px solid #9F1239;
+  box-shadow: 0 3px 0 #881337, inset 0 1px 0 rgba(255,255,255,.4);
 }
 
-/* ---------- Thẻ số liệu (KPI Cards) ---------- */
+/* ---------- Thẻ số liệu 2.5D (KPI Cards) ---------- */
 .the {
-  background: #fff; border: 1px solid #E6EAF0; border-radius: 20px; padding: 18px 20px 16px;
-  box-shadow: 0 10px 24px -18px rgba(15,23,42,.35); height: 100%; margin-bottom: 10px;
+  background: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+  border: 1.5px solid #CBD5E1; border-radius: 18px; padding: 16px 18px 15px;
+  box-shadow: 0 5px 0 #CBD5E1, 0 10px 20px -8px rgba(15,23,42,.14), inset 0 1px 0 #FFFFFF;
+  height: 100%; margin-bottom: 10px;
   transition: transform .15s ease, box-shadow .15s ease;
 }
-.the:hover { transform: translateY(-2px); box-shadow: 0 16px 30px -16px rgba(15,23,42,.22); }
-.the-nhan { font-size: .73rem; text-transform: uppercase; letter-spacing: .07em; color: #64748B; font-weight: 700; }
-.the-so { font-size: 2.25rem; font-weight: 800; color: #0B1D3A; line-height: 1.15; margin-top: 6px; font-family: 'Be Vietnam Pro', sans-serif; }
-.the-so small { font-size: .98rem; font-weight: 600; color: #475569; margin-left: 4px; }
-.the-pm { font-size: 1.02rem; font-weight: 700; color: #E5383B; margin-top: 3px; }
-.the-phu { font-size: .82rem; color: #64748B; margin-top: 8px; line-height: 1.4; }
-.the.vien-do { border-top: 4px solid #E5383B; }
-.the.vien-ngoc { border-top: 4px solid #14B8A6; }
-.the.vien-vang { border-top: 4px solid #F59E0B; }
-.the.vien-xanh { border-top: 4px solid #1B4965; }
+.the:hover { transform: translateY(-2px); }
+.the-nhan { font-size: .71rem; text-transform: uppercase; letter-spacing: .07em; color: #64748B; font-weight: 800; }
+.the-so { font-size: 2.15rem; font-weight: 800; color: #0B1D3A; line-height: 1.15; margin-top: 6px; font-family: 'Be Vietnam Pro', sans-serif; }
+.the-so small { font-size: .95rem; font-weight: 700; color: #475569; margin-left: 4px; }
+.the-pm {
+  display: inline-block; padding: 2px 10px; border-radius: 999px; margin-top: 5px;
+  background: #FFF1F2; border: 1px solid #FECDD3; font-size: .92rem; font-weight: 700; color: #BE123C;
+}
+.the-phu { font-size: .8rem; color: #64748B; margin-top: 8px; line-height: 1.4; }
+.the.vien-do {
+  border-color: #FDA4AF; border-top: 3px solid #E5383B;
+  box-shadow: 0 5px 0 #E5383B, 0 10px 20px -8px rgba(229,56,59,.22), inset 0 1px 0 #FFFFFF;
+}
+.the.vien-ngoc {
+  border-color: #99F6E4; border-top: 3px solid #14B8A6;
+  box-shadow: 0 5px 0 #0D9488, 0 10px 20px -8px rgba(20,184,166,.22), inset 0 1px 0 #FFFFFF;
+}
+.the.vien-ngoc .the-pm { background: #F0FDFA; border-color: #99F6E4; color: #0F766E; }
+.the.vien-vang {
+  border-color: #FDE68A; border-top: 3px solid #F59E0B;
+  box-shadow: 0 5px 0 #D97706, 0 10px 20px -8px rgba(245,158,11,.22), inset 0 1px 0 #FFFFFF;
+}
+.the.vien-vang .the-pm { background: #FFFBEB; border-color: #FDE68A; color: #B45309; }
+.the.vien-xanh {
+  border-color: #BAE6FD; border-top: 3px solid #0284C7;
+  box-shadow: 0 5px 0 #0284C7, 0 10px 20px -8px rgba(2,132,199,.22), inset 0 1px 0 #FFFFFF;
+}
+.the.vien-xanh .the-pm { background: #F0F9FF; border-color: #BAE6FD; color: #0369A1; }
 .the.nhan-manh {
-  border: none; background: linear-gradient(135deg, #E5383B 0%, #C81D6B 100%);
-  box-shadow: 0 18px 34px -16px rgba(229,56,59,.85);
+  border: 1.5px solid #991B1B;
+  background: linear-gradient(145deg, #FF5255 0%, #E5383B 50%, #B91C1C 100%);
+  box-shadow: 0 6px 0 #7F1D1D, 0 14px 28px -8px rgba(229,56,59,.5), inset 0 1.5px 0 rgba(255,255,255,.35);
 }
 .the.nhan-manh .the-nhan, .the.nhan-manh .the-so, .the.nhan-manh small,
 .the.nhan-manh .the-pm, .the.nhan-manh .the-phu { color: #fff; }
-.the.nhan-manh .the-pm { background: rgba(255,255,255,.2); display: inline-block; padding: 2px 10px; border-radius: 999px; }
-
-/* ---------- Dải thông báo ---------- */
-.bang {
-  border-radius: 14px; padding: 12px 16px; display: flex; gap: 10px; align-items: flex-start;
-  margin: 6px 0 12px; font-size: .91rem; line-height: 1.5;
+.the.nhan-manh .the-pm {
+  background: rgba(255,255,255,.22); border-color: rgba(255,255,255,.38);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.25);
 }
-.bang-icon { font-size: 1.15rem; line-height: 1.3; flex-shrink: 0; }
-.bang-do { background: #FDECEC; color: #7A1A12; border: 1px solid #F8C9C9; }
-.bang-vang { background: #FEF6E3; color: #7C3A0B; border: 1px solid #F8DFA6; }
-.bang-xanh { background: #E7F6EC; color: #14532D; border: 1px solid #BFE6CB; }
-.bang-duong { background: #EAF2FF; color: #1E3A8A; border: 1px solid #C7DBFF; }
 
-/* ---------- Thẻ bước hướng dẫn ---------- */
+/* ---------- Dải thông báo 2.5D ---------- */
+.bang {
+  border-radius: 15px; padding: 11px 15px; display: flex; gap: 10px; align-items: flex-start;
+  margin: 6px 0 10px; font-size: .89rem; line-height: 1.48;
+  box-shadow: 0 3.5px 0 rgba(15,23,42,.12), inset 0 1px 0 rgba(255,255,255,.7);
+}
+.bang-icon { font-size: 1.12rem; line-height: 1.3; flex-shrink: 0; }
+.bang-do { background: linear-gradient(180deg, #FEF2F2, #FEE2E2); color: #7A1A12; border: 1.5px solid #FCA5A5; box-shadow: 0 3.5px 0 #EF4444, inset 0 1px 0 #FFF; }
+.bang-vang { background: linear-gradient(180deg, #FFFBEB, #FEF3C7); color: #7C3A0B; border: 1.5px solid #FCD34D; box-shadow: 0 3.5px 0 #D97706, inset 0 1px 0 #FFF; }
+.bang-xanh { background: linear-gradient(180deg, #ECFDF5, #D1FAE5); color: #14532D; border: 1.5px solid #6EE7B7; box-shadow: 0 3.5px 0 #10B981, inset 0 1px 0 #FFF; }
+.bang-duong { background: linear-gradient(180deg, #EFF6FF, #DBEAFE); color: #1E3A8A; border: 1.5px solid #93C5FD; box-shadow: 0 3.5px 0 #3B82F6, inset 0 1px 0 #FFF; }
+
+/* ---------- Thẻ bước hướng dẫn 2.5D ---------- */
 .buoc {
-  display: flex; gap: 14px; padding: 14px 16px; border-radius: 16px; background: #fff;
-  border: 1px solid #E6EAF0; margin-bottom: 10px; box-shadow: 0 4px 12px -8px rgba(15,23,42,.15);
+  display: flex; gap: 14px; padding: 14px 16px; border-radius: 16px;
+  background: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+  border: 1.5px solid #CBD5E1; margin-bottom: 10px;
+  box-shadow: 0 4px 0 #CBD5E1, 0 8px 16px -10px rgba(15,23,42,.16), inset 0 1px 0 #FFFFFF;
 }
 .buoc-so {
-  flex: 0 0 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-weight: 800;
-  color: #fff; background: linear-gradient(135deg, #E5383B, #C81D6B);
+  flex: 0 0 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; font-weight: 800;
+  color: #fff; background: linear-gradient(180deg, #FF5255, #E5383B, #C81D55);
+  border: 1px solid #9F1239; box-shadow: 0 3px 0 #881337, inset 0 1px 0 rgba(255,255,255,.35);
 }
 .buoc-tt { font-weight: 700; color: #0B1D3A; margin-bottom: 2px; }
-.buoc-nd { font-size: .9rem; color: #334155; line-height: 1.55; }
+.buoc-nd { font-size: .89rem; color: #334155; line-height: 1.52; }
 
 /* ---------- Hộp thoại Hướng dẫn Tương tác (Onboarding Modal) ---------- */
 .hd-cham { display: flex; gap: 7px; justify-content: center; align-items: center; margin: 4px 0 12px; }
@@ -210,104 +292,177 @@ html { font-size: 16.5px; scroll-behavior: smooth; }
 .hd-tt { font-size: 1.32rem; font-weight: 800; color: #0B1D3A; margin: 4px 0 2px; }
 .hd-mt { color: #64748B; font-size: .9rem; margin-bottom: 8px; }
 
-/* ---------- Thẻ so sánh chất lượng ảnh & Bản đồ Tab ---------- */
-.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 10px 0; }
-.grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 10px 0; }
+/* ---------- Thẻ mini 2.5D & Bản đồ Tab ---------- */
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 8px 0; }
+.grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 8px 0; }
 .card-mini {
-  background: #fff; border: 1px solid #E2E8F0; border-radius: 15px; padding: 13px 15px;
-  box-shadow: 0 4px 12px -8px rgba(15,23,42,.15);
+  background: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+  border: 1.5px solid #CBD5E1; border-radius: 15px; padding: 12px 14px;
+  box-shadow: 0 4px 0 #CBD5E1, 0 8px 14px -10px rgba(15,23,42,.15), inset 0 1px 0 #FFFFFF;
 }
-.card-mini.ok { border-top: 4px solid #10B981; }
-.card-mini.err { border-top: 4px solid #EF4444; }
-.card-mini.warn { border-top: 4px solid #F59E0B; }
-.card-mini-title { font-weight: 800; font-size: .9rem; color: #0B1D3A; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
-.card-mini-desc { font-size: .82rem; color: #475569; line-height: 1.45; }
+.card-mini.ok { border-color: #6EE7B7; border-top: 3px solid #10B981; box-shadow: 0 4px 0 #10B981, inset 0 1px 0 #FFFFFF; }
+.card-mini.err { border-color: #FCA5A5; border-top: 3px solid #EF4444; box-shadow: 0 4px 0 #EF4444, inset 0 1px 0 #FFFFFF; }
+.card-mini.warn { border-color: #FCD34D; border-top: 3px solid #F59E0B; box-shadow: 0 4px 0 #D97706, inset 0 1px 0 #FFFFFF; }
+.card-mini-title { font-weight: 800; font-size: .88rem; color: #0B1D3A; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+.card-mini-desc { font-size: .8rem; color: #475569; line-height: 1.44; }
 
-/* ---------- Thanh phổ ngưỡng sinh học (Tab 2) ---------- */
+/* ---------- Thanh phổ ngưỡng sinh học 2.5D (Tab 2) ---------- */
 .pho-wrap {
-  background: #fff; border: 1px solid #E2E8F0; border-radius: 18px; padding: 18px 20px 16px;
-  margin: 10px 0 14px; box-shadow: 0 8px 20px -16px rgba(15,23,42,.25);
+  background: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+  border: 1.5px solid #CBD5E1; border-radius: 18px; padding: 16px 18px 14px;
+  margin: 10px 0 12px;
+  box-shadow: 0 5px 0 #CBD5E1, 0 10px 20px -10px rgba(15,23,42,.15), inset 0 1px 0 #FFFFFF;
 }
 .pho-bar {
   position: relative; height: 22px; border-radius: 999px; overflow: hidden;
-  display: flex; width: 100%; margin: 26px 0 10px; box-shadow: inset 0 2px 4px rgba(0,0,0,.12);
+  display: flex; width: 100%; margin: 24px 0 10px;
+  border: 1px solid #94A3B8;
+  box-shadow: inset 0 3px 6px rgba(0,0,0,.22), 0 1px 0 #FFFFFF;
 }
 .pho-pin {
   position: absolute; top: -24px; transform: translateX(-50%);
-  background: #0B1D3A; color: #fff; font-size: .75rem; font-weight: 800;
-  padding: 2px 8px; border-radius: 6px; white-space: nowrap; z-index: 5;
-  box-shadow: 0 4px 10px rgba(11,29,58,.35);
+  background: linear-gradient(180deg, #1E293B, #0B1D3A); color: #fff; font-size: .74rem; font-weight: 800;
+  padding: 2px 9px; border-radius: 7px; white-space: nowrap; z-index: 5;
+  border: 1px solid rgba(255,255,255,.25);
+  box-shadow: 0 3px 0 #020617, 0 5px 10px rgba(11,29,58,.35);
 }
 .pho-pin::after {
   content: ""; position: absolute; bottom: -5px; left: 50%; transform: translateX(-50%);
   border-width: 5px 5px 0; border-style: solid; border-color: #0B1D3A transparent transparent;
 }
-.pho-ticks { display: flex; justify-content: space-between; font-size: .76rem; color: #64748B; font-weight: 600; }
+.pho-ticks { display: flex; justify-content: space-between; font-size: .75rem; color: #64748B; font-weight: 600; }
 
-/* ---------- Thanh tab ---------- */
-.stTabs [data-baseweb="tab-list"] { gap: 7px; flex-wrap: wrap; border-bottom: none; background: transparent; padding: 2px 0; }
+/* ---------- Thanh tab 2.5D (Recessed Tray + Tactile Keycaps) ---------- */
+.stTabs [data-baseweb="tab-list"] {
+  gap: 8px; flex-wrap: wrap; border-bottom: none;
+  background: #E2E8F0; padding: 7px 8px; border-radius: 18px; border: 1px solid #CBD5E1;
+  box-shadow: inset 0 2px 5px rgba(15,23,42,.12), 0 1px 0 #FFFFFF;
+}
 .stTabs [data-baseweb="tab"] {
-  background: #fff; border: 1px solid #E2E8F0; border-radius: 13px; height: auto;
-  padding: 9px 16px; font-weight: 600; box-shadow: 0 4px 10px -8px rgba(15,23,42,.25);
-  transition: all .15s ease;
+  background: linear-gradient(180deg, #FFFFFF 0%, #F1F5F9 100%);
+  border: 1.5px solid #CBD5E1; border-radius: 12px; height: auto;
+  padding: 8px 15px; font-weight: 700;
+  box-shadow: 0 3px 0 #94A3B8, 0 4px 8px rgba(15,23,42,.08), inset 0 1px 0 #FFFFFF;
+  transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
 }
-.stTabs [data-baseweb="tab"]:hover { border-color: #FDA4AF; transform: translateY(-1px); }
-.stTabs [data-baseweb="tab"] p { font-size: .91rem; font-weight: 600; }
-.stTabs [aria-selected="true"] {
-  background: linear-gradient(135deg, #E5383B, #C81D6B) !important; border-color: transparent !important;
-  box-shadow: 0 10px 20px -10px rgba(229,56,59,.9) !important;
+.stTabs [data-baseweb="tab"]:hover {
+  border-color: #FDA4AF; transform: translateY(-2px);
+  box-shadow: 0 5px 0 #94A3B8, 0 8px 14px rgba(15,23,42,.12), inset 0 1px 0 #FFFFFF;
 }
-.stTabs [aria-selected="true"] p { color: #fff !important; font-weight: 700 !important; }
+.stTabs [data-baseweb="tab"] p { font-size: .89rem; font-weight: 700; color: #1E293B; }
+.stTabs [data-baseweb="tab"][aria-selected="true"] {
+  background: linear-gradient(180deg, #FF5255 0%, #E5383B 55%, #C81D55 100%) !important;
+  border-color: #9F1239 !important;
+  box-shadow: 0 4px 0 #881337, 0 8px 16px rgba(229,56,59,.35), inset 0 1.5px 0 rgba(255,255,255,.4) !important;
+  transform: translateY(-1px);
+}
+.stTabs [data-baseweb="tab"][aria-selected="true"] p { color: #FFFFFF !important; font-weight: 700 !important; }
 .stTabs [data-baseweb="tab-highlight"], .stTabs [data-baseweb="tab-border"] { display: none; }
-.stTabs [data-baseweb="tab-panel"] { padding-top: 16px; }
+.stTabs [data-baseweb="tab-panel"] { padding-top: 14px; }
 
-/* ---------- Nút bấm, ô nhập, khung ---------- */
+/* ---------- Nút bấm 2.5D, ô nhập & khung phụ ---------- */
 .stButton > button, .stDownloadButton > button {
-  border-radius: 12px; font-weight: 700; min-height: 2.75rem;
-  transition: transform .1s ease, box-shadow .2s ease;
+  background: linear-gradient(180deg, #FFFFFF 0%, #F1F5F9 100%);
+  color: #0F172A; border: 1.5px solid #CBD5E1; border-radius: 14px;
+  font-weight: 700; min-height: 2.8rem;
+  box-shadow: 0 4px 0 #94A3B8, 0 7px 14px -4px rgba(15,23,42,.14), inset 0 1px 0 #FFFFFF;
+  transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease, color .12s ease;
 }
-.stButton > button:hover, .stDownloadButton > button:hover { transform: translateY(-1px); }
-.stButton > button[kind="primary"] {
-  background: linear-gradient(135deg, #E5383B, #C81D6B); border: none;
-  box-shadow: 0 12px 24px -12px rgba(229,56,59,.9);
+.stButton > button:hover, .stDownloadButton > button:hover {
+  transform: translateY(-2px); border-color: #94A3B8; color: #E5383B;
+  box-shadow: 0 6px 0 #64748B, 0 12px 20px -6px rgba(15,23,42,.2), inset 0 1px 0 #FFFFFF;
 }
-[data-testid="stMetric"] { background: #fff; border: 1px solid #E6EAF0; border-radius: 16px; padding: 14px 16px; box-shadow: 0 4px 12px -8px rgba(15,23,42,.18); }
-[data-testid="stExpander"] details { border-radius: 14px; background: #fff; border: 1px solid #E2E8F0; }
-[data-testid="stFileUploaderDropzone"] { border-radius: 14px; background: #fff; }
-[data-testid="stImage"] img { border-radius: 14px; box-shadow: 0 8px 20px -12px rgba(15,23,42,.3); }
+.stButton > button:active, .stDownloadButton > button:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #64748B, 0 2px 5px rgba(15,23,42,.15);
+}
+.stButton > button[kind="primary"],
+.stButton > button[data-testid="stBaseButton-primary"],
+.stDownloadButton > button[kind="primary"],
+.stDownloadButton > button[data-testid="stBaseButton-primary"] {
+  background: linear-gradient(180deg, #FF5255 0%, #E5383B 52%, #C81D55 100%) !important;
+  color: #FFFFFF !important; border: 1.5px solid #9F1239 !important;
+  box-shadow: 0 5px 0 #881337, 0 10px 20px -4px rgba(229,56,59,.45), inset 0 1.5px 0 rgba(255,255,255,.4) !important;
+}
+.stButton > button[kind="primary"]:hover,
+.stButton > button[data-testid="stBaseButton-primary"]:hover,
+.stDownloadButton > button[kind="primary"]:hover,
+.stDownloadButton > button[data-testid="stBaseButton-primary"]:hover {
+  transform: translateY(-2px); color: #FFFFFF !important;
+  box-shadow: 0 7px 0 #881337, 0 14px 24px -4px rgba(229,56,59,.55), inset 0 1.5px 0 rgba(255,255,255,.5) !important;
+}
+.stButton > button[kind="primary"]:active,
+.stButton > button[data-testid="stBaseButton-primary"]:active,
+.stDownloadButton > button[kind="primary"]:active,
+.stDownloadButton > button[data-testid="stBaseButton-primary"]:active {
+  transform: translateY(3px);
+  box-shadow: 0 2px 0 #881337, 0 4px 8px rgba(229,56,59,.3) !important;
+}
+.stButton > button[kind="primary"] p,
+.stButton > button[data-testid="stBaseButton-primary"] p,
+.stDownloadButton > button[kind="primary"] p,
+.stDownloadButton > button[data-testid="stBaseButton-primary"] p { color: #FFFFFF !important; }
 
-/* ---------- Thanh bên (Sidebar) ---------- */
-[data-testid="stSidebar"] { background: linear-gradient(180deg, #071326 0%, #0B1D3A 55%, #13315C 100%); }
+[data-testid="stMetric"] {
+  background: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+  border: 1.5px solid #CBD5E1; border-radius: 16px; padding: 14px 16px;
+  box-shadow: 0 4px 0 #CBD5E1, inset 0 1px 0 #FFFFFF;
+}
+[data-testid="stExpander"] details {
+  border-radius: 15px; background: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+  border: 1.5px solid #CBD5E1; box-shadow: 0 3px 0 #CBD5E1, inset 0 1px 0 #FFFFFF;
+}
+[data-testid="stFileUploaderDropzone"] {
+  border-radius: 15px; background: #F8FAFC; border: 1.5px dashed #94A3B8;
+  box-shadow: inset 0 2px 5px rgba(15,23,42,.06);
+}
+[data-testid="stImage"] img {
+  border-radius: 14px; border: 1.5px solid #CBD5E1;
+  box-shadow: 0 5px 0 #CBD5E1, 0 10px 20px -10px rgba(15,23,42,.25);
+}
+
+/* ---------- Thanh bên 2.5D (Dark Instrument Sidebar) ---------- */
+[data-testid="stSidebar"] { background: linear-gradient(180deg, #060F1E 0%, #0B1D3A 55%, #122E57 100%); border-right: 1.5px solid rgba(255,255,255,.1); }
 [data-testid="stSidebar"] p, [data-testid="stSidebar"] li, [data-testid="stSidebar"] span,
 [data-testid="stSidebar"] label, [data-testid="stSidebar"] div { color: #E2E8F0; }
 [data-testid="stSidebar"] .stButton > button {
-  background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.25);
-  backdrop-filter: blur(6px);
+  background: linear-gradient(180deg, rgba(255,255,255,.16) 0%, rgba(255,255,255,.08) 100%);
+  border: 1.5px solid rgba(255,255,255,.24); border-radius: 14px; backdrop-filter: blur(6px);
+  box-shadow: 0 4px 0 rgba(2,6,23,.78), inset 0 1px 0 rgba(255,255,255,.22);
 }
 [data-testid="stSidebar"] .stButton > button:hover {
-  background: rgba(229,56,59,.35); border-color: rgba(252,165,165,.5);
+  transform: translateY(-2px);
+  background: linear-gradient(180deg, rgba(229,56,59,.55) 0%, rgba(200,29,107,.45) 100%);
+  border-color: rgba(252,165,165,.6);
+  box-shadow: 0 6px 0 rgba(2,6,23,.82), inset 0 1px 0 rgba(255,255,255,.3);
 }
-[data-testid="stSidebar"] .stButton > button p { color: #fff; }
+[data-testid="stSidebar"] .stButton > button:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 rgba(2,6,23,.8);
+}
+[data-testid="stSidebar"] .stButton > button p { color: #fff !important; }
 [data-testid="stSidebar"] hr { border-color: rgba(255,255,255,.14); }
-.sb-logo { font-size: 1.28rem; font-weight: 800; color: #fff; line-height: 1.25; letter-spacing: -.3px; }
+.sb-logo { font-size: 1.24rem; font-weight: 800; color: #fff; line-height: 1.25; letter-spacing: -.3px; }
 .sb-logo b { color: #FCA5A5; }
 .sb-the {
-  background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.14); border-radius: 14px;
-  padding: 12px 14px; font-size: .84rem; line-height: 1.55; margin: 8px 0;
+  background: linear-gradient(180deg, rgba(255,255,255,.09) 0%, rgba(255,255,255,.04) 100%);
+  border: 1.5px solid rgba(255,255,255,.16); border-radius: 14px;
+  padding: 12px 14px; font-size: .83rem; line-height: 1.52; margin: 8px 0;
+  box-shadow: 0 4px 0 rgba(2,6,23,.55), inset 0 1px 0 rgba(255,255,255,.14);
 }
-.sb-the .sb-tt { font-weight: 700; color: #fff; margin-bottom: 4px; font-size: .88rem; }
+.sb-the .sb-tt { font-weight: 700; color: #fff; margin-bottom: 4px; font-size: .86rem; }
 
 /* ---------- Điện thoại & Màn hình nhỏ ---------- */
 @media (max-width: 768px) {
-  html { font-size: 15.5px; }
-  .hero { padding: 20px 18px 38px; border-radius: 18px; }
-  .hero-title { font-size: 1.42rem; }
+  html { font-size: 15px; }
+  .hero { padding: 18px 16px 30px; border-radius: 18px; }
+  .hero-title { font-size: 1.35rem; }
   .hero-right { flex: 1 1 100%; }
   .coach-steps { grid-template-columns: repeat(2, 1fr); }
   .grid-3, .grid-2 { grid-template-columns: 1fr; }
-  .the-so { font-size: 1.9rem; }
+  .the-so { font-size: 1.85rem; }
   .stTabs [data-baseweb="tab"] { padding: 7px 10px; }
-  .stTabs [data-baseweb="tab"] p { font-size: .8rem; }
+  .stTabs [data-baseweb="tab"] p { font-size: .79rem; }
 }
 """
 
@@ -454,17 +609,23 @@ def svg_he_quang_hoc(
         """
 
     return f"""
-    <div style="background:linear-gradient(135deg,#071326 0%,#0B1D3A 100%); border-radius:18px; padding:12px 14px; border:1px solid rgba(255,255,255,.12); margin:6px 0 12px;">
+    <div style="background:linear-gradient(135deg,#071326 0%,#0B1D3A 100%); border-radius:18px; padding:12px 14px; border:1.5px solid rgba(148,163,184,.26); box-shadow:0 5px 0 #040B16, inset 0 1px 0 rgba(255,255,255,.14); margin:6px 0 12px;">
       <svg viewBox="0 0 680 186" width="100%" height="186" xmlns="http://www.w3.org/2000/svg" style="display:block;">
         <defs>
           <filter id="laserGlow" x="-20%" y="-50%" width="140%" height="200%">
             <feGaussianBlur stdDeviation="3.2" result="blur"/>
             <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
           </filter>
+          <linearGradient id="prismFront" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="rgba(56,189,248,0.26)"/>
+            <stop offset="100%" stop-color="rgba(14,165,233,0.08)"/>
+          </linearGradient>
         </defs>
 
-        <!-- Nguồn Laser 650nm -->
-        <rect x="14" y="76" width="58" height="36" rx="7" fill="#1E293B" stroke="#94A3B8" stroke-width="1.5"/>
+        <!-- Nguồn Laser 650nm dạng khối 2.5D -->
+        <polygon points="14,76 24,68 82,68 72,76" fill="#475569" stroke="#94A3B8" stroke-width="1"/>
+        <polygon points="72,76 82,68 82,104 72,112" fill="#0F172A" stroke="#64748B" stroke-width="1"/>
+        <rect x="14" y="76" width="58" height="36" rx="6" fill="#1E293B" stroke="#94A3B8" stroke-width="1.5"/>
         <text x="43" y="92" fill="#F8FAFC" font-size="9.5" font-weight="700" text-anchor="middle">LASER</text>
         <text x="43" y="104" fill="#FCA5A5" font-size="8.5" text-anchor="middle">650 nm</text>
 
@@ -472,17 +633,20 @@ def svg_he_quang_hoc(
         <line x1="72" y1="86" x2="155" y2="86" stroke="#FF4D4F" stroke-width="2.4" filter="url(#laserGlow)"/>
         <line x1="72" y1="102" x2="155" y2="102" stroke="#FF4D4F" stroke-width="2.4" filter="url(#laserGlow)"/>
 
-        <!-- Lăng kính rỗng 2 ngăn (Góc đỉnh A) -->
-        <polygon points="155,36 155,152 248,94" fill="rgba(56,189,248,0.14)" stroke="#38BDF8" stroke-width="2"/>
-        <line x1="155" y1="94" x2="248" y2="94" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="3,3"/>
-        <text x="192" y="26" fill="#7DD3FC" font-size="10.5" font-weight="700" text-anchor="middle">Lăng kính 2 ngăn (A = {A_do:.1f}°)</text>
-        <text x="184" y="75" fill="#A7F3D0" font-size="8.5" font-weight="600">Ngăn TC (0‰)</text>
-        <text x="184" y="118" fill="#FECACA" font-size="8.5" font-weight="600">Ngăn Mẫu ({S_ppt:.1f}‰)</text>
+        <!-- Lăng kính rỗng 2 ngăn khối 2.5D (Góc đỉnh A) -->
+        <polygon points="155,36 167,28 260,86 248,94" fill="rgba(125,211,252,0.18)" stroke="#7DD3FC" stroke-width="1.2"/>
+        <polygon points="155,152 248,94 260,86 167,144" fill="rgba(14,165,233,0.12)" stroke="#38BDF8" stroke-width="1"/>
+        <polygon points="155,36 155,152 248,94" fill="url(#prismFront)" stroke="#38BDF8" stroke-width="2"/>
+        <line x1="155" y1="94" x2="248" y2="94" stroke="#CBD5E1" stroke-width="1.5" stroke-dasharray="3,3"/>
+        <text x="196" y="21" fill="#7DD3FC" font-size="10.5" font-weight="700" text-anchor="middle">Lăng kính 2 ngăn (A = {A_do:.1f}°)</text>
+        <text x="180" y="75" fill="#A7F3D0" font-size="8.5" font-weight="600">Ngăn TC (0‰)</text>
+        <text x="180" y="118" fill="#FECACA" font-size="8.5" font-weight="600">Ngăn Mẫu ({S_ppt:.1f}‰)</text>
 
         {tia_lo_svg}
 
-        <!-- Màn hứng / Khung ảnh Camera -->
-        <rect x="442" y="14" width="222" height="158" rx="12" fill="#040B16" stroke="#475569" stroke-width="1.8"/>
+        <!-- Màn hứng / Khung ảnh Camera 2.5D -->
+        <rect x="446" y="19" width="222" height="158" rx="12" fill="#020617" stroke="#334155" stroke-width="1"/>
+        <rect x="442" y="14" width="222" height="158" rx="12" fill="#071122" stroke="#64748B" stroke-width="1.8"/>
         <text x="553" y="31" fill="#CBD5E1" font-size="10" font-weight="700" text-anchor="middle">MÀN HỨNG / ẢNH CAMERA</text>
         <line x1="553" y1="38" x2="553" y2="164" stroke="#334155" stroke-width="1" stroke-dasharray="3,3"/>
 
@@ -499,7 +663,7 @@ def svg_he_quang_hoc(
         <line x1="553" y1="{y_tc_svg:.1f}" x2="553" y2="{y_mau_svg:.1f}" stroke="#FDE047" stroke-width="2.2"/>
         <circle cx="553" cy="{y_tc_svg:.1f}" r="3" fill="#34D399"/>
         <circle cx="553" cy="{y_mau_svg:.1f}" r="3" fill="#FF4D4F"/>
-        <rect x="506" y="{(y_tc_svg + y_mau_svg)/2.0 - 9.0:.1f}" width="94" height="18" rx="5" fill="rgba(15,23,42,0.88)" stroke="#FDE047" stroke-width="1"/>
+        <rect x="506" y="{(y_tc_svg + y_mau_svg)/2.0 - 9.0:.1f}" width="94" height="18" rx="5" fill="rgba(15,23,42,0.9)" stroke="#FDE047" stroke-width="1"/>
         <text x="553" y="{(y_tc_svg + y_mau_svg)/2.0 + 3.5:.1f}" fill="#FDE047" font-size="9.5" font-weight="800" text-anchor="middle">Δy = {delta_y_px:.1f} px</text>
       </svg>
     </div>
@@ -588,16 +752,14 @@ def thanh_tro_ly_thoi_gian_thuc(
         icon_ht = "👋"
         tieu_de_ht = "Bước 1/4: Chọn nguồn ảnh vạch laser để bắt đầu"
         mo_ta_ht = (
-            "Tại <b>Tab 1 (Khung bên trái)</b>, bạn có thể tải ảnh chụp màn hứng, chụp trực tiếp bằng Camera, "
-            "hoặc chọn <b>'Tạo ảnh mô phỏng thử nghiệm'</b> hay nhấn nút <b>⚡ Nạp mẫu thử & Đo ngay</b> bên dưới để trải nghiệm tức thì."
+            "Chọn tải ảnh, chụp Camera, hoặc dùng chế độ <b>Mô phỏng</b> / nhấn <b>⚡ Mẫu thử 16.5 ‰ & Đo ngay</b> bên dưới."
         )
     elif not da_do:
         buoc_ht = 2
         icon_ht = "📸"
         tieu_de_ht = "Bước 2/4: Kiểm tra nhiệt độ mẫu và Tiến hành đo"
         mo_ta_ht = (
-            "Ảnh vạch sáng đã sẵn sàng! Hãy kiểm tra <b>Nhiệt độ mẫu (°C)</b> ở khung bên phải "
-            "rồi nhấn nút <b>🚀 TIẾN HÀNH ĐO ĐỘ MẶN</b> (hoặc bật chế độ <i>Tự động đo thời gian thực</i>)."
+            "Kiểm tra <b>Nhiệt độ mẫu (°C)</b> ở khung bên phải rồi nhấn <b>🚀 TIẾN HÀNH ĐO ĐỘ MẶN</b>."
         )
     elif not da_luu_nhat_ki:
         buoc_ht = 3
@@ -606,25 +768,21 @@ def thanh_tro_ly_thoi_gian_thuc(
             u_str = f" ± {u_do_duoc:.2f}" if u_do_duoc is not None else ""
             tieu_de_ht = f"Bước 3/4: Đã định vị tâm vạch thành công — Độ mặn S = {s_do_duoc:.2f}{u_str} ‰"
             mo_ta_ht = (
-                "Kéo xuống để quan sát <b>Ảnh định vị tâm vạch dưới pixel</b> và <b>Đồ thị mặt cắt Gauss thực tế</b>. "
-                "Sau đó chọn đối tượng nuôi (Tôm, Cá, Lúa, Sầu riêng...) và nhấn <b>💾 Lưu kết quả vào Nhật Kí</b>!"
+                "Quan sát ảnh tâm vạch &amp; mặt cắt Gauss bên dưới, chọn đối tượng nuôi và nhấn <b>💾 Lưu kết quả vào Nhật Kí</b>."
             )
         else:
             icon_ht = "⚠️"
             cb_text = canh_bao_anh[0] if canh_bao_anh else "Ảnh có độ tương phản thấp hoặc cháy sáng."
             tieu_de_ht = "Bước 3/4: Lưu ý chất lượng quang học của ảnh chụp"
             mo_ta_ht = (
-                f"Phát hiện: <b>{e(cb_text)}</b> Hãy thử điều chỉnh phơi sáng hoặc vùng chọn ROI, "
-                "sau đó lưu kết quả vào Nhật Kí."
+                f"Phát hiện: <b>{e(cb_text)}</b> Điều chỉnh phơi sáng hoặc vùng ROI rồi lưu Nhật kí."
             )
     else:
         buoc_ht = 4
         icon_ht = "🎉"
         tieu_de_ht = "Bước 4/4: Hoàn tất quy trình đo và lưu Nhật kí quan trắc!"
         mo_ta_ht = (
-            "Bản ghi đã được lưu vào cơ sở dữ liệu. Tiếp theo bạn có thể chuyển sang "
-            "<b>Tab 2 (Cảnh báo loài)</b>, <b>Tab 3 (Biểu đồ nhật kí)</b>, <b>Tab 4 (Hiệu chuẩn đường chuẩn)</b> "
-            "hoặc <b>Tab 5 & 6 (Mô phỏng Snell & Đối chứng Bland–Altman)</b>."
+            "Bản ghi đã lưu vào SQLite. Có thể xem tiếp ở <b>Tab 2 (Cảnh báo loài)</b>, <b>Tab 3 (Nhật kí)</b> hoặc <b>Tab 4–6</b>."
         )
 
     def cls_step(idx: int) -> str:
@@ -642,16 +800,16 @@ def thanh_tro_ly_thoi_gian_thuc(
     hien(f"""
     <div class="coach-wrap">
       <div class="coach-head">
-        <div class="coach-badge"><span class="coach-pulse"></span> TRỢ LÝ HƯỚNG DẪN THỜI GIAN THỰC (LIVE ONBOARDING)</div>
-        <div style="font-size:.8rem; color:#64748B; font-weight:600;">
-          Tiến độ làm quen hệ thống: <b>{min(buoc_ht, 4)}/4 bước hoàn thành</b>
+        <div class="coach-badge"><span class="coach-pulse"></span> TRỢ LÝ QUY TRÌNH ĐO (4 BƯỚC)</div>
+        <div style="font-size:.78rem; color:#475569; font-weight:700;">
+          Tiến độ: <b>{min(buoc_ht, 4)}/4 bước hoàn thành</b>
         </div>
       </div>
       <div class="coach-steps">
-        <div class="{cls_step(1)}"><div class="c-num">{lbl_num(1)}</div><div>1. Chọn nguồn ảnh</div></div>
-        <div class="{cls_step(2)}"><div class="c-num">{lbl_num(2)}</div><div>2. Cấu hình & Đo</div></div>
+        <div class="{cls_step(1)}"><div class="c-num">{lbl_num(1)}</div><div>1. Nguồn ảnh</div></div>
+        <div class="{cls_step(2)}"><div class="c-num">{lbl_num(2)}</div><div>2. Thông số &amp; Đo</div></div>
         <div class="{cls_step(3)}"><div class="c-num">{lbl_num(3)}</div><div>3. Phân tích Gauss</div></div>
-        <div class="{cls_step(4)}"><div class="c-num">{lbl_num(4)}</div><div>4. Lưu Nhật kí & Đối chiếu</div></div>
+        <div class="{cls_step(4)}"><div class="c-num">{lbl_num(4)}</div><div>4. Lưu Nhật kí</div></div>
       </div>
       <div class="coach-body">
         <div class="coach-icon">{icon_ht}</div>
@@ -663,10 +821,10 @@ def thanh_tro_ly_thoi_gian_thuc(
     </div>
     """)
 
-    # Hàng nút thao tác nhanh ngay dưới thanh trợ lý
-    c_qa1, c_qa2, c_qa3, c_qa4 = st.columns([1.3, 1.3, 1.1, 0.9])
+    # Hàng nút thao tác nhanh 2.5D ngay dưới thanh trợ lý
+    c_qa1, c_qa2, c_qa3, c_qa4 = st.columns([1.3, 1.3, 1.1, 0.9], gap="small")
     with c_qa1:
-        if st.button("⚡ Nạp mẫu thử 16.5 ‰ & Đo ngay", width="stretch", help="Tự động chuyển sang ảnh mô phỏng 16.5 ‰ và thực hiện phép đo mẫu"):
+        if st.button("⚡ Mẫu thử 16.5 ‰ & Đo ngay", width="stretch", help="Tự động chuyển sang ảnh mô phỏng 16.5 ‰ và thực hiện phép đo mẫu"):
             st.session_state["nguon_anh_radio"] = "Tạo ảnh mô phỏng thử nghiệm"
             st.session_state["sim_s_ppt"] = 16.5
             st.session_state["sim_t_c"] = 26.0
@@ -675,19 +833,20 @@ def thanh_tro_ly_thoi_gian_thuc(
             st.session_state["yeu_cau_do_ngay"] = True
             st.rerun()
     with c_qa2:
-        if st.button("📳 Thử nghiệm Chống rung (+12 px)", width="stretch", help="Thử dịch cả 2 vạch đi +12 px do rung camera để kiểm chứng Δy không đổi"):
+        if st.button("📳 Kiểm chứng Chống rung (+12 px)", width="stretch", help="Thử dịch cả 2 vạch đi +12 px do rung camera để kiểm chứng Δy không đổi"):
             st.session_state["nguon_anh_radio"] = "Tạo ảnh mô phỏng thử nghiệm"
             st.session_state["sim_drift"] = 12.0
             st.session_state["yeu_cau_do_ngay"] = True
             st.rerun()
     with c_qa3:
-        if st.button("📖 Mở Hướng dẫn 4 bước", width="stretch"):
+        if st.button("📖 Hướng dẫn tương tác 4 bước", width="stretch"):
             st.session_state["mo_huong_dan"] = True
             st.rerun()
     with c_qa4:
-        if st.button("✖ Ẩn thanh trợ lý", width="stretch"):
+        if st.button("✖ Thu gọn trợ lý", width="stretch"):
             st.session_state["bat_tro_ly_thoi_gian_thuc"] = False
             st.rerun()
+    st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
 
 
 @st.dialog("📖 HƯỚNG DẪN TƯƠNG TÁC & LÀM QUEN HỆ THỐNG", width="large")
