@@ -2528,10 +2528,204 @@ function initLiveTour() {
   window._startLiveTour = startTour;
 }
 
+function initCustomSelects() {
+  const selects = $$("select.select-25d, select.sb-select-25d");
+  if (!selects.length) return;
+
+  let openInstance = null;
+  const instances = [];
+
+  const closeAll = () => {
+    if (!openInstance) return;
+    openInstance.wrap.classList.remove("is-open");
+    openInstance.menu.classList.remove("is-open");
+    openInstance.trigger.setAttribute("aria-expanded", "false");
+    openInstance = null;
+  };
+
+  const positionMenu = (inst) => {
+    const rect = inst.trigger.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom - 12;
+    const spaceAbove = rect.top - 12;
+    const menuWidth = Math.max(rect.width, 180);
+    inst.menu.style.width = `${menuWidth}px`;
+    inst.menu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - menuWidth - 8))}px`;
+
+    const estHeight = Math.min(inst.menu.scrollHeight || 220, 270);
+    if (spaceBelow >= estHeight || spaceBelow >= spaceAbove) {
+      inst.menu.style.top = `${rect.bottom + 6}px`;
+      inst.menu.style.bottom = "auto";
+      inst.menu.style.maxHeight = `${Math.max(120, Math.min(270, spaceBelow))}px`;
+    } else {
+      inst.menu.style.bottom = `${window.innerHeight - rect.top + 6}px`;
+      inst.menu.style.top = "auto";
+      inst.menu.style.maxHeight = `${Math.max(120, Math.min(270, spaceAbove))}px`;
+    }
+  };
+
+  const syncSelect = (inst) => {
+    const { select, labelEl, menu } = inst;
+    const options = Array.from(select.options || []);
+    const selectedOpt = options[select.selectedIndex] || options[0];
+    labelEl.textContent = selectedOpt ? selectedOpt.textContent : "";
+
+    menu.innerHTML = "";
+    options.forEach((opt) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "cselect-option";
+      btn.setAttribute("role", "option");
+      const isSelected = opt.value === select.value;
+      if (isSelected) btn.classList.add("is-selected");
+      btn.setAttribute("aria-selected", isSelected ? "true" : "false");
+      if (opt.disabled) btn.disabled = true;
+
+      const textSpan = document.createElement("span");
+      textSpan.textContent = opt.textContent;
+      const checkSpan = document.createElement("span");
+      checkSpan.className = "cselect-option-check";
+      checkSpan.textContent = "✓";
+
+      btn.appendChild(textSpan);
+      btn.appendChild(checkSpan);
+
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        if (opt.disabled) return;
+        const changed = select.value !== opt.value;
+        select.value = opt.value;
+        syncSelect(inst);
+        closeAll();
+        inst.trigger.focus();
+        if (changed) {
+          select.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      });
+
+      menu.appendChild(btn);
+    });
+  };
+
+  // Dong bo tu dong khi code JS gan select.value = "..."
+  const nativeDesc = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value");
+  if (nativeDesc && !HTMLSelectElement.prototype.__cselectPatched) {
+    Object.defineProperty(HTMLSelectElement.prototype, "value", {
+      configurable: true,
+      get() {
+        return nativeDesc.get.call(this);
+      },
+      set(val) {
+        nativeDesc.set.call(this, val);
+        if (this.__cselectSync) this.__cselectSync();
+      },
+    });
+    HTMLSelectElement.prototype.__cselectPatched = true;
+  }
+
+  selects.forEach((select) => {
+    if (select.dataset.cselectInit === "1") return;
+    select.dataset.cselectInit = "1";
+
+    const isSidebar = select.classList.contains("sb-select-25d");
+    const wrap = document.createElement("div");
+    wrap.className = `cselect-25d${isSidebar ? " is-sidebar" : ""}`;
+    select.parentNode.insertBefore(wrap, select);
+    wrap.appendChild(select);
+    select.classList.add("cselect-native");
+    select.tabIndex = -1;
+
+    const trigger = document.createElement("button");
+    trigger.type = "button";
+    trigger.className = "cselect-trigger";
+    trigger.setAttribute("aria-haspopup", "listbox");
+    trigger.setAttribute("aria-expanded", "false");
+    if (select.title) trigger.title = select.title;
+
+    const labelEl = document.createElement("span");
+    labelEl.className = "cselect-label";
+
+    const chevron = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    chevron.setAttribute("class", "cselect-chevron");
+    chevron.setAttribute("viewBox", "0 0 20 20");
+    chevron.setAttribute("fill", "none");
+    chevron.innerHTML = '<path d="M5.5 7.75L10 12.25L14.5 7.75" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>';
+
+    trigger.appendChild(labelEl);
+    trigger.appendChild(chevron);
+    wrap.appendChild(trigger);
+
+    const menu = document.createElement("div");
+    menu.className = `cselect-menu${isSidebar ? " is-sidebar" : ""}`;
+    menu.setAttribute("role", "listbox");
+    document.body.appendChild(menu);
+
+    const inst = { select, wrap, trigger, labelEl, menu };
+    select.__cselectSync = () => syncSelect(inst);
+    instances.push(inst);
+
+    trigger.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const willOpen = openInstance !== inst;
+      closeAll();
+      if (willOpen) {
+        syncSelect(inst);
+        wrap.classList.add("is-open");
+        menu.classList.add("is-open");
+        trigger.setAttribute("aria-expanded", "true");
+        positionMenu(inst);
+        openInstance = inst;
+        const activeBtn = menu.querySelector(".cselect-option.is-selected");
+        if (activeBtn) activeBtn.scrollIntoView({ block: "nearest" });
+      }
+    });
+
+    trigger.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape") {
+        closeAll();
+      } else if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+        ev.preventDefault();
+        const opts = Array.from(select.options || []).filter((o) => !o.disabled);
+        if (!opts.length) return;
+        const curIdx = opts.findIndex((o) => o.value === select.value);
+        const nextIdx =
+          ev.key === "ArrowDown"
+            ? (curIdx + 1) % opts.length
+            : (curIdx - 1 + opts.length) % opts.length;
+        select.value = opts[nextIdx].value;
+        syncSelect(inst);
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    });
+
+    select.addEventListener("change", () => syncSelect(inst));
+
+    const obs = new MutationObserver(() => syncSelect(inst));
+    obs.observe(select, { childList: true, subtree: true, characterData: true, attributes: true });
+
+    syncSelect(inst);
+  });
+
+  document.addEventListener("click", (ev) => {
+    if (!openInstance) return;
+    if (!openInstance.wrap.contains(ev.target) && !openInstance.menu.contains(ev.target)) {
+      closeAll();
+    }
+  });
+  window.addEventListener("resize", () => {
+    if (openInstance) positionMenu(openInstance);
+  });
+  window.addEventListener("scroll", (ev) => {
+    if (openInstance && ev.target !== openInstance.menu) {
+      closeAll();
+    }
+  }, true);
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("/sw.js").catch(() => {});
   }
+  initCustomSelects();
   bindEvents();
   updateNetworkPill();
   updateOfflineQueueBadge();

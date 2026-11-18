@@ -1,0 +1,20 @@
+# Phu thuoc loi tinh toan & xu li anh
+# Ghim numpy==1.26.4 de tranh loi Windows Application Control chan DLL cua numpy 2.x
+numpy==1.26.4
+scipy==1.17.1
+pandas==2.2.3
+matplotlib==3.11.2
+opencv-python-headless==5.0.0.93
+PyYAML==6.0.3
+
+# Giao dien Web 2.5D / PWA (Starlette + Uvicorn)
+starlette==1.10.0
+uvicorn==0.54.0
+python-multipart==0.0.33
+
+# Giao dien Streamlit (tuy chon)
+streamlit==1.67.0
+
+# Kiem thu tu dong
+pytest==9.2.0
+

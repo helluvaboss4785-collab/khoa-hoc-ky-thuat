@@ -8,6 +8,12 @@ from __future__ import annotations
 
 import html
 import math
+import sys
+from pathlib import Path
+
+_THU_MUC_GOC = Path(__file__).resolve().parents[1]
+if str(_THU_MUC_GOC) not in sys.path:
+    sys.path.insert(0, str(_THU_MUC_GOC))
 
 import streamlit as st
 
