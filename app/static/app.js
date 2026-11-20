@@ -28,6 +28,8 @@ const STATE = {
   baLast: null,
   logLast: null,
   speciesLast: null,
+  scalePoints: [],
+  pickingScale: false,
   debounces: {},
   aborts: {},
   measureSeq: 0,
@@ -713,10 +715,19 @@ function getTab1Payload() {
     nhiet_do_do: nhietDoDo,
     nhiet_do_tham_chieu: rawTRef !== "" ? Number(rawTRef) : null,
     khong_do_nhiet_do: noTemp,
+    khoa_ae_af: Boolean($("#meas-ae-af-lock")?.checked),
     phuong_phap: $("#meas-method").value,
     dung_roi_thu_cong: dungRoi,
     ma_loai: $("#t1-species-select").value,
   };
+  const p1Raw = ($("#scale-p1")?.value || "").split(",").map((v) => v.trim()).filter(Boolean).map(Number);
+  const p2Raw = ($("#scale-p2")?.value || "").split(",").map((v) => v.trim()).filter(Boolean).map(Number);
+  const scaleMm = Number($("#scale-mm")?.value || 0);
+  if (p1Raw.length === 2 && p2Raw.length === 2 && p1Raw.every(Number.isFinite) && p2Raw.every(Number.isFinite) && scaleMm > 0) {
+    payload.diem_thang_1 = p1Raw;
+    payload.diem_thang_2 = p2Raw;
+    payload.khoang_cach_thang_mm = scaleMm;
+  }
   if (STATE.imgMode === "sim") {
     payload.S_ppt = Number($("#sim-s").value);
     payload.T_C = Number($("#sim-t").value);
@@ -843,9 +854,33 @@ function renderMeasureResults(d) {
 
   $("#kpi-dy-val").textContent = fmt(d.delta_y_px, 2);
   $("#kpi-dy-err").textContent = `± ${fmt(d.sai_so_delta_y_px, 3)} px`;
-  $("#kpi-dy-sub").textContent = mp
+  const mmText = d.delta_y_mm !== null && d.delta_y_mm !== undefined
+    ? ` | Δy = ${fmt(d.delta_y_mm, 3)} ± ${fmt(d.sai_so_delta_y_mm || 0, 3)} mm`
+    : "";
+  $("#kpi-dy-sub").textContent = (mp
     ? `Snell lí thuyết: ${fmt(mp.delta_y_snell, 2)} px | Rung: ${mp.drift_px >= 0 ? "+" : ""}${fmt(mp.drift_px, 1)} px`
-    : `R² Gauss: ${fmt(d.vach_mau.r2_trung_binh, 3)} (${d.vach_mau.so_cot_hop_le} cột)`;
+    : `R² Gauss: ${fmt(d.vach_mau.r2_trung_binh, 3)} (${d.vach_mau.so_cot_hop_le} cột)`) + mmText;
+  const readoutEl = $("#scale-readout");
+  if (readoutEl && !STATE.pickingScale) {
+    const parts = [];
+    if (d.thang_anh?.px_per_mm) {
+      parts.push(`Thang: ${fmt(d.thang_anh.px_per_mm, 2)} px/mm`);
+    }
+    if (d.delta_y_mm !== null && d.delta_y_mm !== undefined) {
+      parts.push(`Δy = ${fmt(d.delta_y_mm, 3)} ± ${fmt(d.sai_so_delta_y_mm || 0, 3)} mm`);
+    }
+    if (d.exif && (d.exif.exposure_str || d.exif.iso)) {
+      const exParts = [];
+      if (d.exif.exposure_str) exParts.push(`t = ${d.exif.exposure_str}`);
+      if (d.exif.iso) exParts.push(`ISO ${d.exif.iso}`);
+      parts.push(`EXIF: ${exParts.join(", ")}`);
+    }
+    if (parts.length) {
+      readoutEl.textContent = parts.join(" • ");
+    } else if (STATE.scalePoints.length === 0) {
+      readoutEl.textContent = "Chưa chọn thang px/mm (nhấn \"Chọn 2 điểm trên ảnh\" rồi click 2 điểm trên thước chuẩn).";
+    }
+  }
 
   const duc = Number(d.chi_so_do_duc_tuong_doi || 0);
   const mucDuc = duc < 0.2 ? "Trong suốt" : duc < 0.55 ? "Hơi đục (lơ lửng)" : "Rất đục (tán xạ mạnh)";
@@ -998,6 +1033,11 @@ async function saveMeasurementToLog() {
     chat_luong_hop_le: d.chat_luong.hop_le,
     nguon_du_lieu: nguon,
     ghi_chu: $("#meas-note").value || "",
+    px_per_mm: d.thang_anh?.px_per_mm ?? null,
+    delta_y_mm: d.delta_y_mm !== null && d.delta_y_mm !== undefined ? Number(d.delta_y_mm.toFixed(4)) : null,
+    khoa_ae_af: Boolean(d.khoa_ae_af),
+    exif_exposure: d.exif?.exposure_str || "",
+    exif_iso: d.exif?.iso ?? null,
   };
 
   if (!navigator.onLine) {
@@ -1456,6 +1496,7 @@ async function runCalibrate(activate = false) {
       csv_text: STATE.calibCsvText,
       file_name: STATE.calibFileName,
       bac_ep: bacEp,
+      don_vi_y: $("#t4-don-vi-y")?.value || "px",
       activate,
     });
     STATE.calibLast = data;
@@ -2086,12 +2127,56 @@ function bindEvents() {
     $("#val-sim-drift").textContent = `${d >= 0 ? "+" : ""}${d.toFixed(1)} px`;
     if ($("#meas-live").checked) debounce("t1", runMeasure, 80);
   });
-  ["sim-saturate", "sim-layout", "meas-temp", "meas-temp-ref", "meas-no-temp", "meas-method", "roi-manual-enable"].forEach((id) => {
+  ["sim-saturate", "sim-layout", "meas-temp", "meas-temp-ref", "meas-no-temp", "meas-ae-af-lock", "meas-method", "roi-manual-enable"].forEach((id) => {
     const el = $(`#${id}`);
     if (el) {
       el.addEventListener("change", () => {
         if ($("#meas-live").checked) runMeasure({ silent: true });
       });
+    }
+  });
+  $("#btn-pick-scale")?.addEventListener("click", () => {
+    STATE.scalePoints = [];
+    STATE.pickingScale = true;
+    const img = $("#t1-annotated-img");
+    if (img) img.style.cursor = "crosshair";
+    const out = $("#scale-readout");
+    if (out) out.textContent = "Đang chọn điểm 1/2: hãy click vào vạch mốc đầu tiên trên ảnh.";
+  });
+  $("#btn-clear-scale")?.addEventListener("click", () => {
+    STATE.scalePoints = [];
+    STATE.pickingScale = false;
+    if ($("#scale-p1")) $("#scale-p1").value = "";
+    if ($("#scale-p2")) $("#scale-p2").value = "";
+    const img = $("#t1-annotated-img");
+    if (img) img.style.cursor = "";
+    const out = $("#scale-readout");
+    if (out) out.textContent = "Đã xóa thang px/mm.";
+    if ($("#meas-live").checked) runMeasure({ silent: true });
+  });
+  $("#t1-annotated-img")?.addEventListener("click", (ev) => {
+    if (!STATE.pickingScale) return;
+    const img = ev.currentTarget;
+    const rect = img.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const sx = (img.naturalWidth || rect.width) / rect.width;
+    const sy = (img.naturalHeight || rect.height) / rect.height;
+    const pt = [Math.round((ev.clientX - rect.left) * sx * 10) / 10, Math.round((ev.clientY - rect.top) * sy * 10) / 10];
+    STATE.scalePoints.push(pt);
+    if (STATE.scalePoints.length === 1) {
+      if ($("#scale-p1")) $("#scale-p1").value = `${pt[0]},${pt[1]}`;
+      const out = $("#scale-readout");
+      if (out) out.textContent = `Đã chọn điểm 1 (${pt[0]}, ${pt[1]}). Click điểm 2/2 trên ảnh.`;
+    } else if (STATE.scalePoints.length >= 2) {
+      const p1 = STATE.scalePoints[0];
+      const p2 = STATE.scalePoints[1];
+      if ($("#scale-p1")) $("#scale-p1").value = `${p1[0]},${p1[1]}`;
+      if ($("#scale-p2")) $("#scale-p2").value = `${p2[0]},${p2[1]}`;
+      STATE.pickingScale = false;
+      img.style.cursor = "";
+      const out = $("#scale-readout");
+      if (out) out.textContent = `Đã chọn 2 điểm (${p1[0]},${p1[1]}) → (${p2[0]},${p2[1]}). Đang tính thang...`;
+      runMeasure({ silent: true });
     }
   });
   $("#meas-temp").addEventListener("input", () => {

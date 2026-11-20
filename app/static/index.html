@@ -256,6 +256,26 @@
                 <input type="checkbox" id="meas-no-temp" />
                 <span>Không đo nhiệt độ (cảnh báo đỏ, không phân loại loài)</span>
               </label>
+              <label class="checkbox-row">
+                <input type="checkbox" id="meas-ae-af-lock" />
+                <span>Đã khóa phơi sáng và lấy nét (AE/AF lock)</span>
+              </label>
+              <details id="t1-scale-details" class="accordion-25d" style="margin-top:8px;">
+                <summary>📏 Thang chuẩn theo ảnh (px/mm — tùy chọn)</summary>
+                <div class="accordion-body">
+                  <div class="control-group">
+                    <div class="control-label"><span>Khoảng cách 2 vạch chuẩn (mm)</span></div>
+                    <input type="number" id="scale-mm" class="input-25d" min="0.1" step="0.5" value="10" placeholder="Ví dụ: 10 mm" />
+                  </div>
+                  <div class="control-row-2" style="margin-top:6px;">
+                    <button type="button" id="btn-pick-scale" class="btn-25d btn-ghost-25d">📍 Chọn 2 điểm trên ảnh</button>
+                    <button type="button" id="btn-clear-scale" class="btn-25d btn-ghost-25d">✕ Xóa thang</button>
+                  </div>
+                  <input type="hidden" id="scale-p1" value="" />
+                  <input type="hidden" id="scale-p2" value="" />
+                  <div id="scale-readout" class="caption-note" style="margin-top:6px;">Chưa chọn thang px/mm (nhấn "Chọn 2 điểm trên ảnh" rồi click 2 điểm trên thước chuẩn).</div>
+                </div>
+              </details>
               <div class="control-group">
                 <div class="control-label"><span>Tên ao / vị trí đo</span></div>
                 <input type="text" id="meas-location" class="input-25d" value="Ao nuôi tôm số 1" list="location-suggestions" autocomplete="off" />
@@ -704,6 +724,13 @@
                   <option value="auto">Tự động chọn (Kiểm định chéo 5-fold chống quá khớp)</option>
                   <option value="1">Ép Bậc 1 (Tuyến tính: c₀ + c_S·S + c_T·ΔT)</option>
                   <option value="2">Ép Bậc 2 (Đa thức bậc 2 đầy đủ)</option>
+                </select>
+              </div>
+              <div class="control-group">
+                <div class="control-label"><span>Đơn vị trục tung y của đường chuẩn</span></div>
+                <select id="t4-don-vi-y" class="select-25d">
+                  <option value="px">Pixel (px — chỉ đúng cho 1 vị trí/camera)</option>
+                  <option value="mm">Milimét (mm — dùng cột px_per_mm)</option>
                 </select>
               </div>
               <div class="control-row-2" style="margin-top:10px;">

@@ -41,6 +41,7 @@ if str(THU_MUC_GOC) not in sys.path:
 
 from core import calibration as cal
 from core import optics as op
+from core import thang
 from core import thresholds as th
 from core.measure import KetQuaDoDeltaY, chuyen_anh_xam, do_delta_y_tu_anh
 from sim.synth import (
@@ -257,7 +258,8 @@ def _format_equation(mh: cal.MoHinhHieuChuan) -> str:
     ghi_chu = [f"ΔT = T − {mh.T_ref:g} °C"]
     if getattr(mh, "co_bu_chenh_T", False):
         ghi_chu.append("D = T_mẫu − T_tc")
-    return f"Δy (px) = {' + '.join(terms)}   [{'; '.join(ghi_chu)}]"
+    dv = getattr(mh, "don_vi_y", "px")
+    return f"Δy ({dv}) = {' + '.join(terms)}   [{'; '.join(ghi_chu)}]"
 
 
 def _serialize_model(mh: cal.MoHinhHieuChuan) -> dict[str, Any]:
@@ -300,6 +302,15 @@ def khoi_tao_db(force: bool = False) -> None:
         cols = {row[1] for row in conn.execute("PRAGMA table_info(nhat_ki)").fetchall()}
         if "ho_so" not in cols:
             conn.execute("ALTER TABLE nhat_ki ADD COLUMN ho_so TEXT DEFAULT 'mac_dinh'")
+        for col_name, col_def in (
+            ("px_per_mm", "REAL"),
+            ("delta_y_mm", "REAL"),
+            ("khoa_ae_af", "INTEGER DEFAULT 0"),
+            ("exif_exposure", "TEXT DEFAULT ''"),
+            ("exif_iso", "INTEGER"),
+        ):
+            if col_name not in cols:
+                conn.execute(f"ALTER TABLE nhat_ki ADD COLUMN {col_name} {col_def}")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_nhat_ki_ho_so ON nhat_ki(ho_so)")
     _DB_INIT_PATH = DB_PATH
 
@@ -335,6 +346,11 @@ def luu_nhat_ki(
     ghi_chu: str,
     thoi_gian_tuy_chinh: str | None = None,
     ho_so: str = "mac_dinh",
+    px_per_mm: float | None = None,
+    delta_y_mm: float | None = None,
+    khoa_ae_af: bool = False,
+    exif_exposure: str = "",
+    exif_iso: int | None = None,
 ) -> int:
     khoi_tao_db()
     tg = thoi_gian_tuy_chinh or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -345,8 +361,9 @@ def luu_nhat_ki(
             INSERT INTO nhat_ki (
                 thoi_gian, vi_tri, loai_nuoi, delta_y_px, do_man_ppt,
                 bat_dinh_U_ppt, nhiet_do_C, do_duc, chat_luong_hop_le,
-                nguon_du_lieu, ghi_chu, ho_so
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                nguon_du_lieu, ghi_chu, ho_so,
+                px_per_mm, delta_y_mm, khoa_ae_af, exif_exposure, exif_iso
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 tg,
@@ -361,6 +378,11 @@ def luu_nhat_ki(
                 nguon_du_lieu,
                 ghi_chu,
                 hs,
+                px_per_mm,
+                delta_y_mm,
+                1 if khoa_ae_af else 0,
+                exif_exposure or "",
+                exif_iso,
             ),
         )
         return int(cur.lastrowid or 0)
@@ -548,7 +570,7 @@ def _evaluate_species_detail(S_ppt: float, loai: th.ThongTinLoai) -> dict[str, A
     }
 
 
-def _decode_base64_image(b64_str: str) -> np.ndarray:
+def _decode_base64_image_bytes(b64_str: str) -> tuple[np.ndarray, bytes]:
     if "," in b64_str:
         b64_str = b64_str.split(",", 1)[1]
     raw = base64.b64decode(b64_str)
@@ -556,6 +578,11 @@ def _decode_base64_image(b64_str: str) -> np.ndarray:
     img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     if img is None:
         raise ValueError("Không giải mã được định dạng ảnh tải lên.")
+    return img, raw
+
+
+def _decode_base64_image(b64_str: str) -> np.ndarray:
+    img, _ = _decode_base64_image_bytes(b64_str)
     return img
 
 
@@ -736,6 +763,7 @@ async def api_measure(request: Request) -> JSONResponse:
             if not math.isfinite(nhiet_do_tham_chieu):
                 return _json_err("Nhiệt độ ngăn tham chiếu không hợp lệ.", 400)
 
+        exif_info: dict[str, Any] = {}
         if mode == "sim":
             s_mp = float(body.get("S_ppt", 16.5))
             t_mp = float(body.get("T_C", nhiet_do_do))
@@ -769,9 +797,47 @@ async def api_measure(request: Request) -> JSONResponse:
             image_b64 = body.get("image_base64")
             if not image_b64 or not isinstance(image_b64, str):
                 return _json_err("Chưa cung cấp ảnh (image_base64) để đo.")
-            anh_input = _decode_base64_image(image_b64)
+            anh_input, raw_img_bytes = _decode_base64_image_bytes(image_b64)
+            exif_info = thang.doc_exif_phoi_sang(raw_img_bytes)
         else:
             return _json_err(f"Chế độ đo '{mode}' không được hỗ trợ.")
+
+        khoa_ae_af = bool(body.get("khoa_ae_af", False))
+        thang_anh_dict: dict[str, Any] | None = None
+        px_per_mm_val: float | None = None
+        u_px_per_mm_val = 0.0
+
+        d1 = body.get("diem_thang_1")
+        d2 = body.get("diem_thang_2")
+        kc_mm = body.get("khoang_cach_thang_mm")
+        if (
+            isinstance(d1, (list, tuple)) and len(d1) == 2
+            and isinstance(d2, (list, tuple)) and len(d2) == 2
+            and kc_mm is not None and kc_mm != ""
+        ):
+            kq_thang = thang.tinh_thang_tu_hai_diem(
+                (float(d1[0]), float(d1[1])),
+                (float(d2[0]), float(d2[1])),
+                float(kc_mm),
+            )
+            px_per_mm_val = kq_thang.px_per_mm
+            u_px_per_mm_val = kq_thang.u_px_per_mm
+            thang_anh_dict = {
+                "khoang_cach_px": kq_thang.khoang_cach_px,
+                "khoang_cach_mm": kq_thang.khoang_cach_mm,
+                "px_per_mm": kq_thang.px_per_mm,
+                "u_px_per_mm": kq_thang.u_px_per_mm,
+                "mm_per_px": kq_thang.mm_per_px,
+            }
+        elif body.get("px_per_mm") not in (None, ""):
+            px_per_mm_val = float(body["px_per_mm"])
+            if not math.isfinite(px_per_mm_val) or px_per_mm_val <= 0:
+                return _json_err("Giá trị thang px_per_mm phải lớn hơn 0.", 400)
+            thang_anh_dict = {
+                "px_per_mm": px_per_mm_val,
+                "u_px_per_mm": 0.0,
+                "mm_per_px": 1.0 / px_per_mm_val,
+            }
 
         phuong_phap = "centroid" if body.get("phuong_phap") == "centroid" else "gauss"
         dung_roi_thu_cong = bool(body.get("dung_roi_thu_cong", False))
@@ -812,6 +878,8 @@ async def api_measure(request: Request) -> JSONResponse:
                     T_tham_chieu_C=nhiet_do_tham_chieu,
                     sigma_T_tham_chieu_C=cfg_cal.sai_so_nhiet_ke_C if nhiet_do_tham_chieu is not None else 0.0,
                     nguong_lech_T_hai_ngan_C=cfg_cal.nguong_lech_T_hai_ngan_C,
+                    px_per_mm=px_per_mm_val,
+                    u_px_per_mm=u_px_per_mm_val,
                 )
                 canh_bao_man = list(kq_man.canh_bao)
                 if khong_do_nhiet_do:
@@ -844,6 +912,21 @@ async def api_measure(request: Request) -> JSONResponse:
             danh_gia_loai = _evaluate_species_detail(kq_man_dict["S_ppt"], ds_loai[ma_loai])
 
         cq = kq_do.chat_luong
+        canh_bao_anh = list(cq.canh_bao)
+        if mode != "sim" and not khoa_ae_af:
+            canh_bao_anh.append(
+                "Chưa khóa phơi sáng và lấy nét (AE/AF lock): độ sáng/độ nét vạch có thể thay đổi giữa các lần chụp."
+            )
+        delta_y_mm_val = None
+        sai_so_delta_y_mm_val = None
+        if px_per_mm_val is not None and math.isfinite(kq_do.delta_y_px):
+            delta_y_mm_val, sai_so_delta_y_mm_val = thang.quy_doi_delta_y_sang_mm(
+                kq_do.delta_y_px,
+                px_per_mm_val,
+                kq_do.sai_so_delta_y_px if math.isfinite(kq_do.sai_so_delta_y_px) else 0.0,
+                u_px_per_mm_val,
+            )
+
         anh_b64 = _encode_preview_b64(kq_do.anh_danh_dau if kq_do.anh_danh_dau is not None else anh_input)
         h_img, w_img = anh_input.shape[:2]
 
@@ -852,6 +935,11 @@ async def api_measure(request: Request) -> JSONResponse:
             "khong_do_nhiet_do": khong_do_nhiet_do,
             "nhiet_do_do": None if khong_do_nhiet_do else nhiet_do_do,
             "nhiet_do_tham_chieu": nhiet_do_tham_chieu,
+            "khoa_ae_af": khoa_ae_af,
+            "exif": exif_info,
+            "thang_anh": thang_anh_dict,
+            "delta_y_mm": delta_y_mm_val,
+            "sai_so_delta_y_mm": sai_so_delta_y_mm_val,
             "anh_width": w_img,
             "anh_height": h_img,
             "delta_y_px": kq_do.delta_y_px,
@@ -867,7 +955,7 @@ async def api_measure(request: Request) -> JSONResponse:
                 "nhoe": cq.nhoe,
                 "fwhm_mau": cq.fwhm_mau,
                 "fwhm_tc": cq.fwhm_tc,
-                "canh_bao": cq.canh_bao,
+                "canh_bao": canh_bao_anh,
             },
             "vach_tham_chieu": _serialize_line_fit(kq_do.vach_tham_chieu),
             "vach_mau": _serialize_line_fit(kq_do.vach_mau),
@@ -993,6 +1081,11 @@ async def api_logs_add(request: Request) -> JSONResponse:
             ghi_chu=str(body.get("ghi_chu", "")),
             thoi_gian_tuy_chinh=str(body["thoi_gian"]) if body.get("thoi_gian") else None,
             ho_so=ho_so,
+            px_per_mm=float(body["px_per_mm"]) if body.get("px_per_mm") not in (None, "") else None,
+            delta_y_mm=float(body["delta_y_mm"]) if body.get("delta_y_mm") not in (None, "") else None,
+            khoa_ae_af=bool(body.get("khoa_ae_af", False)),
+            exif_exposure=str(body.get("exif_exposure") or ""),
+            exif_iso=int(body["exif_iso"]) if body.get("exif_iso") not in (None, "") else None,
         )
         return _json_ok({"ok": True, "id": row_id, "ho_so": ho_so})
     except Exception as exc:
@@ -1044,6 +1137,7 @@ async def api_calibrate(request: Request) -> JSONResponse:
         mode = str(body.get("mode", "sim"))
         bac_ep_raw = body.get("bac_ep")
         bac_ep = int(bac_ep_raw) if bac_ep_raw in (1, 2, "1", "2") else None
+        don_vi_y = "mm" if str(body.get("don_vi_y", "px")) == "mm" else "px"
         activate = bool(body.get("activate", False))
         ho_so = _req_ho_so(request, body)
         cfg = load_config()
@@ -1060,7 +1154,7 @@ async def api_calibrate(request: Request) -> JSONResponse:
         else:
             return _json_err(f"Chế độ hiệu chuẩn '{mode}' không hợp lệ.")
 
-        bc = cal.dung_duong_chuan(df_cal, load_calib_config(), bac_ep=bac_ep)
+        bc = cal.dung_duong_chuan(df_cal, load_calib_config(), bac_ep=bac_ep, don_vi_y=don_vi_y)
         mh_new = bc.mo_hinh
         saved_file = None
         if activate:
@@ -1084,24 +1178,26 @@ async def api_calibrate(request: Request) -> JSONResponse:
 
         mh_tr = bc.mo_hinh_train
         t_tc_tr = cal._lay_nhiet_do_tc(bc.df_train)
+        y_tr_vals = cal._lay_y_theo_don_vi(bc.df_train, don_vi_y)
         train_pts = [
             {
                 "S": float(r[cal.COT_DO_MAN]),
                 "T": float(r[cal.COT_NHIET_DO]),
-                "delta_y": float(r[cal.COT_DELTA_Y]),
-                "res": float(r[cal.COT_DELTA_Y]) - float(
+                "delta_y": float(y_tr_vals[idx]),
+                "res": float(y_tr_vals[idx]) - float(
                     mh_tr.du_doan_delta_y(float(r[cal.COT_DO_MAN]), float(r[cal.COT_NHIET_DO]), T_tc=float(t_tc_tr[idx]))[0]
                 ),
             }
             for idx, (_, r) in enumerate(bc.df_train.iterrows())
         ]
         t_tc_te = cal._lay_nhiet_do_tc(bc.df_test)
+        y_te_vals = cal._lay_y_theo_don_vi(bc.df_test, don_vi_y) if len(bc.df_test) else np.array([], dtype=float)
         test_pts = [
             {
                 "S": float(r[cal.COT_DO_MAN]),
                 "T": float(r[cal.COT_NHIET_DO]),
-                "delta_y": float(r[cal.COT_DELTA_Y]),
-                "res": float(r[cal.COT_DELTA_Y]) - float(
+                "delta_y": float(y_te_vals[idx]),
+                "res": float(y_te_vals[idx]) - float(
                     mh_tr.du_doan_delta_y(float(r[cal.COT_DO_MAN]), float(r[cal.COT_NHIET_DO]), T_tc=float(t_tc_te[idx]))[0]
                 ),
             }

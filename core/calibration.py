@@ -49,11 +49,13 @@ COT_DO_MAN = "do_man_chuan_ppt"        # độ mặn chuẩn của dung dịch (
 COT_NHIET_DO = "nhiet_do_C"            # nhiệt độ mẫu khi đo (°C)
 COT_NHIET_DO_TC = "nhiet_do_tham_chieu_C"  # nhiệt độ ngăn tham chiếu (°C, tùy chọn)
 COT_DELTA_Y = "delta_y_px"             # Δy đo được (pixel)
+COT_PX_PER_MM = "px_per_mm"            # thang pixel/mm của ảnh (tùy chọn)
 COT_DO_DUC = "do_duc_tuong_doi"        # chỉ số độ đục tương đối (0–1)
 COT_GHI_CHU = "ghi_chu"
 COT_ID_THIET_BI = "id_thiet_bi"
 COT_ID_DIEN_THOAI = "id_dien_thoai"
 COT_NGUON = "nguon_du_lieu"            # (tùy chọn) "THUC_TE" hoặc "MO_PHONG"
+COT_KHOA_AE_AF = "khoa_ae_af"          # (tùy chọn) 1/0: đã khóa phơi sáng/lấy nét
 
 COT_BAT_BUOC = [
     COT_DO_MAN, COT_NHIET_DO, COT_DELTA_Y, COT_DO_DUC,
@@ -66,6 +68,8 @@ BI_DANH_COT = {
     "nhiet_do": COT_NHIET_DO, "T_C": COT_NHIET_DO,
     "T_tc": COT_NHIET_DO_TC, "nhiet_do_tc": COT_NHIET_DO_TC, "T_tham_chieu_C": COT_NHIET_DO_TC,
     "delta_y": COT_DELTA_Y, "dy_px": COT_DELTA_Y,
+    "px_mm": COT_PX_PER_MM, "scale_px_per_mm": COT_PX_PER_MM,
+    "ae_af_lock": COT_KHOA_AE_AF,
     "do_duc": COT_DO_DUC,
     "id_dt": COT_ID_DIEN_THOAI, "id_phone": COT_ID_DIEN_THOAI,
 }
@@ -146,6 +150,10 @@ def doc_csv_hieu_chuan(nguon: str | Path | IO[Any]) -> pd.DataFrame:
 
     for c in (COT_DO_MAN, COT_NHIET_DO, COT_DELTA_Y, COT_DO_DUC):
         df[c] = pd.to_numeric(df[c], errors="coerce")
+    if COT_PX_PER_MM in df.columns:
+        df[COT_PX_PER_MM] = pd.to_numeric(df[COT_PX_PER_MM], errors="coerce")
+    if COT_KHOA_AE_AF in df.columns:
+        df[COT_KHOA_AE_AF] = df[COT_KHOA_AE_AF].fillna(0)
     for c in (COT_GHI_CHU, COT_ID_THIET_BI, COT_ID_DIEN_THOAI):
         df[c] = df[c].fillna("").astype(str)
     if COT_NGUON not in df.columns:
@@ -350,6 +358,7 @@ class MoHinhHieuChuan:
     D_min: float = 0.0
     D_max: float = 0.0
     gia_dinh_can_bang_nhiet: bool = True
+    don_vi_y: str = "px"
     id_thiet_bi: list[str] = field(default_factory=list)
     id_dien_thoai: list[str] = field(default_factory=list)
     ngay_tao: str = ""
@@ -487,8 +496,23 @@ def _xac_dinh_co_bu_nhiet(T: np.ndarray, T_tc: np.ndarray) -> tuple[bool, bool, 
     return co_T, co_TT, co_D
 
 
-def tao_mo_hinh(df: pd.DataFrame, bac: int) -> MoHinhHieuChuan:
-    """Khớp đường chuẩn bậc `bac` trên toàn bộ DataFrame.
+def _lay_y_theo_don_vi(df: pd.DataFrame, don_vi_y: str) -> np.ndarray:
+    """Trích xuất trục tung Δy theo đơn vị 'px' hoặc 'mm' (chia cho cột px_per_mm)."""
+    y_px = df[COT_DELTA_Y].to_numpy(float)
+    if don_vi_y == "mm":
+        if COT_PX_PER_MM not in df.columns:
+            raise ValueError("Dựng đường chuẩn theo mm yêu cầu cột 'px_per_mm' trong dữ liệu.")
+        scale = pd.to_numeric(df[COT_PX_PER_MM], errors="coerce").to_numpy(float)
+        if np.any(~np.isfinite(scale)) or np.any(scale <= 0.0):
+            raise ValueError("Tất cả các dòng phải có px_per_mm > 0 hợp lệ để dựng đường chuẩn theo mm.")
+        return y_px / scale
+    if don_vi_y != "px":
+        raise ValueError(f"don_vi_y '{don_vi_y}' không hợp lệ (chỉ hỗ trợ 'px' hoặc 'mm').")
+    return y_px
+
+
+def tao_mo_hinh(df: pd.DataFrame, bac: int, don_vi_y: str = "px") -> MoHinhHieuChuan:
+    """Khớp đường chuẩn bậc `bac` trên toàn bộ DataFrame theo đơn vị `don_vi_y` ('px' | 'mm').
 
     - Bù nhiệt T chỉ bật khi dữ liệu có ≥ 2 mức nhiệt độ (cách nhau ≥ 0,5 °C).
     - Bù chênh nhiệt độ hai ngăn D = T_mẫu − T_tc bật khi D có ≥ 2 mức (cách nhau ≥ 0,5 °C).
@@ -498,7 +522,7 @@ def tao_mo_hinh(df: pd.DataFrame, bac: int) -> MoHinhHieuChuan:
     T = df[COT_NHIET_DO].to_numpy(float)
     T_tc = _lay_nhiet_do_tc(df)
     D = T - T_tc
-    y = df[COT_DELTA_Y].to_numpy(float)
+    y = _lay_y_theo_don_vi(df, don_vi_y)
 
     co_T, co_TT, co_D = _xac_dinh_co_bu_nhiet(T, T_tc)
     if bac >= 2 and _so_muc(S, 0.01) < 3:
@@ -528,6 +552,7 @@ def tao_mo_hinh(df: pd.DataFrame, bac: int) -> MoHinhHieuChuan:
         D_min=float(D.min()),
         D_max=float(D.max()),
         gia_dinh_can_bang_nhiet=gia_dinh_cb,
+        don_vi_y=don_vi_y,
         id_thiet_bi=sorted({str(v) for v in df[COT_ID_THIET_BI]} - {""}),
         id_dien_thoai=sorted({str(v) for v in df[COT_ID_DIEN_THOAI]} - {""}),
         ngay_tao=datetime.now().isoformat(timespec="seconds"),
@@ -602,22 +627,31 @@ def uoc_luong_do_man(
     T_tham_chieu_C: float | None = None,
     sigma_T_tham_chieu_C: float = 0.0,
     nguong_lech_T_hai_ngan_C: float = 0.5,
+    px_per_mm: float | None = None,
+    u_px_per_mm: float = 0.0,
 ) -> KetQuaDoMan:
     """Ước lượng độ mặn từ Δy và nhiệt độ hai ngăn, kèm bất định và cờ cảnh báo.
 
-    Truyền sai số bậc 1 (xem docstring đầu mô-đun). Các nguồn bất định (đơn vị ‰):
-      - "do_anh": bất định Δy của chính phép đo này (từ Cột mốc 2, σ_Δy).
-      - "lap_lai_duong_chuan": độ tản mát s_res của điểm chuẩn.
-      - "he_so_duong_chuan": do hệ số đường chuẩn chỉ ước lượng từ số điểm hữu hạn.
-      - "nhiet_do": do nhiệt kế mẫu sai σ_T, qua ∂f/∂T.
-      - "nhiet_do_tham_chieu": do nhiệt kế ngăn tham chiếu sai σ_T_tc, qua ∂f/∂T_tc.
+    Nếu mô hình có `don_vi_y == "mm"`, bắt buộc truyền `px_per_mm > 0` để quy đổi Δy_px sang mm
+    và truyền sai số thang ảnh `u_px_per_mm`.
     """
     if not (math.isfinite(delta_y_px) and math.isfinite(T_C)):
         raise ValueError("Δy hoặc nhiệt độ không hợp lệ (NaN/vô cực).")
     if T_tham_chieu_C is not None and not math.isfinite(T_tham_chieu_C):
         raise ValueError("Nhiệt độ ngăn tham chiếu không hợp lệ (NaN/vô cực).")
 
-    S = _tim_nghiem_S(mh, delta_y_px, T_C, T_tc=T_tham_chieu_C)
+    if getattr(mh, "don_vi_y", "px") == "mm":
+        if px_per_mm is None or not math.isfinite(px_per_mm) or px_per_mm <= 0.0:
+            raise ValueError("Đường chuẩn tính theo mm nhưng chưa có thang px_per_mm (> 0) cho ảnh này.")
+        y_do = float(delta_y_px) / float(px_per_mm)
+        u_do_px = abs(float(sigma_delta_y_px)) / float(px_per_mm)
+        u_thang = (abs(float(delta_y_px)) / (float(px_per_mm) ** 2)) * max(float(u_px_per_mm), 0.0)
+        sigma_y_do = math.hypot(u_do_px, u_thang)
+    else:
+        y_do = float(delta_y_px)
+        sigma_y_do = abs(float(sigma_delta_y_px))
+
+    S = _tim_nghiem_S(mh, y_do, T_C, T_tc=T_tham_chieu_C)
     f_S = mh.dao_ham_theo_S(S, T_C, T_tc=T_tham_chieu_C)
     if abs(f_S) < 1e-9:
         raise ValueError("Độ nhạy ∂Δy/∂S ≈ 0 tại điểm này – không giải ngược được.")
@@ -633,7 +667,7 @@ def uoc_luong_do_man(
     )
 
     thanh_phan = {
-        "do_anh": abs(sigma_delta_y_px / f_S),
+        "do_anh": abs(sigma_y_do / f_S),
         "lap_lai_duong_chuan": abs(mh.s_res_px / f_S),
         "he_so_duong_chuan": math.sqrt(max(mh.phuong_sai_du_doan(S, T_C, T_tc=T_tham_chieu_C), 0.0)) / abs(f_S),
         "nhiet_do": abs(f_T * sigma_T_C / f_S),
@@ -643,6 +677,8 @@ def uoc_luong_do_man(
     u = math.sqrt(sum(v * v for v in thanh_phan.values()))
 
     canh_bao: list[str] = []
+    if getattr(mh, "don_vi_y", "px") == "px":
+        canh_bao.append("Đường chuẩn theo pixel: chỉ đúng cho đúng một cấu hình camera và khoảng cách.")
     ngoai_S = not (mh.S_min <= S <= mh.S_max)
     if ngoai_S:
         canh_bao.append(
@@ -765,12 +801,22 @@ def chia_train_test(
 def _bang_sai_so(mh: MoHinhHieuChuan, df: pd.DataFrame, k: float) -> pd.DataFrame:
     """Bảng từng điểm: Δy dự đoán, phần dư, S ước lượng ngược, sai số S."""
     t_tc_arr = _lay_nhiet_do_tc(df)
+    don_vi = getattr(mh, "don_vi_y", "px")
+    px_mm_arr = (
+        pd.to_numeric(df[COT_PX_PER_MM], errors="coerce").to_numpy(float)
+        if (don_vi == "mm" and COT_PX_PER_MM in df.columns)
+        else None
+    )
     dong = []
     for idx, (_, r) in enumerate(df.iterrows()):
-        S0, T0, y0 = float(r[COT_DO_MAN]), float(r[COT_NHIET_DO]), float(r[COT_DELTA_Y])
+        S0, T0, y_px0 = float(r[COT_DO_MAN]), float(r[COT_NHIET_DO]), float(r[COT_DELTA_Y])
         T_tc0 = float(t_tc_arr[idx])
+        px_mm0 = float(px_mm_arr[idx]) if px_mm_arr is not None else None
+        y0 = (y_px0 / px_mm0) if (don_vi == "mm" and px_mm0) else y_px0
         try:
-            S_est = uoc_luong_do_man(mh, y0, T0, k=k, T_tham_chieu_C=T_tc0).S_ppt
+            S_est = uoc_luong_do_man(
+                mh, y_px0, T0, k=k, T_tham_chieu_C=T_tc0, px_per_mm=px_mm0
+            ).S_ppt
         except ValueError:
             S_est = float("nan")
         dy_du_doan = float(mh.du_doan_delta_y(S0, T0, T_tc=T_tc0)[0])
@@ -788,6 +834,7 @@ def dung_duong_chuan(
     df: pd.DataFrame,
     cau_hinh: CauHinhHieuChuan | None = None,
     bac_ep: int | None = None,
+    don_vi_y: str = "px",
 ) -> BaoCaoHieuChuan:
     """Dựng đường chuẩn từ dữ liệu hiệu chuẩn.
 
@@ -812,6 +859,10 @@ def dung_duong_chuan(
         canh_bao.append(
             "Thiếu cột nhiet_do_tham_chieu_C: giả định hai ngăn cân bằng nhiệt, chưa đo."
         )
+    if don_vi_y == "px":
+        canh_bao.append(
+            "Đường chuẩn theo pixel chỉ đúng cho đúng một cấu hình camera và khoảng cách màn."
+        )
     if df.attrs.get("so_dong_bi_loai", 0):
         canh_bao.append(f"Đã loại {df.attrs['so_dong_bi_loai']} dòng thiếu dữ liệu.")
     if _so_muc(df[COT_DO_MAN].to_numpy(float), 0.01) < 3:
@@ -826,7 +877,7 @@ def dung_duong_chuan(
     S = df_train[COT_DO_MAN].to_numpy(float)
     T = df_train[COT_NHIET_DO].to_numpy(float)
     T_tc = _lay_nhiet_do_tc(df_train)
-    y = df_train[COT_DELTA_Y].to_numpy(float)
+    y = _lay_y_theo_don_vi(df_train, don_vi_y)
     co_T_tr, co_TT_tr, co_D_tr = _xac_dinh_co_bu_nhiet(T, T_tc)
     T_ref = float(np.round(np.mean(T), 1))
 
@@ -841,16 +892,16 @@ def dung_duong_chuan(
         bac_chon, ly_do = bac_ep, f"Bậc {bac_ep} do người dùng chỉ định."
     elif 2 in rmse_cv and rmse_cv[2] < (1.0 - ch.nguong_cai_thien_bac2) * rmse_cv[1]:
         bac_chon = 2
-        ly_do = (f"Bậc 2 giảm RMSE kiểm định chéo từ {rmse_cv[1]:.3f} xuống {rmse_cv[2]:.3f} px "
+        ly_do = (f"Bậc 2 giảm RMSE kiểm định chéo từ {rmse_cv[1]:.3f} xuống {rmse_cv[2]:.3f} {don_vi_y} "
                  f"(> {ch.nguong_cai_thien_bac2:.0%}), nên chọn bậc 2.")
     else:
         bac_chon = 1
         r2 = f"{rmse_cv[2]:.3f}" if 2 in rmse_cv else "không tính được"
-        ly_do = (f"Bậc 2 (RMSE CV {r2} px) không tốt hơn bậc 1 (RMSE CV {rmse_cv[1]:.3f} px) "
+        ly_do = (f"Bậc 2 (RMSE CV {r2} {don_vi_y}) không tốt hơn bậc 1 (RMSE CV {rmse_cv[1]:.3f} {don_vi_y}) "
                  f"đủ {ch.nguong_cai_thien_bac2:.0%}, nên chọn bậc 1 đơn giản hơn.")
 
-    mh_train = tao_mo_hinh(df_train, bac_chon)
-    mh_full = tao_mo_hinh(df, bac_chon)
+    mh_train = tao_mo_hinh(df_train, bac_chon, don_vi_y=don_vi_y)
+    mh_full = tao_mo_hinh(df, bac_chon, don_vi_y=don_vi_y)
     if not mh_full.co_bu_nhiet and not mh_full.co_bu_chenh_T:
         canh_bao.append("Dữ liệu chỉ có một mức nhiệt độ: đường chuẩn KHÔNG bù nhiệt được.")
 
@@ -892,11 +943,14 @@ def ve_duong_chuan(bc: BaoCaoHieuChuan):  # -> matplotlib.figure.Figure
     from matplotlib.figure import Figure
 
     mh = bc.mo_hinh
+    don_vi = getattr(mh, "don_vi_y", "px")
     fig = Figure(figsize=(7, 4.5), dpi=110)
     ax = fig.add_subplot(111)
-    ax.scatter(bc.df_train[COT_DO_MAN], bc.df_train[COT_DELTA_Y], s=18, label="Điểm chuẩn (train)")
+    y_tr = _lay_y_theo_don_vi(bc.df_train, don_vi)
+    ax.scatter(bc.df_train[COT_DO_MAN], y_tr, s=18, label="Điểm chuẩn (train)")
     if len(bc.df_test):
-        ax.scatter(bc.df_test[COT_DO_MAN], bc.df_test[COT_DELTA_Y], s=30, marker="x",
+        y_te = _lay_y_theo_don_vi(bc.df_test, don_vi)
+        ax.scatter(bc.df_test[COT_DO_MAN], y_te, s=30, marker="x",
                    color="red", label="Điểm kiểm tra (test)")
     S_luoi = np.linspace(mh.S_min, mh.S_max, 200)
     tat_ca_T = pd.concat([bc.df_train, bc.df_test])[COT_NHIET_DO].to_numpy(float)
@@ -904,7 +958,7 @@ def ve_duong_chuan(bc: BaoCaoHieuChuan):  # -> matplotlib.figure.Figure
     for T in (muc_T if mh.co_bu_nhiet else [mh.T_ref])[:6]:
         ax.plot(S_luoi, mh.du_doan_delta_y(S_luoi, T), lw=1.2, label=f"Đường chuẩn T = {T:g} °C")
     ax.set_xlabel("Độ mặn chuẩn S (‰)")
-    ax.set_ylabel("Δy (pixel)")
+    ax.set_ylabel(f"Δy ({don_vi})")
     tieu_de = f"Đường chuẩn bậc {mh.bac}  (R² = {mh.R2:.5f})"
     if mh.la_mo_phong:
         tieu_de += f"\n{NHAN_CHUA_HIEU_CHUAN}"
@@ -927,7 +981,8 @@ def ve_phan_du(bc: BaoCaoHieuChuan):  # -> matplotlib.figure.Figure
     ax = fig.add_subplot(111)
     for d, nhan, kieu in ((bc.df_train, "train", "o"), (bc.df_test, "test", "x")):
         if len(d):
-            du = d[COT_DELTA_Y].to_numpy(float) - mh.du_doan_delta_y(
+            y_thuc = _lay_y_theo_don_vi(d, getattr(mh, "don_vi_y", "px"))
+            du = y_thuc - mh.du_doan_delta_y(
                 d[COT_DO_MAN].to_numpy(float),
                 d[COT_NHIET_DO].to_numpy(float),
                 T_tc=_lay_nhiet_do_tc(d),
@@ -937,7 +992,7 @@ def ve_phan_du(bc: BaoCaoHieuChuan):  # -> matplotlib.figure.Figure
     for dau in (-2, 2):
         ax.axhline(dau * mh.s_res_px, color="gray", ls="--", lw=0.8)
     ax.set_xlabel("Độ mặn chuẩn S (‰)")
-    ax.set_ylabel("Phần dư (pixel)")
+    ax.set_ylabel(f"Phần dư ({getattr(mh, 'don_vi_y', 'px')})")
     tieu_de = f"Phần dư (đường nét đứt: ±2·s_res = ±{2 * mh.s_res_px:.3f} px)"
     if mh.la_mo_phong:
         tieu_de += f"\n{NHAN_CHUA_HIEU_CHUAN}"
