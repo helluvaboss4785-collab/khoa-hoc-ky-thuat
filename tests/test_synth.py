@@ -7,7 +7,12 @@ import pytest
 
 from core.measure import do_delta_y_tu_anh
 from core.optics import CauHinhQuangHoc
-from sim.synth import ThamSoMoPhong, luu_anh_mo_phong_png, sinh_anh_hai_vach_mo_phong
+from sim.synth import (
+    ThamSoMoPhong,
+    luu_anh_mo_phong_png,
+    sinh_anh_hai_vach_mo_phong,
+    sinh_anh_mau_mo_phong,
+)
 
 
 CFG = CauHinhQuangHoc.tu_yaml()
@@ -217,3 +222,35 @@ def test_luu_anh_mo_phong_mac_dinh_watermark_va_json(tmp_path):
     import cv2
     img_saved = cv2.imread(str(out_png), cv2.IMREAD_GRAYSCALE)
     assert not np.array_equal(img_saved[-30:, :220], mp.anh[-30:, :220])
+
+
+def test_q1_anh_mau_laser_do_bao_hoa_kenh_r_va_snr():
+    """Q1: Laser đỏ cháy kênh R (ảnh xám < 250) vẫn phải bật bão hòa kênh R; ảnh sạch SNR R >= xám và sai số <= 0.05 px."""
+    # 1. Ảnh cháy kênh R nhưng G=B=0.20 nên ảnh xám < 250 (đỉnh xám ~ 115)
+    p_chay = ThamSoMoPhong(S_ppt=18.0, T_C=25.0, cuong_do_dinh_goc=245.0, cuong_do_nen=15.0, seed=5)
+    mp_chay = sinh_anh_mau_mo_phong(p_chay, cfg=CFG, ty_le_kenh=(1.0, 0.20, 0.20))
+    import cv2
+    anh_xam_mix = cv2.cvtColor(mp_chay.anh, cv2.COLOR_BGR2GRAY)
+    assert int(anh_xam_mix.max()) < 250
+    assert int(mp_chay.anh[:, :, 2].max()) >= 250
+
+    kq_chay = do_delta_y_tu_anh(mp_chay.anh, x_ref=mp_chay.x_ref, kenh_laser="auto", tao_anh_ve=False)
+    assert kq_chay.kenh_su_dung == "R"
+    assert kq_chay.chat_luong.bao_hoa is True
+    assert "R" in kq_chay.chat_luong.kenh_bao_hoa
+
+    # 2. Ảnh màu sạch không cháy: SNR kênh R >= SNR khi trộn ảnh xám, sai số Δy <= 0.05 px
+    p_sach = ThamSoMoPhong(S_ppt=20.0, T_C=25.0, cuong_do_dinh_goc=180.0, cuong_do_nen=15.0, seed=11)
+    mp_sach = sinh_anh_mau_mo_phong(p_sach, cfg=CFG, ty_le_kenh=(1.0, 0.35, 0.35))
+    kq_auto = do_delta_y_tu_anh(mp_sach.anh, x_ref=mp_sach.x_ref, kenh_laser="auto", tao_anh_ve=False)
+    kq_xam = do_delta_y_tu_anh(mp_sach.anh, x_ref=mp_sach.x_ref, kenh_laser="xam", tao_anh_ve=False)
+    assert kq_auto.kenh_su_dung == "R"
+    assert kq_auto.chat_luong.hop_le is True
+    assert kq_auto.chat_luong.snr >= kq_xam.chat_luong.snr
+    assert abs(kq_auto.delta_y_px - mp_sach.delta_y_ly_thuyet_px) <= 0.05
+
+    # 3. Ảnh xám 2D cho kết quả hồi quy y hệt trước
+    mp_2d = sinh_anh_hai_vach_mo_phong(p_sach, cfg=CFG)
+    kq_2d = do_delta_y_tu_anh(mp_2d.anh, x_ref=mp_2d.x_ref, tao_anh_ve=False)
+    assert kq_2d.kenh_su_dung == "xam_2d"
+    assert abs(kq_2d.delta_y_px - mp_2d.delta_y_ly_thuyet_px) <= 0.05

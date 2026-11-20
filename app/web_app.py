@@ -162,6 +162,7 @@ def _ensure_config_cache() -> None:
         "nguong_bao_hoa": int(img_raw.get("nguong_bao_hoa", 250)),
         "ti_le_bao_hoa_toi_da": float(img_raw.get("ti_le_bao_hoa_toi_da", 0.02)),
         "snr_toi_thieu": float(img_raw.get("snr_toi_thieu", 10.0)),
+        "kenh_laser": str(img_raw.get("kenh_laser", "auto")),
     }
     _CONFIG_CACHE["species_serialized"] = None
 
@@ -344,6 +345,7 @@ def khoi_tao_db(force: bool = False) -> None:
             ("khoa_ae_af", "INTEGER DEFAULT 0"),
             ("exif_exposure", "TEXT DEFAULT ''"),
             ("exif_iso", "INTEGER"),
+            ("kenh_su_dung", "TEXT DEFAULT ''"),
         ):
             if col_name not in cols:
                 conn.execute(f"ALTER TABLE nhat_ki ADD COLUMN {col_name} {col_def}")
@@ -387,6 +389,7 @@ def luu_nhat_ki(
     khoa_ae_af: bool = False,
     exif_exposure: str = "",
     exif_iso: int | None = None,
+    kenh_su_dung: str = "",
 ) -> int:
     khoi_tao_db()
     tg = thoi_gian_tuy_chinh or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -398,8 +401,8 @@ def luu_nhat_ki(
                 thoi_gian, vi_tri, loai_nuoi, delta_y_px, do_man_ppt,
                 bat_dinh_U_ppt, nhiet_do_C, do_duc, chat_luong_hop_le,
                 nguon_du_lieu, ghi_chu, ho_so,
-                px_per_mm, delta_y_mm, khoa_ae_af, exif_exposure, exif_iso
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                px_per_mm, delta_y_mm, khoa_ae_af, exif_exposure, exif_iso, kenh_su_dung
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 tg,
@@ -419,6 +422,7 @@ def luu_nhat_ki(
                 1 if khoa_ae_af else 0,
                 exif_exposure or "",
                 exif_iso,
+                kenh_su_dung or "",
             ),
         )
         return int(cur.lastrowid or 0)
@@ -905,6 +909,7 @@ async def api_measure(request: Request) -> JSONResponse:
             ti_le_bao_hoa_toi_da=float(img_cfg.get("ti_le_bao_hoa_toi_da", 0.02)),
             snr_toi_thieu=float(img_cfg.get("snr_toi_thieu", 10.0)),
             tao_anh_ve=True,
+            kenh_laser=str(img_cfg.get("kenh_laser", "auto")),
         )
 
         (
@@ -959,6 +964,7 @@ async def api_measure(request: Request) -> JSONResponse:
             "sai_so_delta_y_mm": sai_so_delta_y_mm_val,
             "anh_width": w_img,
             "anh_height": h_img,
+            "kenh_su_dung": kq_do.kenh_su_dung,
             "delta_y_px": kq_do.delta_y_px,
             "sai_so_delta_y_px": kq_do.sai_so_delta_y_px,
             "x_ref": kq_do.x_ref,
@@ -967,6 +973,7 @@ async def api_measure(request: Request) -> JSONResponse:
                 "hop_le": cq.hop_le,
                 "bao_hoa": cq.bao_hoa,
                 "ti_le_bao_hoa": cq.ti_le_bao_hoa,
+                "kenh_bao_hoa": cq.kenh_bao_hoa,
                 "qua_mo": cq.qua_mo,
                 "snr": cq.snr,
                 "nhoe": cq.nhoe,
@@ -1362,6 +1369,7 @@ async def api_measure_multi(request: Request) -> JSONResponse:
             ti_le_bao_hoa_toi_da=float(img_cfg.get("ti_le_bao_hoa_toi_da", 0.02)),
             snr_toi_thieu=float(img_cfg.get("snr_toi_thieu", 10.0)),
             tao_anh_ve=True,
+            kenh_laser=str(img_cfg.get("kenh_laser", "auto")),
         )
         sigma_dy_use = max(kq_da.sai_so_thong_ke_px, kq_rep.sai_so_delta_y_px if kq_da.sai_so_thong_ke_px <= 0 else 0.0)
         cq_chung = kq_da.chat_luong_chung
@@ -1419,6 +1427,7 @@ async def api_measure_multi(request: Request) -> JSONResponse:
             "sai_so_delta_y_mm": sai_so_delta_y_mm_val,
             "anh_width": w_img,
             "anh_height": h_img,
+            "kenh_su_dung": kq_rep.kenh_su_dung,
             "delta_y_px": kq_da.delta_y_trung_vi_px,
             "sai_so_delta_y_px": sigma_dy_use,
             "x_ref": kq_rep.x_ref,
@@ -1436,6 +1445,7 @@ async def api_measure_multi(request: Request) -> JSONResponse:
                 "hop_le": tong_hop_le_cuoi,
                 "bao_hoa": cq_chung.bao_hoa,
                 "ti_le_bao_hoa": cq_chung.ti_le_bao_hoa,
+                "kenh_bao_hoa": cq_chung.kenh_bao_hoa,
                 "qua_mo": cq_chung.qua_mo,
                 "snr": cq_chung.snr,
                 "nhoe": cq_chung.nhoe,
@@ -1618,6 +1628,7 @@ async def api_logs_add(request: Request) -> JSONResponse:
             khoa_ae_af=bool(body.get("khoa_ae_af", False)),
             exif_exposure=str(body.get("exif_exposure") or ""),
             exif_iso=int(body["exif_iso"]) if body.get("exif_iso") not in (None, "") else None,
+            kenh_su_dung=str(body.get("kenh_su_dung") or ""),
         )
         return _json_ok({"ok": True, "id": row_id, "ho_so": ho_so})
     except Exception as exc:

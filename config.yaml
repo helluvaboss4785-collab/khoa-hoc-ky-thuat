@@ -32,6 +32,7 @@ xu_ly_anh:                       # Tham số thuật toán tìm tâm và đánh 
   fwhm_toi_thieu_px: 1.5         # độ rộng FWHM tối thiểu (px)
   fwhm_toi_da_px: 60.0           # độ rộng FWHM tối đa (px)
   phuong_phap_mac_dinh: "gauss"  # "gauss" (khớp Gauss) hoặc "centroid" (trọng tâm)
+  kenh_laser: "auto"             # "auto" | "R" | "G" | "B" | "xam" (ưu tiên kênh tương phản cao nhất, hòa ưu tiên R)
 
 hieu_chuan:                      # Tham số dựng đường chuẩn (Cột mốc 4)
   ti_le_tap_test: 0.25           # tỉ lệ điểm giữ lại làm tập kiểm tra (không dùng để khớp)

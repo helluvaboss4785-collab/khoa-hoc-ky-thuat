@@ -52,6 +52,7 @@ class ChatLuongAnh:
     fwhm_mau: float              # FWHM vạch mẫu (px)
     fwhm_tc: float               # FWHM vạch tham chiếu (px)
     canh_bao: list[str] = field(default_factory=list)
+    kenh_bao_hoa: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -66,6 +67,7 @@ class KetQuaDoDeltaY:
     chi_so_do_duc_tuong_doi: float       # Chỉ số độ đục tương đối (0.0: trong suốt, 1.0: rất đục)
     chat_luong: ChatLuongAnh             # Đánh giá chất lượng và cảnh báo lỗi
     anh_danh_dau: np.ndarray | None = None  # Ảnh đã vẽ vị trí vạch và tâm để hiển thị UI
+    kenh_su_dung: str = "xam_2d"         # Kênh màu đã trích xuất để định vị vạch ("R"|"G"|"B"|"xam"|"xam_2d")
 
 
 @dataclass(frozen=True)
@@ -98,6 +100,58 @@ def chuyen_anh_xam(anh: np.ndarray) -> np.ndarray:
             return cv2.cvtColor(anh, cv2.COLOR_RGBA2GRAY)
         return cv2.cvtColor(anh, cv2.COLOR_BGR2GRAY)
     raise AnhKhongHopLeError(f"Định dạng ảnh không hợp lệ: shape={anh.shape}")
+
+
+def chon_kenh_laser(
+    anh: np.ndarray,
+    kenh_laser: str = "auto",
+    roi_goi_y: tuple[int, int, int, int] | None = None,
+) -> tuple[np.ndarray, str]:
+    """Chọn kênh đơn sắc tối ưu cho laser từ ảnh 2D hoặc ảnh màu BGR/BGRA.
+
+    - Ảnh 2D xám: giữ nguyên và trả nhãn 'xam_2d' (hồi quy tuyệt đối với bản cũ).
+    - 'auto' trên ảnh màu: tính tương phản (p99.9 - median) từng kênh R, G, B (ưu tiên R nếu hòa).
+    - 'R' | 'G' | 'B' | 'xam': lấy đúng kênh chỉ định.
+    """
+    if anh is None or not hasattr(anh, "ndim") or anh.size == 0:
+        raise AnhKhongHopLeError("Ảnh đầu vào rỗng hoặc không hợp lệ.")
+    if anh.ndim == 2:
+        return (anh.astype(np.uint8) if anh.dtype != np.uint8 else anh), "xam_2d"
+    if anh.ndim != 3 or anh.shape[2] not in (3, 4):
+        raise AnhKhongHopLeError(f"Định dạng ảnh không hợp lệ: shape={anh.shape}")
+
+    che_do = str(kenh_laser or "auto").strip()
+    che_do_lower = che_do.lower()
+    if che_do_lower == "xam":
+        return chuyen_anh_xam(anh), "xam"
+
+    kenh_map = {"B": 0, "G": 1, "R": 2}
+    if che_do.upper() in kenh_map:
+        ch = anh[:, :, kenh_map[che_do.upper()]]
+        return (ch.astype(np.uint8) if ch.dtype != np.uint8 else ch), che_do.upper()
+
+    if che_do_lower != "auto":
+        raise ValueError(f"Tham số kenh_laser '{kenh_laser}' không hợp lệ (chỉ nhận auto|R|G|B|xam).")
+
+    if roi_goi_y is not None:
+        y1, y2, x1, x2 = roi_goi_y
+        sub = anh[max(0, y1):max(1, y2), max(0, x1):max(1, x2)]
+        if sub.size == 0:
+            sub = anh
+    else:
+        sub = anh
+
+    # Thứ tự ưu tiên R -> G -> B khi độ tương phản bằng nhau
+    best_name, best_idx, best_contrast = "R", 2, -1.0
+    for name, idx in (("R", 2), ("G", 1), ("B", 0)):
+        c_sub = sub[:, :, idx]
+        contrast = float(np.percentile(c_sub, 99.9) - np.median(c_sub))
+        if contrast > best_contrast:
+            best_contrast = contrast
+            best_name = name
+            best_idx = idx
+    out = anh[:, :, best_idx]
+    return (out.astype(np.uint8) if out.dtype != np.uint8 else out), best_name
 
 
 def _danh_gia_vung_don(
@@ -142,8 +196,9 @@ def kiem_tra_chat_luong_vung(
     snr_toi_thieu: float = 10.0,
     fwhm_toi_thieu: float = 1.2,
     fwhm_toi_da: float = 65.0,
+    anh_goc: np.ndarray | None = None,
 ) -> tuple[ChatLuongAnh, float, float]:
-    """Kiểm tra chất lượng cho CẢ HAI vùng (tham chiếu và mẫu)."""
+    """Kiểm tra chất lượng cho CẢ HAI vùng; với ảnh màu kiểm bão hòa trên từng kênh RGB gốc."""
     canh_bao: list[str] = []
 
     y1_tc, y2_tc, x1_tc, x2_tc = roi_tc
@@ -155,12 +210,27 @@ def kiem_tra_chat_luong_vung(
     ti_le_bh_tc, snr_tc, contrast_tc, nen_tc, dinh_tc = _danh_gia_vung_don(vung_tc, nguong_bao_hoa)
     ti_le_bh_m, snr_m, contrast_m, _, _ = _danh_gia_vung_don(vung_m, nguong_bao_hoa)
 
-    # 1. Bão hòa sáng theo cột: lấy giá trị xấu nhất giữa hai vùng
+    # 1. Bão hòa sáng theo cột: kiểm tra cả các kênh B, G, R gốc nếu ảnh đầu vào là ảnh màu
     ti_le_bh = max(ti_le_bh_tc, ti_le_bh_m)
-    co_bao_hoa = ti_le_bh > ti_le_bao_hoa_toi_da
+    kenh_bao_hoa: list[str] = []
+    if anh_goc is not None and hasattr(anh_goc, "ndim") and anh_goc.ndim == 3 and anh_goc.shape[2] >= 3:
+        for ch_name, ch_idx in (("R", 2), ("G", 1), ("B", 0)):
+            ch_tc = anh_goc[y1_tc:y2_tc, x1_tc:x2_tc, ch_idx]
+            ch_m = anh_goc[y1_m:y2_m, x1_m:x2_m, ch_idx]
+            bh_tc_c, *_ = _danh_gia_vung_don(ch_tc, nguong_bao_hoa)
+            bh_m_c, *_ = _danh_gia_vung_don(ch_m, nguong_bao_hoa)
+            bh_c = max(bh_tc_c, bh_m_c)
+            ti_le_bh = max(ti_le_bh, bh_c)
+            if bh_c > ti_le_bao_hoa_toi_da:
+                kenh_bao_hoa.append(ch_name)
+    elif ti_le_bh > ti_le_bao_hoa_toi_da:
+        kenh_bao_hoa.append("xam")
+
+    co_bao_hoa = bool(kenh_bao_hoa) or (ti_le_bh > ti_le_bao_hoa_toi_da)
     if co_bao_hoa:
+        kenh_txt = f" (kênh {', '.join(kenh_bao_hoa)})" if kenh_bao_hoa else ""
         canh_bao.append(
-            f"Vạch sáng bị bão hòa ({ti_le_bh*100:.1f}% cột có đỉnh ≥ {nguong_bao_hoa}). "
+            f"Vạch sáng bị bão hòa{kenh_txt} ({ti_le_bh*100:.1f}% cột có đỉnh ≥ {nguong_bao_hoa}). "
             "Cần giảm phơi sáng máy ảnh hoặc giảm công suất laser để tránh bẹt đỉnh."
         )
 
@@ -186,6 +256,7 @@ def kiem_tra_chat_luong_vung(
         fwhm_mau=0.0,
         fwhm_tc=0.0,
         canh_bao=canh_bao,
+        kenh_bao_hoa=kenh_bao_hoa,
     )
     return chat_luong, nen_tc, dinh_tc
 
@@ -374,41 +445,33 @@ def do_delta_y_tu_anh(
     ti_le_bao_hoa_toi_da: float = 0.02,
     snr_toi_thieu: float = 10.0,
     tao_anh_ve: bool = True,
+    kenh_laser: str = "auto",
 ) -> KetQuaDoDeltaY:
-    """Đo độ lệch vi sai Δy và chỉ số độ đục từ một ảnh chụp.
-
-    Args:
-        anh: Mảng ảnh BGR hoặc xám.
-        roi_tham_chieu: (y1, y2, x1, x2) của vạch tham chiếu. Nếu None sẽ tự phát hiện.
-        roi_mau: (y1, y2, x1, x2) của vạch mẫu. Nếu None sẽ tự phát hiện.
-        x_ref: Cột tham chiếu. Nếu None sẽ lấy giao điểm tâm của 2 vạch.
-        phuong_phap: "gauss" hoặc "centroid".
-        nguong_bao_hoa: Mức xám coi là bão hòa.
-        ti_le_bao_hoa_toi_da: Ngưỡng tỉ lệ bão hòa cho phép.
-        snr_toi_thieu: Tỉ số SNR tối thiểu.
-        tao_anh_ve: Có sinh ảnh đánh dấu trực quan hay không.
-
-    Returns:
-        KetQuaDoDeltaY chứa Δy, sai số chuẩn, chỉ số độ đục và cờ chất lượng.
-    """
-    anh_xam = chuyen_anh_xam(anh)
+    """Đo độ lệch vi sai Δy và chỉ số độ đục từ một ảnh chụp (chọn kênh laser tối ưu & kiểm bão hòa gốc)."""
+    anh_kenh, ten_kenh = chon_kenh_laser(anh, kenh_laser=kenh_laser)
 
     # 1. Xác định ROI nếu chưa có
     if roi_tham_chieu is None or roi_mau is None:
-        roi_1, roi_2 = tu_dong_tim_roi_hai_vach(anh_xam)
-        # Giả định quy ước: vạch trên là tham chiếu, vạch dưới là mẫu (hoặc ngược lại)
-        # Mặc định gán vạch trên là tham chiếu nếu người dùng chưa chỉ định
+        roi_1, roi_2 = tu_dong_tim_roi_hai_vach(anh_kenh)
         roi_tham_chieu = roi_1 if roi_tham_chieu is None else roi_tham_chieu
         roi_mau = roi_2 if roi_mau is None else roi_mau
 
-    # 2. Đánh giá chất lượng sơ bộ vùng ảnh
+    if hasattr(anh, "ndim") and anh.ndim == 3 and str(kenh_laser).strip().lower() == "auto":
+        y1_u = min(roi_tham_chieu[0], roi_mau[0])
+        y2_u = max(roi_tham_chieu[1], roi_mau[1])
+        x1_u = min(roi_tham_chieu[2], roi_mau[2])
+        x2_u = max(roi_tham_chieu[3], roi_mau[3])
+        anh_kenh, ten_kenh = chon_kenh_laser(anh, kenh_laser="auto", roi_goi_y=(y1_u, y2_u, x1_u, x2_u))
+
+    # 2. Đánh giá chất lượng sơ bộ vùng ảnh (kiểm bão hòa trên từng kênh RGB gốc)
     chat_luong_khoi_tao, _, _ = kiem_tra_chat_luong_vung(
-        anh_xam,
+        anh_kenh,
         roi_tham_chieu,
         roi_mau,
         nguong_bao_hoa=nguong_bao_hoa,
         ti_le_bao_hoa_toi_da=ti_le_bao_hoa_toi_da,
         snr_toi_thieu=snr_toi_thieu,
+        anh_goc=anh,
     )
 
     # 3. Xác định cột tham chiếu x_ref chung tối ưu
@@ -427,8 +490,8 @@ def do_delta_y_tu_anh(
         x_ref_tinh = x_ref
 
     # 4. Trích xuất và ước lượng từng vạch
-    anh_roi_tc = anh_xam[y1_tc:y2_tc, x1_tc:x2_tc]
-    anh_roi_m = anh_xam[y1_m:y2_m, x1_m:x2_m]
+    anh_roi_tc = anh_kenh[y1_tc:y2_tc, x1_tc:x2_tc]
+    anh_roi_m = anh_kenh[y1_m:y2_m, x1_m:x2_m]
 
     try:
         vach_tc = uoc_luong_duong_vach(
@@ -461,6 +524,7 @@ def do_delta_y_tu_anh(
             fwhm_mau=0.0,
             fwhm_tc=0.0,
             canh_bao=canh_bao_loi,
+            kenh_bao_hoa=list(chat_luong_khoi_tao.kenh_bao_hoa),
         )
         # Tạo kết quả rỗng giả lập
         vach_rong = KetQuaUocLuongVach(
@@ -485,6 +549,7 @@ def do_delta_y_tu_anh(
             chi_so_do_duc_tuong_doi=0.0,
             chat_luong=chat_luong_loi,
             anh_danh_dau=anh if tao_anh_ve else None,
+            kenh_su_dung=ten_kenh,
         )
 
     # 5. Tính tín hiệu vi sai Δy và bất định ghép sai số chuẩn
@@ -519,6 +584,7 @@ def do_delta_y_tu_anh(
         fwhm_mau=vach_m.fwhm_trung_binh,
         fwhm_tc=vach_tc.fwhm_trung_binh,
         canh_bao=canh_bao_final,
+        kenh_bao_hoa=list(chat_luong_khoi_tao.kenh_bao_hoa),
     )
 
     # 8. Sinh ảnh vẽ kết quả kiểm chứng
@@ -535,6 +601,7 @@ def do_delta_y_tu_anh(
         chi_so_do_duc_tuong_doi=chi_so_do_duc,
         chat_luong=chat_luong_final,
         anh_danh_dau=anh_ve,
+        kenh_su_dung=ten_kenh,
     )
 
 
@@ -546,6 +613,7 @@ def do_delta_y_da_khung_hinh(
     nguong_bao_hoa: int = 250,
     ti_le_bao_hoa_toi_da: float = 0.02,
     snr_toi_thieu: float = 10.0,
+    kenh_laser: str = "auto",
 ) -> KetQuaDoDaKhungHinh:
     """Xử lí chuỗi nhiều khung hình (video / multi-shot), lấy trung vị và độ phân tán.
 
@@ -575,6 +643,7 @@ def do_delta_y_da_khung_hinh(
                 ti_le_bao_hoa_toi_da=ti_le_bao_hoa_toi_da,
                 snr_toi_thieu=snr_toi_thieu,
                 tao_anh_ve=False,
+                kenh_laser=kenh_laser,
             )
         except (AnhKhongHopLeError, KhongTimThayVachError, ValueError) as exc:
             khung_loi.append((idx, str(exc)))
@@ -660,6 +729,12 @@ def do_delta_y_da_khung_hinh(
         if w_dk not in canh_bao_gop:
             canh_bao_gop.append(w_dk)
 
+    kenh_bh_gop: list[str] = []
+    for cq_item in ds_cq_tat_ca:
+        for ch in cq_item.kenh_bao_hoa:
+            if ch not in kenh_bh_gop:
+                kenh_bh_gop.append(ch)
+
     chat_luong_chung = ChatLuongAnh(
         hop_le=all(c.hop_le for c in ds_cq_tat_ca) and (not khung_loi),
         bao_hoa=any(c.bao_hoa for c in ds_cq_tat_ca),
@@ -670,6 +745,7 @@ def do_delta_y_da_khung_hinh(
         fwhm_mau=max(c.fwhm_mau for c in ds_cq_tat_ca),
         fwhm_tc=max(c.fwhm_tc for c in ds_cq_tat_ca),
         canh_bao=canh_bao_gop,
+        kenh_bao_hoa=kenh_bh_gop,
     )
 
     return KetQuaDoDaKhungHinh(

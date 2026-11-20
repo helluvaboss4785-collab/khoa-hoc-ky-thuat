@@ -1084,6 +1084,7 @@ async function saveMeasurementToLog() {
     khoa_ae_af: Boolean(d.khoa_ae_af),
     exif_exposure: d.exif?.exposure_str || "",
     exif_iso: d.exif?.iso ?? null,
+    kenh_su_dung: d.kenh_su_dung || "",
   };
 
   if (!navigator.onLine) {

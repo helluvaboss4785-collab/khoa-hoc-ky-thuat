@@ -12,6 +12,7 @@ from core.spot import (
     uoc_luong_duong_vach,
 )
 from core.measure import (
+    chon_kenh_laser,
     do_delta_y_tu_anh,
     do_delta_y_da_khung_hinh,
     tinh_chi_so_do_duc_tuong_doi,
@@ -330,4 +331,38 @@ def test_da_khung_hinh_ghi_khung_loi_troi_va_dao_dong_sang():
     f_sang2, _ = tao_anh_hai_vach_ly_thuyet(h=220, w=150, y_tc=55.0, y_mau=135.0, amp_tc=90.0, amp_mau=90.0, seed=31)
     res_sang = do_delta_y_da_khung_hinh([f_sang1, f_sang2, f_sang1])
     assert res_sang.canh_bao_dao_dong_phoi_sang is True
+
+
+def test_q1_chon_kenh_laser_va_bao_hoa_theo_kenh():
+    """Q1: Tự chọn kênh R với laser đỏ 650 nm và bắt bão hòa riêng kênh R dù ảnh xám < 250."""
+    gray_clean, dy_true = tao_anh_hai_vach_ly_thuyet(
+        h=220, w=150, y_tc=55.0, y_mau=135.0, amp_tc=190.0, amp_mau=190.0, bg=10.0, noise_std=0.5, seed=40
+    )
+    # Dựng ảnh BGR (OpenCV): R mạnh (laser 650 nm), G/B yếu 25% -> độ xám không bão hòa nhưng R rất nét
+    bgr = np.zeros((220, 150, 3), dtype=np.uint8)
+    bgr[:, :, 2] = gray_clean
+    bgr[:, :, 1] = (gray_clean.astype(float) * 0.25).astype(np.uint8)
+    bgr[:, :, 0] = (gray_clean.astype(float) * 0.20).astype(np.uint8)
+
+    anh_r, kenh_auto = chon_kenh_laser(bgr, kenh_laser="auto")
+    assert kenh_auto == "R"
+    assert np.array_equal(anh_r, gray_clean)
+
+    kq_ok = do_delta_y_tu_anh(bgr, kenh_laser="auto", tao_anh_ve=False)
+    assert kq_ok.kenh_su_dung == "R"
+    assert kq_ok.chat_luong.hop_le is True
+    assert abs(kq_ok.delta_y_px - dy_true) < 0.1
+
+    # Làm bão hòa lõi kênh R về 255 nhưng giữ G=60, B=50 -> độ xám L ≈ 0.299*255+0.587*60+0.114*50 ≈ 117 << 250
+    bgr_bh = bgr.copy()
+    bgr_bh[53:58, 20:130, 2] = 255
+    kq_bh = do_delta_y_tu_anh(bgr_bh, kenh_laser="auto", tao_anh_ve=False)
+    assert kq_bh.chat_luong.bao_hoa is True
+    assert "R" in kq_bh.chat_luong.kenh_bao_hoa
+    assert kq_bh.chat_luong.hop_le is False
+
+    # Thử chọn tường minh kênh G
+    kq_g = do_delta_y_tu_anh(bgr, kenh_laser="G", tao_anh_ve=False)
+    assert kq_g.kenh_su_dung == "G"
+
 

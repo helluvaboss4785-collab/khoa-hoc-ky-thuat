@@ -261,6 +261,49 @@ def sinh_anh_hai_vach_mo_phong(
     )
 
 
+def sinh_anh_mau_mo_phong(
+    p: ThamSoMoPhong,
+    cfg: CauHinhQuangHoc | None = None,
+    ty_le_kenh: tuple[float, float, float] = (1.0, 0.35, 0.35),
+    gan_watermark: bool = False,
+) -> AnhMoPhong:
+    """Sinh ảnh MÀU BGR 3 kênh mô phỏng laser đỏ/lục (mặc định R=1.0, G=B=0.35).
+
+    Dùng để kiểm chứng hiện tượng trộn ảnh xám làm giảm tương phản hoặc che lấp bão hòa ở một kênh đơn sắc.
+    """
+    base = sinh_anh_hai_vach_mo_phong(p, cfg=cfg, gan_watermark=False)
+    r_w, g_w, b_w = float(ty_le_kenh[0]), float(ty_le_kenh[1]), float(ty_le_kenh[2])
+    raw_f = base.anh.astype(float)
+    tin_hieu = np.clip(raw_f - float(p.cuong_do_nen), 0.0, None)
+    img_bgr = np.empty((p.chieu_cao, p.chieu_rong, 3), dtype=np.uint8)
+    for ch_idx, w_ch in ((0, b_w), (1, g_w), (2, r_w)):
+        val_ch = float(p.cuong_do_nen) + tin_hieu * w_ch
+        img_bgr[:, :, ch_idx] = np.round(np.clip(val_ch, 0.0, 255.0)).astype(np.uint8)
+    if gan_watermark:
+        cv2.putText(
+            img_bgr,
+            "SIMULATED - DU LIEU MO PHONG",
+            (10, max(16, p.chieu_cao - 12)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.40,
+            (160, 160, 160),
+            1,
+            cv2.LINE_AA,
+        )
+    meta = dict(base.metadata)
+    meta["da_gan_watermark"] = bool(gan_watermark)
+    meta["ty_le_kenh_RGB"] = [r_w, g_w, b_w]
+    return AnhMoPhong(
+        anh=img_bgr,
+        delta_y_ly_thuyet_px=base.delta_y_ly_thuyet_px,
+        y_tc_ly_thuyet=base.y_tc_ly_thuyet,
+        y_mau_ly_thuyet=base.y_mau_ly_thuyet,
+        x_ref=base.x_ref,
+        tham_so=p,
+        metadata=meta,
+    )
+
+
 def luu_anh_mo_phong_png(
     anh_mp: AnhMoPhong,
     duong_dan: str | Path,
