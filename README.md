@@ -20,18 +20,18 @@
   *(Lưu ý: Thành kính acrylic có 2 mặt phẳng song song nên theo định luật khúc xạ chỉ dịch tia song song một lượng vi lượng không đáng kể, hoàn toàn không làm đổi góc lệch $\delta$).*
 
 ### 1.2. Tại sao phải dùng cấu trúc vi sai hai ngăn?
-- Trong thực tế, laser đi-ốt rất dễ bị **trôi nhiệt** (thermal beam drift), tay cầm điện thoại bị **rung lắc**, hoặc giá đỡ bị nghiêng làm vạch sáng trên màn bị dời một lượng $\delta y_{drift}$.
-- **Nguyên lí vi sai**: Vì chùm laser chiếu đồng thời qua cả hai ngăn, sự rung lắc cơ học và trôi dạt nguồn sáng sẽ tác động như nhau lên cả hai vạch:
-  $$y_{mẫu} = y_{mẫu, 0} + \delta y_{drift}$$
-  $$y_{tc} = y_{tc, 0} + \delta y_{drift}$$
+- Trong thực tế, laser đi-ốt rất dễ bị **trôi nhiệt** (thermal beam drift), tay cầm điện thoại bị **rung lắc**, hoặc giá đỡ bị nghiêng làm vạch sáng trên màn bị dời một lượng $\delta y_{\text{drift}}$.
+- **Nguyên lí vi sai**: Vì chùm laser chiếu đồng thời qua cả hai ngăn, phần nhiễu **CHUNG** tác động lên cả hai vạch:
+  $$y_{\text{mẫu}} = y_{\text{mẫu}, 0} + \delta y_{\text{drift, mẫu}}$$
+  $$y_{\text{tc}} = y_{\text{tc}, 0} + \delta y_{\text{drift, tc}}$$
   Tín hiệu đo là **khoảng cách thẳng đứng $\Delta y$ giữa hai vạch**:
-  $$\Delta y = y_{mẫu} - y_{tc} = (y_{mẫu, 0} + \delta y_{drift}) - (y_{tc, 0} + \delta y_{drift}) = y_{mẫu, 0} - y_{tc, 0}$$
-  $\implies$ **Triệt tiêu hoàn toàn sai số trôi nguồn và rung lắc bậc 1!**
+  $$\Delta y = y_{\text{mẫu}} - y_{\text{tc}}$$
+  Đo vi sai giúp **triệt phần nhiễu CHUNG** giữa hai vạch; tuy nhiên mức triệt thực tế (`he_so_triet_chung` trong `config.yaml`) hiện **chưa đo** và bắt buộc phải xác định bằng thực nghiệm (bộ phận không triệt tiêu hết như độ nghiêng khác nhau, trôi nhiệt riêng từng ngăn vẫn đi vào sai số).
 
 ### 1.3. Thuật toán định vị tâm vạch dưới pixel (Sub-pixel Beam Centroid)
-- Profile cường độ theo phương thẳng đứng của laser tuân theo hàm Gauss:
-  $$I(y) = I_{bg} + A \cdot \exp\left(-\frac{(y - \mu)^2}{2\sigma^2}\right)$$
-- Sử dụng thuật toán khớp phi tuyến Levenberg-Marquardt (`scipy.optimize.curve_fit`) kết hợp khớp đường thẳng có trọng số qua hàng trăm cột ảnh, giúp đạt độ chính xác tâm vạch $< 0{,}02\text{ pixel}$ (vượt xa độ phân giải mắt thường).
+- Profile cường độ theo phương thẳng đứng của laser được xấp xỉ theo hàm Gauss:
+  $$I(y) = I_{\text{bg}} + A \cdot \exp\left(-\frac{(y - \mu)^2}{2\sigma^2}\right)$$
+- Sử dụng thuật toán khớp phi tuyến Levenberg–Marquardt (`scipy.optimize.curve_fit`) kết hợp khớp đường thẳng có trọng số qua nhiều cột ảnh. Độ lệch chuẩn lặp lại ở mức dưới pixel đo được trên bộ ảnh kiểm thử là **độ lặp lại do nhiễu ngẫu nhiên trên ảnh MÔ PHỎNG, không phải độ chính xác của thiết bị thật**.
 
 ### 1.4. Đánh giá độ đục tương đối
 - Khi nước bị đục do phù sa hoặc chất lơ lửng, hiện tượng **tán xạ Mie/Rayleigh** làm chùm laser bị mở rộng (tăng độ rộng nửa cực đại $FWHM$) và suy giảm cường độ đỉnh theo định luật Beer-Lambert.
@@ -73,18 +73,21 @@ Trình duyệt sẽ tự động mở tại địa chỉ: `http://127.0.0.1:8000
 - **Góc chụp**: Ống kính điện thoại hướng trực diện, vuông góc với màn hứng vạch.
 
 ### 3.3. Quy trình thu thập dữ liệu hiệu chuẩn (Calibration)
-1. Pha tối thiểu 5–8 dung dịch muối chuẩn NaCl bằng cân phân tích chính xác ($\pm 0{,}01\text{ g}$) và bình định mức:
-   - Các mức gợi ý: $0\text{ ‰}$ (nước cất), $5\text{ ‰}$, $10\text{ ‰}$, $15\text{ ‰}$, $20\text{ ‰}$, $25\text{ ‰}$, $30\text{ ‰}$, $35\text{ ‰}$.
-2. Đo lặp lại mỗi mẫu 3 lần ở các dải nhiệt độ phòng (ví dụ buổi sáng $22^\circ\text{C}$, trưa $28^\circ\text{C}$).
-3. Nhập số liệu vào file `data/mau_hieu_chuan.csv` và chạy dựng đường chuẩn tại Tab 4 của ứng dụng.
+1. Pha tối thiểu 5–8 dung dịch muối chuẩn NaCl bằng cân phân tích chính xác (khai báo độ bất định của dung dịch chuẩn nếu có trong `config.yaml`) và bình định mức:
+   - Các mức gợi ý: $0\,‰$ (nước cất), $5\,‰$, $10\,‰$, $15\,‰$, $20\,‰$, $25\,‰$, $30\,‰$, $35\,‰$.
+2. Đo lặp lại mỗi mẫu ở nhiều mức nhiệt độ phủ hết **dải nhiệt độ ao nuôi thực tế** (nên phủ tới $\ge 35\,^\circ\text{C}$ nếu có thể, không chỉ giới hạn ở $22\text{–}28\,^\circ\text{C}$), ghi rõ nhiệt độ cả **ngăn mẫu** và **ngăn tham chiếu** (hoặc đảm bảo hai ngăn cân bằng nhiệt).
+3. Lưu ý giới hạn vật lí:
+   - Công thức chiết suất Quan–Fry (nếu dùng làm tham chiếu) chỉ có hiệu lực trong khoảng $0\text{–}30\,^\circ\text{C}$, $0\text{–}35\text{ PSU}$, bước sóng $400\text{–}700\text{ nm}$.
+   - Nước ao/nước tự nhiên chứa nhiều ion khác ($\text{Mg}^{2+}, \text{Ca}^{2+}, \text{K}^+, \text{SO}_4^{2-}, \text{HCO}_3^-\dots$) và chất hữu cơ hòa tan nên khác với dung dịch NaCl tinh khiết; kết quả đo chỉ là **độ mặn tương đương NaCl**.
+4. Nhập số liệu vào file `data/mau_hieu_chuan.csv` (ghi rõ `nguon_du_lieu = THUC_TE`) và chạy dựng đường chuẩn tại Tab 4 của ứng dụng.
 
 ---
 
 ## 4. CHẠY KIỂM THỬ TỰ ĐỘNG (UNIT TESTS)
 
-Để kiểm tra toàn diện tính toàn vẹn của mã nguồn, độ chính xác thuật toán và thử nghiệm lặp lại Monte Carlo 100 ảnh:
+Để kiểm tra toàn diện mã nguồn (quang học, tìm tâm vạch, đo vi sai, mô phỏng Monte Carlo 100 ảnh, hiệu chuẩn & bù nhiệt, ngưỡng sinh học và API web):
 ```bash
-python -m pytest tests -v
+python -m pytest tests -q
 ```
-Toàn bộ 48 bài kiểm thử chuyên sâu (Optics, Tìm tâm vạch, Đo vi sai, Bộ sinh mô phỏng Monte Carlo, Hiệu chuẩn & Bù nhiệt, Ngưỡng sinh học) đều phải vượt qua (`PASSED 100%`).
+Kết quả thực tế đã chạy ở bước P0: **60 bài kiểm thử** đều đạt (`60 passed`, 0 bỏ qua). *(Số bài kiểm thử sẽ tăng thêm khi hoàn tất các mục P1–P2.)*
 

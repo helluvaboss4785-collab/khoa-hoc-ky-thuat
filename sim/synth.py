@@ -16,7 +16,7 @@ Vật lí & Mô hình mô phỏng:
   3. Độ trôi chung (Common Drift): mô phỏng nhiệt làm dời nguồn laser hoặc rung tay cầm máy ảnh.
   4. Độ đục môi trường: tán xạ làm phình to độ rộng FWHM và suy giảm cường độ theo Beer-Lambert.
   5. Bão hòa (Clipping): bệt đỉnh tại mức 255 nếu phơi sáng quá mức.
-- MỌI ẢNH ĐỀU ĐƯỢC GẮN NHÃN METADATA "SIMULATED" VÀ WATERMARK BẮT BUỘC.
+- MỌI ẢNH ĐỀU ĐƯỢC GẮN METADATA `{"NGUON": "SIMULATED"}`; khi gọi trực tiếp trong bộ nhớ `gan_watermark` mặc định `False` để không che nhiễu kiểm thử, và mặc định bật watermark + file JSON đi kèm khi lưu ảnh ra file.
 """
 from __future__ import annotations
 
