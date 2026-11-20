@@ -26,6 +26,7 @@ import cv2
 import numpy as np
 from scipy.optimize import curve_fit
 
+from core.ong_kinh import ThamSoOngKinh, kiem_tra_vung_meo_ong_kinh, sua_meo_anh
 from core.spot import (
     KetQuaUocLuongVach,
     uoc_luong_duong_vach,
@@ -59,6 +60,7 @@ class ChatLuongAnh:
     canh_bao_chi_tiet: list[dict[str, str]] = field(default_factory=list)
     nen_khong_deu: bool = False
     bien_thien_nen: float = 0.0
+    canh_bao_meo_ong_kinh: bool = False
 
 
 @dataclass(frozen=True)
@@ -573,8 +575,13 @@ def do_delta_y_tu_anh(
     ti_le_cot_bao_hoa_nghiem_trong: float = 0.30,
     so_cot_lien_tiep_bao_hoa: int = 15,
     nguong_nen_khong_deu: float = 30.0,
+    tham_so_ong_kinh: ThamSoOngKinh | None = None,
+    nguong_lech_tam_meo_ti_le: float = 0.30,
+    he_so_meo_k1_khai_bao: float | None = None,
 ) -> KetQuaDoDeltaY:
     """Đo độ lệch vi sai Δy và chỉ số độ đục từ một ảnh chụp (chọn kênh laser tối ưu & kiểm bão hòa gốc)."""
+    if tham_so_ong_kinh is not None:
+        anh = sua_meo_anh(anh, tham_so_ong_kinh)
     anh_kenh, ten_kenh = chon_kenh_laser(anh, kenh_laser=kenh_laser)
 
     # 1. Xác định ROI nếu chưa có
@@ -732,7 +739,7 @@ def do_delta_y_tu_anh(
         amp_mau=vach_m.cuong_do_dinh_tb,
     )
 
-    # 7. Cập nhật cảnh báo độ nhòe và hoàn thiện đối tượng chất lượng
+    # 7. Cập nhật cảnh báo độ nhòe, méo ống kính và hoàn thiện đối tượng chất lượng
     canh_bao_ct_final = list(chat_luong_khoi_tao.canh_bao_chi_tiet)
     co_nhoe = bool(vach_m.fwhm_trung_binh > 50.0 or vach_tc.fwhm_trung_binh > 50.0)
     if co_nhoe:
@@ -743,6 +750,24 @@ def do_delta_y_tu_anh(
                 f"Vạch bị nhòe lớn (FWHM mẫu = {vach_m.fwhm_trung_binh:.1f} px, FWHM tc = {vach_tc.fwhm_trung_binh:.1f} px). "
                 "Cần kiểm tra lại hội tụ của ống kính hoặc mẫu quá đục làm mất biên dạng vạch."
             ),
+        })
+
+    h_anh, w_anh = anh_kenh.shape[:2]
+    meo_check = kiem_tra_vung_meo_ong_kinh(
+        h_img=h_anh,
+        y_tc=vach_tc.y_tam,
+        y_mau=vach_m.y_tam,
+        nguong_lech_tam_ti_le=nguong_lech_tam_meo_ti_le,
+        he_so_meo_k1=he_so_meo_k1_khai_bao,
+        chua_sua_meo=(tham_so_ong_kinh is None),
+        w_img=w_anh,
+    )
+    co_meo_ong_kinh = bool(meo_check["canh_bao_meo"])
+    if co_meo_ong_kinh and meo_check["noi_dung"]:
+        canh_bao_ct_final.append({
+            "ma": "MEO_ONG_KINH",
+            "cap": str(meo_check["cap"] or "thong_tin"),
+            "noi_dung": str(meo_check["noi_dung"]),
         })
 
     chat_luong_final = ChatLuongAnh(
@@ -761,6 +786,7 @@ def do_delta_y_tu_anh(
         canh_bao_chi_tiet=canh_bao_ct_final,
         nen_khong_deu=nen_khong_deu,
         bien_thien_nen=bien_thien_nen,
+        canh_bao_meo_ong_kinh=co_meo_ong_kinh,
     )
 
     # 8. Sinh ảnh vẽ kết quả kiểm chứng
@@ -793,6 +819,9 @@ def do_delta_y_da_khung_hinh(
     ti_le_cot_bao_hoa_nghiem_trong: float = 0.30,
     so_cot_lien_tiep_bao_hoa: int = 15,
     nguong_nen_khong_deu: float = 30.0,
+    tham_so_ong_kinh: ThamSoOngKinh | None = None,
+    nguong_lech_tam_meo_ti_le: float = 0.30,
+    he_so_meo_k1_khai_bao: float | None = None,
 ) -> KetQuaDoDaKhungHinh:
     """Xử lí chuỗi nhiều khung hình (video / multi-shot), lấy trung vị và độ phân tán.
 
@@ -826,6 +855,9 @@ def do_delta_y_da_khung_hinh(
                 ti_le_cot_bao_hoa_nghiem_trong=ti_le_cot_bao_hoa_nghiem_trong,
                 so_cot_lien_tiep_bao_hoa=so_cot_lien_tiep_bao_hoa,
                 nguong_nen_khong_deu=nguong_nen_khong_deu,
+                tham_so_ong_kinh=tham_so_ong_kinh,
+                nguong_lech_tam_meo_ti_le=nguong_lech_tam_meo_ti_le,
+                he_so_meo_k1_khai_bao=he_so_meo_k1_khai_bao,
             )
         except (AnhKhongHopLeError, KhongTimThayVachError, ValueError) as exc:
             khung_loi.append((idx, str(exc)))
@@ -938,6 +970,7 @@ def do_delta_y_da_khung_hinh(
         canh_bao_chi_tiet=canh_bao_ct_gop,
         nen_khong_deu=any(c.nen_khong_deu for c in ds_cq_tat_ca),
         bien_thien_nen=max(c.bien_thien_nen for c in ds_cq_tat_ca),
+        canh_bao_meo_ong_kinh=any(c.canh_bao_meo_ong_kinh for c in ds_cq_tat_ca),
     )
 
     return KetQuaDoDaKhungHinh(

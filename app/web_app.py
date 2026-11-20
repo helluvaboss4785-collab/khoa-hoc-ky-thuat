@@ -40,6 +40,7 @@ if str(THU_MUC_GOC) not in sys.path:
     sys.path.insert(0, str(THU_MUC_GOC))
 
 from core import calibration as cal
+from core import ong_kinh
 from core import optics as op
 from core import thang
 from core import thresholds as th
@@ -159,6 +160,7 @@ def _ensure_config_cache() -> None:
     _CONFIG_CACHE["optics"] = cfg_opt
     _CONFIG_CACHE["species"] = ds_loai
     _CONFIG_CACHE["calib"] = cfg_cal
+    raw_k1_khai_bao = img_raw.get("he_so_meo_k1_khai_bao")
     _CONFIG_CACHE["image"] = {
         "nguong_bao_hoa": int(img_raw.get("nguong_bao_hoa", 250)),
         "ti_le_bao_hoa_toi_da": float(img_raw.get("ti_le_bao_hoa_toi_da", 0.02)),
@@ -166,6 +168,10 @@ def _ensure_config_cache() -> None:
         "so_cot_lien_tiep_bao_hoa": int(img_raw.get("so_cot_lien_tiep_bao_hoa", 15)),
         "nguong_nen_khong_deu": float(img_raw.get("nguong_nen_khong_deu", 30.0)),
         "nguong_on_dinh_nhiet_px_moi_phut": float(img_raw.get("nguong_on_dinh_nhiet_px_moi_phut", 0.05)),
+        "nguong_lech_tam_meo_ti_le": float(img_raw.get("nguong_lech_tam_meo_ti_le", 0.30)),
+        "he_so_meo_k1_khai_bao": float(raw_k1_khai_bao) if raw_k1_khai_bao is not None else None,
+        "bat_sua_meo_ong_kinh": bool(img_raw.get("bat_sua_meo_ong_kinh", False)),
+        "thu_muc_hieu_chuan_ong_kinh": str(img_raw.get("thu_muc_hieu_chuan_ong_kinh", "data/ong_kinh")),
         "snr_toi_thieu": float(img_raw.get("snr_toi_thieu", 10.0)),
         "kenh_laser": str(img_raw.get("kenh_laser", "auto")),
     }
@@ -794,6 +800,7 @@ def _serialize_chat_luong(
         "so_cot_bao_hoa_lien_tiep_max": int(getattr(cq, "so_cot_bao_hoa_lien_tiep_max", 0)),
         "nen_khong_deu": bool(getattr(cq, "nen_khong_deu", False)),
         "bien_thien_nen": float(getattr(cq, "bien_thien_nen", 0.0)),
+        "canh_bao_meo_ong_kinh": bool(getattr(cq, "canh_bao_meo_ong_kinh", False)),
         "qua_mo": bool(cq.qua_mo),
         "snr": cq.snr,
         "nhoe": bool(cq.nhoe),
@@ -936,6 +943,13 @@ async def api_measure(request: Request) -> JSONResponse:
                 roi_mau_tuple = tuple(int(v) for v in rmau)
 
         img_cfg = load_image_config()
+        ts_ok_use = None
+        id_dt_req = str(body.get("id_dien_thoai") or "").strip()
+        if bool(img_cfg.get("bat_sua_meo_ong_kinh", False)) and id_dt_req:
+            ok_dir = Path(str(img_cfg.get("thu_muc_hieu_chuan_ong_kinh", "data/ong_kinh")))
+            if not ok_dir.is_absolute():
+                ok_dir = THU_MUC_GOC / ok_dir
+            ts_ok_use = ong_kinh.tai_tham_so_ong_kinh(id_dt_req, ok_dir)
         buoc_cot = max(2, int(anh_input.shape[1] // 250)) if anh_input.shape[1] > 600 else 2
         kq_do = do_delta_y_tu_anh(
             anh_input,
@@ -951,6 +965,9 @@ async def api_measure(request: Request) -> JSONResponse:
             ti_le_cot_bao_hoa_nghiem_trong=float(img_cfg.get("ti_le_cot_bao_hoa_nghiem_trong", 0.30)),
             so_cot_lien_tiep_bao_hoa=int(img_cfg.get("so_cot_lien_tiep_bao_hoa", 15)),
             nguong_nen_khong_deu=float(img_cfg.get("nguong_nen_khong_deu", 30.0)),
+            tham_so_ong_kinh=ts_ok_use,
+            nguong_lech_tam_meo_ti_le=float(img_cfg.get("nguong_lech_tam_meo_ti_le", 0.30)),
+            he_so_meo_k1_khai_bao=img_cfg.get("he_so_meo_k1_khai_bao"),
         )
 
         (
@@ -1385,6 +1402,13 @@ async def api_measure_multi(request: Request) -> JSONResponse:
         bh_nghiem_trong = float(img_cfg.get("ti_le_cot_bao_hoa_nghiem_trong", 0.30))
         bh_lien_tiep = int(img_cfg.get("so_cot_lien_tiep_bao_hoa", 15))
         nen_thresh = float(img_cfg.get("nguong_nen_khong_deu", 30.0))
+        ts_ok_use = None
+        id_dt_req = str(body.get("id_dien_thoai") or "").strip()
+        if bool(img_cfg.get("bat_sua_meo_ong_kinh", False)) and id_dt_req:
+            ok_dir = Path(str(img_cfg.get("thu_muc_hieu_chuan_ong_kinh", "data/ong_kinh")))
+            if not ok_dir.is_absolute():
+                ok_dir = THU_MUC_GOC / ok_dir
+            ts_ok_use = ong_kinh.tai_tham_so_ong_kinh(id_dt_req, ok_dir)
         kq_da = do_delta_y_da_khung_hinh(
             frames_ok,
             roi_tham_chieu=roi_tc_tuple,
@@ -1397,6 +1421,9 @@ async def api_measure_multi(request: Request) -> JSONResponse:
             ti_le_cot_bao_hoa_nghiem_trong=bh_nghiem_trong,
             so_cot_lien_tiep_bao_hoa=bh_lien_tiep,
             nguong_nen_khong_deu=nen_thresh,
+            tham_so_ong_kinh=ts_ok_use,
+            nguong_lech_tam_meo_ti_le=float(img_cfg.get("nguong_lech_tam_meo_ti_le", 0.30)),
+            he_so_meo_k1_khai_bao=img_cfg.get("he_so_meo_k1_khai_bao"),
         )
 
         # Hợp nhất danh sách khung lỗi (cả khung lỗi lúc giải mã + khung lỗi lúc đo vạch)
@@ -1422,6 +1449,9 @@ async def api_measure_multi(request: Request) -> JSONResponse:
             ti_le_cot_bao_hoa_nghiem_trong=bh_nghiem_trong,
             so_cot_lien_tiep_bao_hoa=bh_lien_tiep,
             nguong_nen_khong_deu=nen_thresh,
+            tham_so_ong_kinh=ts_ok_use,
+            nguong_lech_tam_meo_ti_le=float(img_cfg.get("nguong_lech_tam_meo_ti_le", 0.30)),
+            he_so_meo_k1_khai_bao=img_cfg.get("he_so_meo_k1_khai_bao"),
         )
         sigma_dy_use = max(kq_da.sai_so_thong_ke_px, kq_rep.sai_so_delta_y_px if kq_da.sai_so_thong_ke_px <= 0 else 0.0)
         cq_chung = kq_da.chat_luong_chung
