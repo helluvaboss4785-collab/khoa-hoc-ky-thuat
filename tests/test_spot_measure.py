@@ -389,4 +389,32 @@ def test_q2_canh_bao_dom_cuc_bo_va_cot_lien_tiep():
     assert kq_bet.chat_luong.so_cot_bao_hoa_lien_tiep_max >= 15
 
 
+def test_q3_anh_12mp_nhanh_duoi_3s_va_loi_nen_khong_deu():
+    """Q3: Ảnh 4000×3000 (12MP) đo <= 3s và báo đúng nguyên nhân khi nền không đều làm mất vạch."""
+    import time
+    from core.measure import KhongTimThayVachError
+
+    h_big, w_big = 3000, 4000
+    anh_big = np.full((h_big, w_big), 14, dtype=np.uint8)
+    y_idx = np.arange(h_big, dtype=np.float32)[:, None]
+    vach_trai = 180.0 * np.exp(-((y_idx - 900.0) ** 2) / (2.0 * 4.5**2))
+    vach_phai = 180.0 * np.exp(-((y_idx - 1650.25) ** 2) / (2.0 * 4.5**2))
+    anh_big[:, 150:1850] = np.clip(14.0 + vach_trai, 0, 255).astype(np.uint8)
+    anh_big[:, 2150:3850] = np.clip(14.0 + vach_phai, 0, 255).astype(np.uint8)
+
+    t0 = time.perf_counter()
+    kq = do_delta_y_tu_anh(anh_big, tao_anh_ve=False)
+    dt = time.perf_counter() - t0
+    assert dt <= 3.0, f"Đo ảnh 4000x3000 mất {dt:.2f}s > 3.0s"
+    assert abs(kq.delta_y_px - 750.25) < 0.2
+
+    # Khi nền dốc quá mạnh che mất vạch -> phải nêu đúng nguyên nhân nền không đều
+    yy = np.linspace(10.0, 220.0, 300, dtype=np.float32)[:, None]
+    anh_nen_doc = np.clip(np.broadcast_to(yy, (300, 400)), 0, 255).astype(np.uint8)
+    with pytest.raises(KhongTimThayVachError) as exc_info:
+        tu_dong_tim_roi_hai_vach(anh_nen_doc, nguong_nen_khong_deu=30.0)
+    assert "nền sáng không đều" in str(exc_info.value).lower()
+
+
+
 

@@ -280,3 +280,20 @@ def test_q2_phan_biet_speckle_va_bao_hoa_that():
     assert kq_clip.chat_luong.so_cot_bao_hoa_lien_tiep_max >= 15
     assert any(c["ma"] == "BAO_HOA_NGHIEM_TRONG" and c["cap"] == "nghiem_trong" for c in kq_clip.chat_luong.canh_bao_chi_tiet)
 
+
+def test_q3_nen_sang_khong_deu_gradient_40_va_90():
+    """Q3: Với gradient_nen_y = 40 và 90 (10 seed/mức), phải đo đúng (<0.2 px) hoặc báo đúng nguyên nhân nen_khong_deu."""
+    for grad in (40.0, 90.0):
+        for s in range(10):
+            p = ThamSoMoPhong(S_ppt=20.0, T_C=25.0, gradient_nen_y=grad, seed=200 + s)
+            mp = sinh_anh_hai_vach_mo_phong(p, cfg=CFG)
+            kq = do_delta_y_tu_anh(mp.anh, x_ref=mp.x_ref, tao_anh_ve=False)
+            sai_so = abs(kq.delta_y_px - mp.delta_y_ly_thuyet_px)
+            assert kq.chat_luong.nen_khong_deu is True
+            assert any(
+                c["ma"] == "NEN_KHONG_DEU" and "nền sáng không đều" in c["noi_dung"].lower()
+                for c in kq.chat_luong.canh_bao_chi_tiet
+            )
+            assert sai_so < 0.2, f"grad={grad}, seed={s}: sai số lớn {sai_so:.3f} px"
+
+

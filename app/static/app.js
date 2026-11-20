@@ -30,6 +30,9 @@ const STATE = {
   speciesLast: null,
   scalePoints: [],
   pickingScale: false,
+  pickingRoi: null,       // null | "tc" | "mau"
+  roiBoxes: { tc: null, mau: null },
+  roiDragStart: null,
   debounces: {},
   aborts: {},
   measureSeq: 0,
@@ -742,8 +745,20 @@ function getTab1Payload() {
   if (dungRoi) {
     const wGuess = (STATE.lastMeasure && STATE.lastMeasure.anh_width) || 400;
     const mid = Math.floor(wGuess / 2);
-    payload.roi_tc = [Number($("#roi-tc-y0").value), Number($("#roi-tc-y1").value), 5, mid - 8];
-    payload.roi_mau = [Number($("#roi-m-y0").value), Number($("#roi-m-y1").value), mid + 8, wGuess - 5];
+    const parseXPair = (id0, id1, def0, def1) => {
+      const r0 = $(id0)?.value?.trim() || "";
+      const r1 = $(id1)?.value?.trim() || "";
+      if (r0 !== "" && r1 !== "") {
+        const x0 = Math.round(Number(r0));
+        const x1 = Math.round(Number(r1));
+        if (Number.isFinite(x0) && Number.isFinite(x1) && x1 > x0 + 4) return [x0, x1];
+      }
+      return [def0, def1];
+    };
+    const [tcX0, tcX1] = parseXPair("#roi-tc-x0", "#roi-tc-x1", 5, mid - 8);
+    const [mX0, mX1] = parseXPair("#roi-m-x0", "#roi-m-x1", mid + 8, wGuess - 5);
+    payload.roi_tc = [Math.round(Number($("#roi-tc-y0").value)), Math.round(Number($("#roi-tc-y1").value)), tcX0, tcX1];
+    payload.roi_mau = [Math.round(Number($("#roi-m-y0").value)), Math.round(Number($("#roi-m-y1").value)), mX0, mX1];
   }
   return payload;
 }
@@ -2371,7 +2386,134 @@ function bindEvents() {
       });
     }
   });
+  function renderRoiOverlay(previewBox = null) {
+    const overlay = $("#t1-roi-overlay");
+    const img = $("#t1-annotated-img");
+    if (!overlay || !img) return;
+    const rect = img.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    overlay.width = Math.round(rect.width);
+    overlay.height = Math.round(rect.height);
+    const ctx = overlay.getContext("2d");
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+    const natW = img.naturalWidth || rect.width;
+    const natH = img.naturalHeight || rect.height;
+    const sx = rect.width / natW;
+    const sy = rect.height / natH;
+    const drawBox = (box, color, label, dashed = false) => {
+      if (!box) return;
+      const [y0, y1, x0, x1] = box;
+      const rx = x0 * sx;
+      const ry = y0 * sy;
+      const rw = (x1 - x0) * sx;
+      const rh = (y1 - y0) * sy;
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      if (dashed) ctx.setLineDash([6, 4]);
+      ctx.strokeRect(rx, ry, rw, rh);
+      ctx.fillStyle = color;
+      ctx.font = "bold 11px sans-serif";
+      ctx.fillText(label, rx + 4, Math.max(12, ry - 4));
+      ctx.restore();
+    };
+    if ($("#roi-manual-enable")?.checked || previewBox) {
+      drawBox(STATE.roiBoxes.tc, "#22c55e", "ROI Chuẩn");
+      drawBox(STATE.roiBoxes.mau, "#f97316", "ROI Mẫu");
+    }
+    if (previewBox) {
+      drawBox(previewBox.box, previewBox.kind === "tc" ? "#22c55e" : "#f97316", previewBox.kind === "tc" ? "Kéo Chuẩn..." : "Kéo Mẫu...", true);
+    }
+  }
+
+  function setRoiPickMode(kind) {
+    STATE.pickingRoi = kind;
+    if (kind) {
+      STATE.pickingScale = false;
+      const img = $("#t1-annotated-img");
+      if (img) img.style.cursor = "";
+    }
+    const overlay = $("#t1-roi-overlay");
+    if (overlay) overlay.classList.toggle("is-picking-roi", Boolean(kind));
+    const st = $("#roi-draw-status");
+    if (st) {
+      if (kind === "tc") st.textContent = "Hãy kéo chuột thành khung chữ nhật quanh VẠCH CHUẨN (bên trái / phía trên).";
+      else if (kind === "mau") st.textContent = "Hãy kéo chuột thành khung chữ nhật quanh VẠCH MẪU (bên phải / phía dưới).";
+      else st.textContent = "Có thể kéo chọn 2 vùng trực tiếp trên ảnh khi nền sáng phức tạp.";
+    }
+    renderRoiOverlay();
+  }
+
+  function eventToImgPt(ev) {
+    const img = $("#t1-annotated-img");
+    const rect = img.getBoundingClientRect();
+    const natW = img.naturalWidth || rect.width;
+    const natH = img.naturalHeight || rect.height;
+    const x = Math.max(0, Math.min(natW, Math.round(((ev.clientX - rect.left) / Math.max(rect.width, 1)) * natW)));
+    const y = Math.max(0, Math.min(natH, Math.round(((ev.clientY - rect.top) / Math.max(rect.height, 1)) * natH)));
+    return [x, y];
+  }
+
+  $("#btn-draw-roi-tc")?.addEventListener("click", () => setRoiPickMode("tc"));
+  $("#btn-draw-roi-mau")?.addEventListener("click", () => setRoiPickMode("mau"));
+  $("#btn-clear-roi-box")?.addEventListener("click", () => {
+    STATE.roiBoxes = { tc: null, mau: null };
+    ["#roi-tc-x0", "#roi-tc-x1", "#roi-m-x0", "#roi-m-x1"].forEach((id) => {
+      if ($(id)) $(id).value = "";
+    });
+    if ($("#roi-manual-enable")) $("#roi-manual-enable").checked = false;
+    setRoiPickMode(null);
+    if ($("#meas-live")?.checked) runMeasure({ silent: true });
+  });
+  $("#t1-annotated-img")?.addEventListener("load", () => renderRoiOverlay());
+  window.addEventListener("resize", () => renderRoiOverlay());
+
+  $("#t1-roi-overlay")?.addEventListener("pointerdown", (ev) => {
+    if (!STATE.pickingRoi) return;
+    ev.preventDefault();
+    ev.currentTarget.setPointerCapture?.(ev.pointerId);
+    STATE.roiDragStart = eventToImgPt(ev);
+  });
+  $("#t1-roi-overlay")?.addEventListener("pointermove", (ev) => {
+    if (!STATE.pickingRoi || !STATE.roiDragStart) return;
+    const [x0, y0] = STATE.roiDragStart;
+    const [x1, y1] = eventToImgPt(ev);
+    const box = [Math.min(y0, y1), Math.max(y0, y1), Math.min(x0, x1), Math.max(x0, x1)];
+    renderRoiOverlay({ kind: STATE.pickingRoi, box });
+  });
+  $("#t1-roi-overlay")?.addEventListener("pointerup", (ev) => {
+    if (!STATE.pickingRoi || !STATE.roiDragStart) return;
+    const [sx, sy] = STATE.roiDragStart;
+    const [ex, ey] = eventToImgPt(ev);
+    STATE.roiDragStart = null;
+    const y0 = Math.min(sy, ey), y1 = Math.max(sy, ey);
+    const x0 = Math.min(sx, ex), x1 = Math.max(sx, ex);
+    const kind = STATE.pickingRoi;
+    if ((x1 - x0) < 12 || (y1 - y0) < 8) {
+      setRoiPickMode(kind);
+      const st = $("#roi-draw-status");
+      if (st) st.textContent = "Khung quá nhỏ (< 12×8 px), hãy kéo rộng hơn quanh vạch sáng.";
+      return;
+    }
+    const prefix = kind === "tc" ? "#roi-tc" : "#roi-m";
+    if ($(`${prefix}-y0`)) $(`${prefix}-y0`).value = String(y0);
+    if ($(`${prefix}-y1`)) $(`${prefix}-y1`).value = String(y1);
+    if ($(`${prefix}-x0`)) $(`${prefix}-x0`).value = String(x0);
+    if ($(`${prefix}-x1`)) $(`${prefix}-x1`).value = String(x1);
+    STATE.roiBoxes[kind] = [y0, y1, x0, x1];
+    if ($("#roi-manual-enable")) $("#roi-manual-enable").checked = true;
+    setRoiPickMode(null);
+    const st = $("#roi-draw-status");
+    if (st) st.textContent = `Đã chọn ROI ${kind === "tc" ? "Chuẩn" : "Mẫu"}: y=${y0}..${y1}, x=${x0}..${x1}.`;
+    if ($("#meas-live")?.checked) runMeasure({ silent: true });
+  });
+  $("#t1-roi-overlay")?.addEventListener("pointercancel", () => {
+    STATE.roiDragStart = null;
+    renderRoiOverlay();
+  });
+
   $("#btn-pick-scale")?.addEventListener("click", () => {
+    setRoiPickMode(null);
     STATE.scalePoints = [];
     STATE.pickingScale = true;
     const img = $("#t1-annotated-img");

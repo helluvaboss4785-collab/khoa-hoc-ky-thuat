@@ -56,6 +56,8 @@ class ChatLuongAnh:
     co_dom_bao_hoa_cuc_bo: bool = False
     so_cot_bao_hoa_lien_tiep_max: int = 0
     canh_bao_chi_tiet: list[dict[str, str]] = field(default_factory=list)
+    nen_khong_deu: bool = False
+    bien_thien_nen: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -148,7 +150,11 @@ def chon_kenh_laser(
     best_name, best_idx, best_contrast = "R", 2, -1.0
     for name, idx in (("R", 2), ("G", 1), ("B", 0)):
         c_sub = sub[:, :, idx]
-        contrast = float(np.percentile(c_sub, 99.9) - np.median(c_sub))
+        if c_sub.shape[0] * c_sub.shape[1] > 1_000_000:
+            c_stat = c_sub[::2, ::2]
+        else:
+            c_stat = c_sub
+        contrast = float(np.percentile(c_stat, 99.9) - np.median(c_stat))
         if contrast > best_contrast:
             best_contrast = contrast
             best_name = name
@@ -184,7 +190,11 @@ def _danh_gia_vung_don(
     if vung.size == 0 or vung.shape[0] < 1 or vung.shape[1] < 1:
         raise AnhKhongHopLeError("Vùng ROI rỗng, không thể đánh giá chất lượng.")
 
-    nen = float(np.percentile(vung, 10))
+    if vung.size > 300_000:
+        v_stat = vung[::2, ::2]
+    else:
+        v_stat = vung
+    nen = float(np.percentile(v_stat, 10))
     col_max = np.max(vung, axis=0)
     cot_co_tin_hieu = col_max >= (nen + 15.0)
     cot_bao_hoa = col_max >= nguong_bao_hoa
@@ -198,8 +208,8 @@ def _danh_gia_vung_don(
         dinh = float(np.max(col_max))
         lien_tiep_max = _doan_lien_tiep_toi_da(cot_bao_hoa)
 
-    nen_mask = vung <= (nen + 5.0)
-    std_nen = float(np.std(vung[nen_mask])) if np.any(nen_mask) else 1.0
+    nen_mask = v_stat <= (nen + 5.0)
+    std_nen = float(np.std(v_stat[nen_mask])) if np.any(nen_mask) else 1.0
     std_nen = max(std_nen, 0.5)
 
     tuong_phan = dinh - nen
@@ -357,27 +367,58 @@ def tinh_chi_so_do_duc_tuong_doi(
     return float(np.clip(chi_so, 0.0, 1.0))
 
 
+def _uoc_luong_nen_hinh_thai(anh_xam: np.ndarray) -> tuple[np.ndarray, np.ndarray, float]:
+    """Ước lượng nền sáng chậm bằng phép mở hình thái trên ảnh thu gọn ≤ 900 px.
+
+    Trả về:
+        (anh_thu_gon, anh_nen_thu_gon, bien_thien_nen_p95_p5)
+    """
+    if anh_xam is None or anh_xam.size == 0:
+        raise AnhKhongHopLeError("Ảnh đầu vào rỗng, không thể ước lượng nền.")
+    h, w = anh_xam.shape[:2]
+    canh_max = max(h, w)
+    if canh_max > 900:
+        scale = 900.0 / float(canh_max)
+        nw = max(32, int(round(w * scale)))
+        nh = max(32, int(round(h * scale)))
+        work = cv2.resize(anh_xam, (nw, nh), interpolation=cv2.INTER_AREA)
+    else:
+        work = anh_xam
+
+    hs, ws = work.shape[:2]
+    kh = max(19, min(45, (hs // 7) | 1))
+    kw = max(11, min(31, (ws // 12) | 1))
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kw, kh))
+    nen = cv2.morphologyEx(work, cv2.MORPH_OPEN, kernel)
+    nen = cv2.GaussianBlur(nen, (9, 9), 0)
+    bien_thien_nen = float(np.percentile(nen, 95) - np.percentile(nen, 5))
+    return work, nen, bien_thien_nen
+
+
 def tu_dong_tim_roi_hai_vach(
     anh_xam: np.ndarray,
     ty_le_sang: float = 0.4,
+    nguong_nen_khong_deu: float = 30.0,
 ) -> tuple[tuple[int, int, int, int], tuple[int, int, int, int]]:
     """Tự động phát hiện 2 vùng quan tâm (ROI) chứa 2 vạch sáng trên ảnh.
 
-    Hỗ trợ cả 2 cấu hình bố trí quang học:
-    1. Bố trí ngang (Trái - Phải): Ngăn tham chiếu bên trái, ngăn mẫu bên phải.
-       Khi Δy = 0 hai vạch nằm thẳng hàng ngang; khi S > 0 vạch mẫu lệch đứng.
-    2. Bố trí đứng (Trên - Dưới): Vạch tham chiếu ở trên, vạch mẫu ở dưới.
-
-    Trả về:
-        (roi_tham_chieu, roi_mau)
+    Cải tiến Q3:
+    - Trừ nền hình thái chậm trước khi lấy ngưỡng để không nhận nhầm vùng sáng nền.
+    - Xử lí trên bản thu gọn cạnh lớn ≤ 900 px rồi quy đổi tọa độ về ảnh gốc (ảnh 12MP vẫn ≤ 3s).
+    - Hỗ trợ cả bố trí ngang (Trái - Phải) và đứng (Trên - Dưới).
     """
     h, w = anh_xam.shape
-    x_mid = w // 2
+    work, nen_work, bien_thien_nen = _uoc_luong_nen_hinh_thai(anh_xam)
+    hs, ws = work.shape
+    sx = float(w) / float(ws)
+    sy = float(h) / float(hs)
+    x_mid_s = ws // 2
 
-    # Không che/xóa vùng nào của ảnh: ảnh thật có thể có vạch ở bất kì đâu.
-    blur = cv2.GaussianBlur(anh_xam, (5, 5), 0)
+    # Trừ nền không đều để hai vạch laser nổi rõ trên nền sạch
+    anh_sach = cv2.subtract(work, nen_work)
+    blur = cv2.GaussianBlur(anh_sach, (5, 5), 0)
     nguong_val = float(np.percentile(blur, 100.0 * (1.0 - ty_le_sang * 0.08)))
-    nguong_val = max(nguong_val, 30.0)
+    nguong_val = max(nguong_val, 22.0)
 
     _, thresh = cv2.threshold(blur, int(nguong_val), 255, cv2.THRESH_BINARY)
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (11, 3))
@@ -392,6 +433,13 @@ def tu_dong_tim_roi_hai_vach(
         if cw >= 20 and (cw / max(ch, 1)) >= 1.2 and dien_tich > 80:
             ds_vach.append((x, y, cw, ch, dien_tich))
 
+    def _quy_doi_roi(y0_s: int, y1_s: int, x0_s: int, x1_s: int) -> tuple[int, int, int, int]:
+        y0 = max(0, min(h - 1, int(math.floor(y0_s * sy))))
+        y1 = max(y0 + 1, min(h, int(math.ceil(y1_s * sy))))
+        x0 = max(0, min(w - 1, int(math.floor(x0_s * sx))))
+        x1 = max(x0 + 1, min(w, int(math.ceil(x1_s * sx))))
+        return (y0, y1, x0, x1)
+
     if len(ds_vach) >= 2:
         # Sắp xếp theo diện tích lớn nhất
         ds_vach.sort(key=lambda item: item[4], reverse=True)
@@ -401,43 +449,36 @@ def tu_dong_tim_roi_hai_vach(
         x1_center = v1[0] + v1[2] / 2.0
         x2_center = v2[0] + v2[2] / 2.0
 
-        if abs(x1_center - x2_center) > w * 0.2:
-            # Bố trí Trái - Phải: Vạch bên trái là tham chiếu, bên phải là mẫu
+        if abs(x1_center - x2_center) > ws * 0.2:
             v_trai = v1 if x1_center < x2_center else v2
             v_phai = v2 if x1_center < x2_center else v1
-            
+
             def tao_roi_ngang(x: int, y: int, cw: int, ch: int) -> tuple[int, int, int, int]:
-                y_min = max(0, y - 25)
-                y_max = min(h, y + ch + 25)
-                x_min = max(0, x - 5)
-                x_max = min(w, x + cw + 5)
-                return (y_min, y_max, x_min, x_max)
+                return _quy_doi_roi(max(0, y - 25), min(hs, y + ch + 25), max(0, x - 5), min(ws, x + cw + 5))
 
             return tao_roi_ngang(*v_trai[:4]), tao_roi_ngang(*v_phai[:4])
         else:
-            # Bố trí Trên - Dưới: Vạch trên (y nhỏ) là tham chiếu, vạch dưới là mẫu
             if v1[1] > v2[1]:
                 v1, v2 = v2, v1
 
             def tao_roi_doc(x: int, y: int, cw: int, ch: int) -> tuple[int, int, int, int]:
-                y_min = max(0, y - 15)
-                y_max = min(h, y + ch + 15)
-                x_min = max(0, x - 5)
-                x_max = min(w, x + cw + 5)
-                return (y_min, y_max, x_min, x_max)
+                return _quy_doi_roi(max(0, y - 15), min(hs, y + ch + 15), max(0, x - 5), min(ws, x + cw + 5))
 
             return tao_roi_doc(*v1[:4]), tao_roi_doc(*v2[:4])
 
     elif len(ds_vach) == 1:
-        # Trường hợp 1 dải vạch dài duy nhất trải ngang (đặc trưng khi S = 0 trên cấu trúc trái-phải)
         x, y, cw, ch, _ = ds_vach[0]
-        y_min = max(0, y - 25)
-        y_max = min(h, y + ch + 25)
-        # Tách làm 2 nửa trái và phải quanh x_mid
-        roi_trai = (y_min, y_max, max(0, x), min(w, x_mid - 10))
-        roi_phai = (y_min, y_max, max(0, x_mid + 10), min(w, x + cw))
+        y_min_s = max(0, y - 25)
+        y_max_s = min(hs, y + ch + 25)
+        roi_trai = _quy_doi_roi(y_min_s, y_max_s, max(0, x), min(ws, x_mid_s - 10))
+        roi_phai = _quy_doi_roi(y_min_s, y_max_s, max(0, x_mid_s + 10), min(ws, x + cw))
         return roi_trai, roi_phai
 
+    if bien_thien_nen > nguong_nen_khong_deu:
+        raise KhongTimThayVachError(
+            f"Nền sáng không đều (biến thiên nền {bien_thien_nen:.1f} > {nguong_nen_khong_deu:.1f}), "
+            "hãy che sáng môi trường hoặc kéo chọn ROI thủ công trên ảnh."
+        )
     raise KhongTimThayVachError(
         "Không tự động tìm thấy vạch sáng rõ ràng. "
         "Hãy kéo chọn thủ công 2 vùng ROI vạch tham chiếu và vạch mẫu trên giao diện."
@@ -509,13 +550,14 @@ def do_delta_y_tu_anh(
     kenh_laser: str = "auto",
     ti_le_cot_bao_hoa_nghiem_trong: float = 0.30,
     so_cot_lien_tiep_bao_hoa: int = 15,
+    nguong_nen_khong_deu: float = 30.0,
 ) -> KetQuaDoDeltaY:
     """Đo độ lệch vi sai Δy và chỉ số độ đục từ một ảnh chụp (chọn kênh laser tối ưu & kiểm bão hòa gốc)."""
     anh_kenh, ten_kenh = chon_kenh_laser(anh, kenh_laser=kenh_laser)
 
     # 1. Xác định ROI nếu chưa có
     if roi_tham_chieu is None or roi_mau is None:
-        roi_1, roi_2 = tu_dong_tim_roi_hai_vach(anh_kenh)
+        roi_1, roi_2 = tu_dong_tim_roi_hai_vach(anh_kenh, nguong_nen_khong_deu=nguong_nen_khong_deu)
         roi_tham_chieu = roi_1 if roi_tham_chieu is None else roi_tham_chieu
         roi_mau = roi_2 if roi_mau is None else roi_mau
 
@@ -525,6 +567,9 @@ def do_delta_y_tu_anh(
         x1_u = min(roi_tham_chieu[2], roi_mau[2])
         x2_u = max(roi_tham_chieu[3], roi_mau[3])
         anh_kenh, ten_kenh = chon_kenh_laser(anh, kenh_laser="auto", roi_goi_y=(y1_u, y2_u, x1_u, x2_u))
+
+    _, _, bien_thien_nen = _uoc_luong_nen_hinh_thai(anh_kenh)
+    nen_khong_deu = bool(bien_thien_nen > nguong_nen_khong_deu)
 
     # 2. Đánh giá chất lượng sơ bộ vùng ảnh (kiểm bão hòa trên từng kênh RGB gốc)
     chat_luong_khoi_tao, _, _ = kiem_tra_chat_luong_vung(
@@ -538,6 +583,33 @@ def do_delta_y_tu_anh(
         ti_le_cot_bao_hoa_nghiem_trong=ti_le_cot_bao_hoa_nghiem_trong,
         so_cot_lien_tiep_bao_hoa=so_cot_lien_tiep_bao_hoa,
     )
+    if nen_khong_deu:
+        ct_nen = list(chat_luong_khoi_tao.canh_bao_chi_tiet)
+        ct_nen.append({
+            "ma": "NEN_KHONG_DEU",
+            "cap": "can_than",
+            "noi_dung": (
+                f"Nền sáng không đều (biến thiên nền {bien_thien_nen:.1f} > {nguong_nen_khong_deu:.1f}), "
+                "hãy che sáng môi trường hoặc chọn ROI thủ công."
+            ),
+        })
+        chat_luong_khoi_tao = ChatLuongAnh(
+            hop_le=chat_luong_khoi_tao.hop_le,
+            bao_hoa=chat_luong_khoi_tao.bao_hoa,
+            ti_le_bao_hoa=chat_luong_khoi_tao.ti_le_bao_hoa,
+            qua_mo=chat_luong_khoi_tao.qua_mo,
+            snr=chat_luong_khoi_tao.snr,
+            nhoe=chat_luong_khoi_tao.nhoe,
+            fwhm_mau=chat_luong_khoi_tao.fwhm_mau,
+            fwhm_tc=chat_luong_khoi_tao.fwhm_tc,
+            canh_bao=[c["noi_dung"] for c in ct_nen],
+            kenh_bao_hoa=list(chat_luong_khoi_tao.kenh_bao_hoa),
+            co_dom_bao_hoa_cuc_bo=chat_luong_khoi_tao.co_dom_bao_hoa_cuc_bo,
+            so_cot_bao_hoa_lien_tiep_max=chat_luong_khoi_tao.so_cot_bao_hoa_lien_tiep_max,
+            canh_bao_chi_tiet=ct_nen,
+            nen_khong_deu=True,
+            bien_thien_nen=bien_thien_nen,
+        )
 
     # 3. Xác định cột tham chiếu x_ref chung tối ưu
     y1_tc, y2_tc, x1_tc, x2_tc = roi_tham_chieu
@@ -554,9 +626,11 @@ def do_delta_y_tu_anh(
     if x_ref is not None:
         x_ref_tinh = x_ref
 
-    # 4. Trích xuất và ước lượng từng vạch
+    # 4. Trích xuất và ước lượng từng vạch (tự tăng bước nhảy cột cho ảnh > 600 px để giữ <= 3s trên ảnh 12MP)
     anh_roi_tc = anh_kenh[y1_tc:y2_tc, x1_tc:x2_tc]
     anh_roi_m = anh_kenh[y1_m:y2_m, x1_m:x2_m]
+    buoc_tc = max(buoc_nhay_cot, (x2_tc - x1_tc) // 140) if (x2_tc - x1_tc) > 600 else buoc_nhay_cot
+    buoc_m = max(buoc_nhay_cot, (x2_m - x1_m) // 140) if (x2_m - x1_m) > 600 else buoc_nhay_cot
 
     try:
         vach_tc = uoc_luong_duong_vach(
@@ -565,7 +639,7 @@ def do_delta_y_tu_anh(
             y_offset=y1_tc,
             x_ref=x_ref_tinh,
             phuong_phap=phuong_phap,
-            buoc_nhay_cot=buoc_nhay_cot,
+            buoc_nhay_cot=buoc_tc,
         )
         vach_m = uoc_luong_duong_vach(
             anh_roi_m,
@@ -573,7 +647,7 @@ def do_delta_y_tu_anh(
             y_offset=y1_m,
             x_ref=x_ref_tinh,
             phuong_phap=phuong_phap,
-            buoc_nhay_cot=buoc_nhay_cot,
+            buoc_nhay_cot=buoc_m,
         )
     except ValueError as e:
         # Nếu không đủ số cột đạt chuẩn để khớp vạch (ảnh quá mờ hoặc nhiễu nặng)
@@ -594,6 +668,8 @@ def do_delta_y_tu_anh(
             co_dom_bao_hoa_cuc_bo=chat_luong_khoi_tao.co_dom_bao_hoa_cuc_bo,
             so_cot_bao_hoa_lien_tiep_max=chat_luong_khoi_tao.so_cot_bao_hoa_lien_tiep_max,
             canh_bao_chi_tiet=canh_bao_ct_loi,
+            nen_khong_deu=nen_khong_deu,
+            bien_thien_nen=bien_thien_nen,
         )
         # Tạo kết quả rỗng giả lập
         vach_rong = KetQuaUocLuongVach(
@@ -661,6 +737,8 @@ def do_delta_y_tu_anh(
         co_dom_bao_hoa_cuc_bo=chat_luong_khoi_tao.co_dom_bao_hoa_cuc_bo,
         so_cot_bao_hoa_lien_tiep_max=chat_luong_khoi_tao.so_cot_bao_hoa_lien_tiep_max,
         canh_bao_chi_tiet=canh_bao_ct_final,
+        nen_khong_deu=nen_khong_deu,
+        bien_thien_nen=bien_thien_nen,
     )
 
     # 8. Sinh ảnh vẽ kết quả kiểm chứng
@@ -692,6 +770,7 @@ def do_delta_y_da_khung_hinh(
     kenh_laser: str = "auto",
     ti_le_cot_bao_hoa_nghiem_trong: float = 0.30,
     so_cot_lien_tiep_bao_hoa: int = 15,
+    nguong_nen_khong_deu: float = 30.0,
 ) -> KetQuaDoDaKhungHinh:
     """Xử lí chuỗi nhiều khung hình (video / multi-shot), lấy trung vị và độ phân tán.
 
@@ -724,6 +803,7 @@ def do_delta_y_da_khung_hinh(
                 kenh_laser=kenh_laser,
                 ti_le_cot_bao_hoa_nghiem_trong=ti_le_cot_bao_hoa_nghiem_trong,
                 so_cot_lien_tiep_bao_hoa=so_cot_lien_tiep_bao_hoa,
+                nguong_nen_khong_deu=nguong_nen_khong_deu,
             )
         except (AnhKhongHopLeError, KhongTimThayVachError, ValueError) as exc:
             khung_loi.append((idx, str(exc)))
@@ -834,6 +914,8 @@ def do_delta_y_da_khung_hinh(
         co_dom_bao_hoa_cuc_bo=any(c.co_dom_bao_hoa_cuc_bo for c in ds_cq_tat_ca),
         so_cot_bao_hoa_lien_tiep_max=max(c.so_cot_bao_hoa_lien_tiep_max for c in ds_cq_tat_ca),
         canh_bao_chi_tiet=canh_bao_ct_gop,
+        nen_khong_deu=any(c.nen_khong_deu for c in ds_cq_tat_ca),
+        bien_thien_nen=max(c.bien_thien_nen for c in ds_cq_tat_ca),
     )
 
     return KetQuaDoDaKhungHinh(

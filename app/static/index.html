@@ -305,21 +305,31 @@
                   </div>
                   <label class="checkbox-row">
                     <input type="checkbox" id="roi-manual-enable" />
-                    <span>Bật tọa độ ROI thủ công [y0, y1]</span>
+                    <span>Bật tọa độ ROI thủ công (kéo chuột trên ảnh hoặc nhập tay)</span>
                   </label>
+                  <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;">
+                    <button type="button" id="btn-draw-roi-tc" class="btn-25d btn-sm">✏️ Kéo ROI Vạch chuẩn</button>
+                    <button type="button" id="btn-draw-roi-mau" class="btn-25d btn-sm">✏️ Kéo ROI Vạch mẫu</button>
+                    <button type="button" id="btn-clear-roi-box" class="btn-25d btn-sm">Đặt lại tự động</button>
+                  </div>
+                  <div id="roi-draw-status" class="help-text" style="margin-top:4px;">Có thể kéo chọn 2 vùng trực tiếp trên ảnh khi nền sáng phức tạp.</div>
                   <div class="control-row-2" style="margin-top:6px;">
                     <div class="control-group">
-                      <div class="control-label"><span>TC y0 → y1</span></div>
+                      <div class="control-label"><span>TC y0 → y1 | x0 → x1</span></div>
                       <div style="display:flex; gap:4px;">
-                        <input type="number" id="roi-tc-y0" class="input-25d" value="35" />
-                        <input type="number" id="roi-tc-y1" class="input-25d" value="140" />
+                        <input type="number" id="roi-tc-y0" class="input-25d" value="35" title="TC y0" />
+                        <input type="number" id="roi-tc-y1" class="input-25d" value="140" title="TC y1" />
+                        <input type="number" id="roi-tc-x0" class="input-25d" placeholder="x0" title="TC x0 (tùy chọn)" />
+                        <input type="number" id="roi-tc-x1" class="input-25d" placeholder="x1" title="TC x1 (tùy chọn)" />
                       </div>
                     </div>
                     <div class="control-group">
-                      <div class="control-label"><span>Mẫu y0 → y1</span></div>
+                      <div class="control-label"><span>Mẫu y0 → y1 | x0 → x1</span></div>
                       <div style="display:flex; gap:4px;">
-                        <input type="number" id="roi-m-y0" class="input-25d" value="40" />
-                        <input type="number" id="roi-m-y1" class="input-25d" value="260" />
+                        <input type="number" id="roi-m-y0" class="input-25d" value="40" title="Mẫu y0" />
+                        <input type="number" id="roi-m-y1" class="input-25d" value="260" title="Mẫu y1" />
+                        <input type="number" id="roi-m-x0" class="input-25d" placeholder="x0" title="Mẫu x0 (tùy chọn)" />
+                        <input type="number" id="roi-m-x1" class="input-25d" placeholder="x1" title="Mẫu x1 (tùy chọn)" />
                       </div>
                     </div>
                   </div>
@@ -399,7 +409,10 @@
                 <div class="chassis-panel-25d">
                   <div class="step-badge-title">📸 Ảnh đã nhận diện 2 vạch laser</div>
                   <div class="media-frame-25d">
-                    <img id="t1-annotated-img" alt="Ảnh đánh dấu 2 vạch laser" decoding="async" />
+                    <div class="roi-stage-wrap">
+                      <img id="t1-annotated-img" alt="Ảnh đánh dấu 2 vạch laser" decoding="async" />
+                      <canvas id="t1-roi-overlay" class="roi-overlay-canvas"></canvas>
+                    </div>
                     <div class="media-caption" id="t1-img-caption">
                       Vạch xanh: nước chuẩn (0 ‰) • Vạch cam: mẫu nước • Vàng: khoảng lệch Δy
                     </div>

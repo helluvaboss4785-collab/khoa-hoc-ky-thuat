@@ -163,6 +163,7 @@ def _ensure_config_cache() -> None:
         "ti_le_bao_hoa_toi_da": float(img_raw.get("ti_le_bao_hoa_toi_da", 0.02)),
         "ti_le_cot_bao_hoa_nghiem_trong": float(img_raw.get("ti_le_cot_bao_hoa_nghiem_trong", 0.30)),
         "so_cot_lien_tiep_bao_hoa": int(img_raw.get("so_cot_lien_tiep_bao_hoa", 15)),
+        "nguong_nen_khong_deu": float(img_raw.get("nguong_nen_khong_deu", 30.0)),
         "snr_toi_thieu": float(img_raw.get("snr_toi_thieu", 10.0)),
         "kenh_laser": str(img_raw.get("kenh_laser", "auto")),
     }
@@ -789,6 +790,8 @@ def _serialize_chat_luong(
         "kenh_bao_hoa": list(getattr(cq, "kenh_bao_hoa", [])),
         "co_dom_bao_hoa_cuc_bo": bool(getattr(cq, "co_dom_bao_hoa_cuc_bo", False)),
         "so_cot_bao_hoa_lien_tiep_max": int(getattr(cq, "so_cot_bao_hoa_lien_tiep_max", 0)),
+        "nen_khong_deu": bool(getattr(cq, "nen_khong_deu", False)),
+        "bien_thien_nen": float(getattr(cq, "bien_thien_nen", 0.0)),
         "qua_mo": bool(cq.qua_mo),
         "snr": cq.snr,
         "nhoe": bool(cq.nhoe),
@@ -945,6 +948,7 @@ async def api_measure(request: Request) -> JSONResponse:
             kenh_laser=str(img_cfg.get("kenh_laser", "auto")),
             ti_le_cot_bao_hoa_nghiem_trong=float(img_cfg.get("ti_le_cot_bao_hoa_nghiem_trong", 0.30)),
             so_cot_lien_tiep_bao_hoa=int(img_cfg.get("so_cot_lien_tiep_bao_hoa", 15)),
+            nguong_nen_khong_deu=float(img_cfg.get("nguong_nen_khong_deu", 30.0)),
         )
 
         (
@@ -1032,11 +1036,14 @@ async def api_measure(request: Request) -> JSONResponse:
             exc,
         )
     except KhongTimThayVachError as exc:
+        msg_vach = str(exc).strip() or (
+            "Không tìm thấy đủ 2 vạch laser rõ ràng trong ảnh. "
+            "Hãy chụp lại trong chỗ tối, giữ máy thẳng và để cả 2 vạch sáng nằm gọn trong khung hình."
+        )
         return _json_err_typed(
             422,
             "KHONG_TIM_THAY_VACH",
-            "Không tìm thấy đủ 2 vạch laser rõ ràng trong ảnh. "
-            "Hãy chụp lại trong chỗ tối, giữ máy thẳng và để cả 2 vạch sáng nằm gọn trong khung hình.",
+            msg_vach,
             exc,
         )
     except cal.LoiMoHinhHieuChuanError as exc:
@@ -1369,6 +1376,7 @@ async def api_measure_multi(request: Request) -> JSONResponse:
         kenh_laser = str(img_cfg.get("kenh_laser", "auto"))
         bh_nghiem_trong = float(img_cfg.get("ti_le_cot_bao_hoa_nghiem_trong", 0.30))
         bh_lien_tiep = int(img_cfg.get("so_cot_lien_tiep_bao_hoa", 15))
+        nen_thresh = float(img_cfg.get("nguong_nen_khong_deu", 30.0))
         kq_da = do_delta_y_da_khung_hinh(
             frames_ok,
             roi_tham_chieu=roi_tc_tuple,
@@ -1380,6 +1388,7 @@ async def api_measure_multi(request: Request) -> JSONResponse:
             kenh_laser=kenh_laser,
             ti_le_cot_bao_hoa_nghiem_trong=bh_nghiem_trong,
             so_cot_lien_tiep_bao_hoa=bh_lien_tiep,
+            nguong_nen_khong_deu=nen_thresh,
         )
 
         # Hợp nhất danh sách khung lỗi (cả khung lỗi lúc giải mã + khung lỗi lúc đo vạch)
@@ -1404,6 +1413,7 @@ async def api_measure_multi(request: Request) -> JSONResponse:
             kenh_laser=kenh_laser,
             ti_le_cot_bao_hoa_nghiem_trong=bh_nghiem_trong,
             so_cot_lien_tiep_bao_hoa=bh_lien_tiep,
+            nguong_nen_khong_deu=nen_thresh,
         )
         sigma_dy_use = max(kq_da.sai_so_thong_ke_px, kq_rep.sai_so_delta_y_px if kq_da.sai_so_thong_ke_px <= 0 else 0.0)
         cq_chung = kq_da.chat_luong_chung
