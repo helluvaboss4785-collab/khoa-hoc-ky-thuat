@@ -38,6 +38,7 @@ hieu_chuan:                      # Tham số dựng đường chuẩn (Cột m�
   he_so_phu_k: 2.0               # bất định mở rộng U = k·u (k = 2 ≈ 95% nếu sai số phân bố chuẩn)
   sai_so_nhiet_ke_C: 0.5         # GIẢ ĐỊNH độ chính xác nhiệt kế - PHẢI lấy từ thông số nhiệt kế thật
   nguong_lech_T_khong_bu_C: 1.0  # cảnh báo nếu đường chuẩn không có bù nhiệt mà T lệch quá ngưỡng này
+  nguong_lech_T_hai_ngan_C: 0.5  # cảnh báo nếu |T_mau - T_tham_chieu| vượt ngưỡng này (°C)
   seed: 0                        # hạt giống ngẫu nhiên để chia train/test tái lập được
 
 

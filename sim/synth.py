@@ -218,15 +218,15 @@ def sinh_du_lieu_hieu_chuan_mo_phong(
     so_lan_lap: int = 3,
     sigma_delta_y_px: float = 0.05,
     sigma_nhiet_ke_C: float = 0.1,
-    T_tham_chieu_C: float | None = None,
+    T_tham_chieu_C: float | tuple[float, ...] | list[float] | None = None,
     seed: int = 0,
 ) -> "pd.DataFrame":
     """Sinh bảng dữ liệu hiệu chuẩn MÔ PHỎNG (cùng định dạng CSV đo thật).
 
     - Δy "thật" tính bằng mô hình Snell (core.optics); cộng nhiễu Gauss σ_Δy.
     - Nhiệt độ ghi lại = nhiệt độ thật + sai số nhiệt kế N(0, σ_T).
-    - T_tham_chieu_C = None: ngăn tham chiếu cùng nhiệt độ với mẫu (cùng ngâm một chậu nước);
-      nếu cho một số: ngăn tham chiếu giữ ở nhiệt độ đó.
+    - T_tham_chieu_C = None: giả định ngăn tham chiếu cân bằng nhiệt với mẫu (không ghi cột T_tc).
+      Nếu truyền số hoặc danh sách nhiệt độ ngăn tham chiếu: ghi cột nhiet_do_tham_chieu_C độc lập.
     - MỌI DÒNG có nguon_du_lieu = "MO_PHONG" để chương trình hiển thị nhãn
       "CHƯA HIỆU CHUẨN – DỮ LIỆU MÔ PHỎNG". Đây KHÔNG phải số đo.
     """
@@ -237,20 +237,34 @@ def sinh_du_lieu_hieu_chuan_mo_phong(
     if cfg is None:
         cfg = CauHinhQuangHoc.tu_yaml()
     rng = np.random.default_rng(seed)
+
+    if T_tham_chieu_C is None:
+        ds_T_tc: list[float | None] = [None]
+    elif isinstance(T_tham_chieu_C, (tuple, list)):
+        ds_T_tc = [float(x) for x in T_tham_chieu_C]
+    else:
+        ds_T_tc = [float(T_tham_chieu_C)]
+
     dong = []
     for S in muc_S:
         for T in muc_T:
-            for lap in range(so_lan_lap):
-                T_tc = T if T_tham_chieu_C is None else T_tham_chieu_C
-                dy = delta_y_vi_sai_px(S, T, T_tc, cfg) + rng.normal(0.0, sigma_delta_y_px)
-                dong.append({
-                    cal.COT_DO_MAN: float(S),
-                    cal.COT_NHIET_DO: float(T + rng.normal(0.0, sigma_nhiet_ke_C)),
-                    cal.COT_DELTA_Y: float(dy),
-                    cal.COT_DO_DUC: 0.0,
-                    cal.COT_GHI_CHU: f"DỮ LIỆU MÔ PHỎNG – KHÔNG PHẢI ĐO THẬT (lần {lap + 1})",
-                    cal.COT_ID_THIET_BI: "MO_PHONG",
-                    cal.COT_ID_DIEN_THOAI: "MO_PHONG",
-                    cal.COT_NGUON: cal.NHAN_MO_PHONG,
-                })
-    return pd.DataFrame(dong)
+            for T_tc_muc in ds_T_tc:
+                for lap in range(so_lan_lap):
+                    T_tc_that = T if T_tc_muc is None else T_tc_muc
+                    dy = delta_y_vi_sai_px(S, T, T_tc_that, cfg) + rng.normal(0.0, sigma_delta_y_px)
+                    rec = {
+                        cal.COT_DO_MAN: float(S),
+                        cal.COT_NHIET_DO: float(T + rng.normal(0.0, sigma_nhiet_ke_C)),
+                        cal.COT_DELTA_Y: float(dy),
+                        cal.COT_DO_DUC: 0.0,
+                        cal.COT_GHI_CHU: f"DỮ LIỆU MÔ PHỎNG – KHÔNG PHẢI ĐO THẬT (lần {lap + 1})",
+                        cal.COT_ID_THIET_BI: "MO_PHONG",
+                        cal.COT_ID_DIEN_THOAI: "MO_PHONG",
+                        cal.COT_NGUON: cal.NHAN_MO_PHONG,
+                    }
+                    if T_tc_muc is not None:
+                        rec[cal.COT_NHIET_DO_TC] = float(T_tc_muc + rng.normal(0.0, sigma_nhiet_ke_C))
+                    dong.append(rec)
+    df = pd.DataFrame(dong)
+    df.attrs["gia_dinh_can_bang_nhiet"] = T_tham_chieu_C is None
+    return df

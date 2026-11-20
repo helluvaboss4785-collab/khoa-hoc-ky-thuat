@@ -254,7 +254,10 @@ def _req_ho_so(request: Request, body: dict[str, Any] | None = None) -> str:
 
 def _format_equation(mh: cal.MoHinhHieuChuan) -> str:
     terms = [f"({c:+.5g})·{h}" for h, c in zip(mh.hang, mh.he_so)]
-    return f"Δy (px) = {' + '.join(terms)}   [ΔT = T − {mh.T_ref:g} °C]"
+    ghi_chu = [f"ΔT = T − {mh.T_ref:g} °C"]
+    if getattr(mh, "co_bu_chenh_T", False):
+        ghi_chu.append("D = T_mẫu − T_tc")
+    return f"Δy (px) = {' + '.join(terms)}   [{'; '.join(ghi_chu)}]"
 
 
 def _serialize_model(mh: cal.MoHinhHieuChuan) -> dict[str, Any]:
@@ -705,9 +708,38 @@ async def api_measure(request: Request) -> JSONResponse:
     la_anh_mo_phong = mode == "sim"
 
     try:
+        khong_do_nhiet_do = bool(body.get("khong_do_nhiet_do", False))
+        raw_t = body.get("nhiet_do_do")
+        if not khong_do_nhiet_do:
+            if raw_t is None or (isinstance(raw_t, str) and not raw_t.strip()):
+                return _json_err(
+                    "Vui lòng nhập nhiệt độ mẫu nước (°C) hoặc chọn 'Không đo nhiệt độ'.",
+                    400,
+                )
+            try:
+                nhiet_do_do = float(raw_t)
+            except (TypeError, ValueError):
+                return _json_err("Nhiệt độ mẫu nước không hợp lệ.", 400)
+            if not math.isfinite(nhiet_do_do):
+                return _json_err("Nhiệt độ mẫu nước không hợp lệ.", 400)
+        else:
+            nhiet_do_do = float(mh.T_ref)
+
+        raw_t_ref = body.get("nhiet_do_tham_chieu")
+        if raw_t_ref is None or (isinstance(raw_t_ref, str) and not raw_t_ref.strip()):
+            nhiet_do_tham_chieu = None
+        else:
+            try:
+                nhiet_do_tham_chieu = float(raw_t_ref)
+            except (TypeError, ValueError):
+                return _json_err("Nhiệt độ ngăn tham chiếu không hợp lệ.", 400)
+            if not math.isfinite(nhiet_do_tham_chieu):
+                return _json_err("Nhiệt độ ngăn tham chiếu không hợp lệ.", 400)
+
         if mode == "sim":
             s_mp = float(body.get("S_ppt", 16.5))
-            t_mp = float(body.get("T_C", 26.0))
+            t_mp = float(body.get("T_C", nhiet_do_do))
+            t_tc_mp = float(body.get("T_tham_chieu_C", nhiet_do_tham_chieu if nhiet_do_tham_chieu is not None else t_mp))
             do_duc = float(body.get("do_duc", 0.15))
             drift_px = float(body.get("drift_px", 4.0))
             bo_tri = "doc" if body.get("bo_tri") == "doc" else "ngang"
@@ -717,7 +749,7 @@ async def api_measure(request: Request) -> JSONResponse:
             p_synth = ThamSoMoPhong(
                 S_ppt=s_mp,
                 T_C=t_mp,
-                T_tham_chieu_C=t_mp,
+                T_tham_chieu_C=t_tc_mp,
                 drift_chung_px=drift_px,
                 do_duc=do_duc,
                 bo_tri=bo_tri,
@@ -729,6 +761,7 @@ async def api_measure(request: Request) -> JSONResponse:
             chan_li_mp = {
                 "S_chan_li": s_mp,
                 "T_chan_li": t_mp,
+                "T_tc_chan_li": t_tc_mp,
                 "delta_y_snell": anh_mp_obj.delta_y_ly_thuyet_px,
                 "drift_px": drift_px,
             }
@@ -740,7 +773,6 @@ async def api_measure(request: Request) -> JSONResponse:
         else:
             return _json_err(f"Chế độ đo '{mode}' không được hỗ trợ.")
 
-        nhiet_do_do = float(body.get("nhiet_do_do", 25.0))
         phuong_phap = "centroid" if body.get("phuong_phap") == "centroid" else "gauss"
         dung_roi_thu_cong = bool(body.get("dung_roi_thu_cong", False))
 
@@ -764,6 +796,7 @@ async def api_measure(request: Request) -> JSONResponse:
             tao_anh_ve=True,
         )
 
+        cfg_cal = load_calib_config()
         kq_man_dict = None
         error_man = None
         if math.isfinite(kq_do.delta_y_px):
@@ -773,9 +806,19 @@ async def api_measure(request: Request) -> JSONResponse:
                     delta_y_px=kq_do.delta_y_px,
                     T_C=nhiet_do_do,
                     sigma_delta_y_px=kq_do.sai_so_delta_y_px,
-                    sigma_T_C=0.5,
-                    k=2.0,
+                    sigma_T_C=cfg_cal.sai_so_nhiet_ke_C,
+                    k=cfg_cal.he_so_phu_k,
+                    nguong_lech_T_khong_bu_C=cfg_cal.nguong_lech_T_khong_bu_C,
+                    T_tham_chieu_C=nhiet_do_tham_chieu,
+                    sigma_T_tham_chieu_C=cfg_cal.sai_so_nhiet_ke_C if nhiet_do_tham_chieu is not None else 0.0,
+                    nguong_lech_T_hai_ngan_C=cfg_cal.nguong_lech_T_hai_ngan_C,
                 )
+                canh_bao_man = list(kq_man.canh_bao)
+                if khong_do_nhiet_do:
+                    canh_bao_man.insert(
+                        0,
+                        "CHƯA ĐO NHIỆT ĐỘ: không thực hiện bù nhiệt thực tế và KHÔNG đưa ra kết luận phân loại loài.",
+                    )
                 kq_man_dict = {
                     "S_ppt": kq_man.S_ppt,
                     "u_S_ppt": kq_man.u_S_ppt,
@@ -788,7 +831,7 @@ async def api_measure(request: Request) -> JSONResponse:
                     "nguon_du_lieu": kq_man.nguon_du_lieu,
                     "da_xac_nhan_thuc_te": kq_man.da_xac_nhan_thuc_te,
                     "nhan": kq_man.nhan,
-                    "canh_bao": kq_man.canh_bao,
+                    "canh_bao": canh_bao_man,
                     "han_che": kq_man.han_che,
                 }
             except Exception as ex_man:
@@ -797,7 +840,7 @@ async def api_measure(request: Request) -> JSONResponse:
         ds_loai = load_species_map()
         ma_loai = str(body.get("ma_loai") or "").strip() or next(iter(ds_loai.keys()), "")
         danh_gia_loai = None
-        if kq_man_dict is not None and ma_loai in ds_loai:
+        if kq_man_dict is not None and not khong_do_nhiet_do and ma_loai in ds_loai:
             danh_gia_loai = _evaluate_species_detail(kq_man_dict["S_ppt"], ds_loai[ma_loai])
 
         cq = kq_do.chat_luong
@@ -806,6 +849,9 @@ async def api_measure(request: Request) -> JSONResponse:
 
         return _json_ok({
             "la_anh_mo_phong": la_anh_mo_phong,
+            "khong_do_nhiet_do": khong_do_nhiet_do,
+            "nhiet_do_do": None if khong_do_nhiet_do else nhiet_do_do,
+            "nhiet_do_tham_chieu": nhiet_do_tham_chieu,
             "anh_width": w_img,
             "anh_height": h_img,
             "delta_y_px": kq_do.delta_y_px,
@@ -1037,23 +1083,29 @@ async def api_calibrate(request: Request) -> JSONResponse:
         ]
 
         mh_tr = bc.mo_hinh_train
+        t_tc_tr = cal._lay_nhiet_do_tc(bc.df_train)
         train_pts = [
             {
                 "S": float(r[cal.COT_DO_MAN]),
                 "T": float(r[cal.COT_NHIET_DO]),
                 "delta_y": float(r[cal.COT_DELTA_Y]),
-                "res": float(r[cal.COT_DELTA_Y]) - float(mh_tr.du_doan_delta_y(float(r[cal.COT_DO_MAN]), float(r[cal.COT_NHIET_DO]))[0]),
+                "res": float(r[cal.COT_DELTA_Y]) - float(
+                    mh_tr.du_doan_delta_y(float(r[cal.COT_DO_MAN]), float(r[cal.COT_NHIET_DO]), T_tc=float(t_tc_tr[idx]))[0]
+                ),
             }
-            for _, r in bc.df_train.iterrows()
+            for idx, (_, r) in enumerate(bc.df_train.iterrows())
         ]
+        t_tc_te = cal._lay_nhiet_do_tc(bc.df_test)
         test_pts = [
             {
                 "S": float(r[cal.COT_DO_MAN]),
                 "T": float(r[cal.COT_NHIET_DO]),
                 "delta_y": float(r[cal.COT_DELTA_Y]),
-                "res": float(r[cal.COT_DELTA_Y]) - float(mh_tr.du_doan_delta_y(float(r[cal.COT_DO_MAN]), float(r[cal.COT_NHIET_DO]))[0]),
+                "res": float(r[cal.COT_DELTA_Y]) - float(
+                    mh_tr.du_doan_delta_y(float(r[cal.COT_DO_MAN]), float(r[cal.COT_NHIET_DO]), T_tc=float(t_tc_te[idx]))[0]
+                ),
             }
-            for _, r in bc.df_test.iterrows()
+            for idx, (_, r) in enumerate(bc.df_test.iterrows())
         ]
 
         return _json_ok({

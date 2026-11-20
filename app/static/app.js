@@ -697,9 +697,22 @@ function updateCoachBar() {
    ========================================================================== */
 function getTab1Payload() {
   const dungRoi = $("#roi-manual-enable").checked;
+  const noTemp = Boolean($("#meas-no-temp")?.checked);
+  const rawT = $("#meas-temp").value.trim();
+  const rawTRef = $("#meas-temp-ref") ? $("#meas-temp-ref").value.trim() : "";
+  let nhietDoDo = null;
+  if (!noTemp) {
+    if (rawT !== "") {
+      nhietDoDo = Number(rawT);
+    } else if (STATE.imgMode === "sim") {
+      nhietDoDo = Number($("#sim-t").value);
+    }
+  }
   const payload = {
     mode: STATE.imgMode === "sim" ? "sim" : "upload",
-    nhiet_do_do: Number($("#meas-temp").value || 25),
+    nhiet_do_do: nhietDoDo,
+    nhiet_do_tham_chieu: rawTRef !== "" ? Number(rawTRef) : null,
+    khong_do_nhiet_do: noTemp,
     phuong_phap: $("#meas-method").value,
     dung_roi_thu_cong: dungRoi,
     ma_loai: $("#t1-species-select").value,
@@ -707,6 +720,7 @@ function getTab1Payload() {
   if (STATE.imgMode === "sim") {
     payload.S_ppt = Number($("#sim-s").value);
     payload.T_C = Number($("#sim-t").value);
+    if (rawTRef !== "") payload.T_tham_chieu_C = Number(rawTRef);
     payload.do_duc = Number($("#sim-duc").value);
     payload.drift_px = Number($("#sim-drift").value);
     payload.bo_tri = $("#sim-layout").value;
@@ -848,7 +862,10 @@ function renderMeasureResults(d) {
   // Đánh giá theo loài
   const dg = d.danh_gia_loai;
   const vBox = $("#t1-species-verdict");
-  if (dg) {
+  if (d.khong_do_nhiet_do) {
+    vBox.className = "banner-25d danger";
+    vBox.innerHTML = `<div class="banner-icon">🌡️</div><div><b>CHƯA ĐO NHIỆT ĐỘ — KHÔNG PHÂN LOẠI LOÀI</b><br>Chênh nhiệt độ giữa hai ngăn gây sai lệch lớn. Hãy nhập nhiệt độ mẫu (và ngăn tham chiếu nếu có) để đánh giá an toàn.</div>`;
+  } else if (dg) {
     const cls = dg.trang_thai === "AN_TOAN" ? "ok" : dg.trang_thai === "CANH_BAO" ? "warn" : dg.trang_thai === "NGUY_HIEM" ? "danger" : "info";
     vBox.className = `banner-25d ${cls}`;
     vBox.innerHTML = `<div class="banner-icon">🔎</div><div><b>${esc(dg.tieu_de)}</b><br>${esc(dg.loi_khuyen)}</div>`;
@@ -861,7 +878,10 @@ function renderMeasureResults(d) {
   const warnItems = [];
   for (const w of cq.canh_bao || []) warnItems.push({ cls: "warn", icon: "⚠️", text: w });
   if (km) {
-    for (const w of km.canh_bao || []) warnItems.push({ cls: w.includes("NGOÀI") ? "danger" : "warn", icon: "🚨", text: w });
+    for (const w of km.canh_bao || []) {
+      const isErr = w.includes("NGOÀI") || w.includes("CHƯA ĐO NHIỆT ĐỘ");
+      warnItems.push({ cls: isErr ? "danger" : "warn", icon: "🚨", text: w });
+    }
   }
   $("#t1-warnings-box").innerHTML = warnItems
     .map((w) => `<div class="banner-25d ${w.cls}"><div class="banner-icon">${w.icon}</div><div>${esc(w.text)}</div></div>`)
@@ -933,7 +953,8 @@ function drawTab1Charts(d) {
       do_anh: "Định vị tâm vạch (σ_Δy)",
       lap_lai_duong_chuan: "Độ tản mát chuẩn (s_res)",
       he_so_duong_chuan: "Hệ số hồi quy (u_fit)",
-      nhiet_do: "Nhiệt kế & bù nhiệt (σ_T)",
+      nhiet_do: "Nhiệt kế mẫu (σ_T)",
+      nhiet_do_tham_chieu: "Nhiệt kế ngăn TC (σ_Ttc)",
     };
     const colors = ["#14b8a6", "#1b4965", "#f59e0b", "#e5383b"];
     const bars = Object.entries(km.thanh_phan_bat_dinh).map(([k, v], i) => ({
@@ -962,6 +983,8 @@ async function saveMeasurementToLog() {
   const now = new Date();
   const pad2 = (n) => String(n).padStart(2, "0");
   const tsLocal = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())} ${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`;
+  const rawT = $("#meas-temp").value.trim();
+  const nhietDoLuu = rawT !== "" ? Number(rawT) : (d.nhiet_do_do ?? 0.0);
   const payload = {
     ho_so: STATE.hoSo || "mac_dinh",
     thoi_gian: tsLocal,
@@ -970,7 +993,7 @@ async function saveMeasurementToLog() {
     delta_y_px: Number(d.delta_y_px.toFixed(3)),
     do_man_ppt: Number(km.S_ppt.toFixed(3)),
     bat_dinh_U_ppt: Number(km.U_S_ppt.toFixed(3)),
-    nhiet_do_C: Number($("#meas-temp").value || 25),
+    nhiet_do_C: nhietDoLuu,
     do_duc: Number(d.chi_so_do_duc_tuong_doi.toFixed(3)),
     chat_luong_hop_le: d.chat_luong.hop_le,
     nguon_du_lieu: nguon,
@@ -1914,6 +1937,13 @@ function setImgMode(mode) {
   $("#t1-mode-sim").style.display = mode === "sim" ? "block" : "none";
   $("#t1-mode-upload").style.display = mode === "upload" ? "block" : "none";
   $("#t1-mode-camera").style.display = mode === "camera" ? "block" : "none";
+  if (mode === "sim") {
+    if (!$("#meas-temp").dataset.userEdited) {
+      $("#meas-temp").value = Number($("#sim-t").value).toFixed(1);
+    }
+  } else if (!$("#meas-temp").dataset.userEdited) {
+    $("#meas-temp").value = "";
+  }
   if (mode !== "camera") {
     stopCamera(false);
   } else {
@@ -2056,10 +2086,21 @@ function bindEvents() {
     $("#val-sim-drift").textContent = `${d >= 0 ? "+" : ""}${d.toFixed(1)} px`;
     if ($("#meas-live").checked) debounce("t1", runMeasure, 80);
   });
-  ["sim-saturate", "sim-layout", "meas-temp", "meas-method", "roi-manual-enable"].forEach((id) => {
-    $(`#${id}`).addEventListener("change", () => {
-      if ($("#meas-live").checked) runMeasure({ silent: true });
-    });
+  ["sim-saturate", "sim-layout", "meas-temp", "meas-temp-ref", "meas-no-temp", "meas-method", "roi-manual-enable"].forEach((id) => {
+    const el = $(`#${id}`);
+    if (el) {
+      el.addEventListener("change", () => {
+        if ($("#meas-live").checked) runMeasure({ silent: true });
+      });
+    }
+  });
+  $("#meas-temp").addEventListener("input", () => {
+    $("#meas-temp").dataset.userEdited = $("#meas-temp").value.trim() ? "1" : "";
+  });
+  $("#meas-no-temp")?.addEventListener("change", () => {
+    const noT = $("#meas-no-temp").checked;
+    $("#meas-temp").disabled = noT;
+    if ($("#meas-temp-ref")) $("#meas-temp-ref").disabled = noT;
   });
   $("#t1-species-select").addEventListener("change", () => {
     const km = STATE.lastMeasure && STATE.lastMeasure.mo_hinh_man;
@@ -2841,6 +2882,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   updateOfflineQueueBadge();
   initLiveTour();
   await Promise.all([loadBootstrap(), runMeasure()]);
+  if (STATE.imgMode === "sim" && !$("#meas-temp").value) {
+    $("#meas-temp").value = Number($("#sim-t").value).toFixed(1);
+  }
   flushOfflineQueue(true);
   let tourDone = false;
   try {

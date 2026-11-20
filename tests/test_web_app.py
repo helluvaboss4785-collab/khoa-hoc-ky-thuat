@@ -145,3 +145,21 @@ def test_api_calibrate_thieu_nguon_khong_gan_do_that() -> None:
     mh = data["mo_hinh"]
     assert mh["da_xac_nhan_thuc_te"] is False
     assert mh["nhan"] == "CHƯA XÁC NHẬN NGUỒN DỮ LIỆU"
+
+
+def test_api_measure_bat_buoc_nhiet_do_va_khong_do_nhiet_do() -> None:
+    resp_thieu = _run_coro(
+        web_app.api_measure(_make_request("POST", "/api/measure", {"mode": "sim", "S_ppt": 15.0}))
+    )
+    assert resp_thieu.status_code == 400
+
+    resp_no_t = _run_coro(
+        web_app.api_measure(
+            _make_request("POST", "/api/measure", {"mode": "sim", "S_ppt": 15.0, "khong_do_nhiet_do": True})
+        )
+    )
+    assert resp_no_t.status_code == 200
+    d_no_t = json.loads(resp_no_t.body.decode("utf-8"))
+    assert d_no_t["khong_do_nhiet_do"] is True
+    assert d_no_t["danh_gia_loai"] is None
+    assert any("CHƯA ĐO NHIỆT ĐỘ" in w for w in d_no_t["mo_hinh_man"]["canh_bao"])

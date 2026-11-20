@@ -232,4 +232,53 @@ def test_ve_do_thi(bao_cao: cal.BaoCaoHieuChuan):
 def test_cau_hinh_doc_tu_yaml():
     ch = cal.CauHinhHieuChuan.tu_yaml()
     assert 0 < ch.ti_le_test < 1 and ch.he_so_phu_k > 0
+    assert ch.nguong_lech_T_hai_ngan_C == pytest.approx(0.5)
+
+
+def test_bu_chenh_nhiet_do_hai_ngan_D_va_canh_bao():
+    """T4: Dữ liệu mô phỏng có D thay đổi phải khôi phục đúng hệ số D; thiếu T_tc phải cảnh báo."""
+    from core import optics as op
+
+    cfg = op.CauHinhQuangHoc.tu_yaml()
+    # 1. Dữ liệu không có cột T_tc -> gắn cờ giả định cân bằng nhiệt
+    df_cb = sinh_du_lieu_hieu_chuan_mo_phong(cfg=cfg, T_tham_chieu_C=None, seed=5)
+    bc_cb = cal.dung_duong_chuan(df_cb)
+    assert bc_cb.mo_hinh.gia_dinh_can_bang_nhiet is True
+    assert any("cân bằng nhiệt" in c for c in bc_cb.canh_bao)
+
+    # 2. Dữ liệu có T_mẫu và T_tc thay đổi độc lập -> khôi phục hệ số D khớp với core.optics
+    df_2ngan = sinh_du_lieu_hieu_chuan_mo_phong(
+        cfg=cfg,
+        muc_S=(0.0, 10.0, 20.0, 30.0),
+        muc_T=(22.0, 26.0, 30.0),
+        T_tham_chieu_C=(20.0, 25.0, 30.0),
+        so_lan_lap=2,
+        sigma_delta_y_px=0.02,
+        sigma_nhiet_ke_C=0.0,
+        seed=11,
+    )
+    bc_2ngan = cal.dung_duong_chuan(df_2ngan)
+    mh = bc_2ngan.mo_hinh
+    assert mh.co_bu_chenh_T is True
+    assert mh.gia_dinh_can_bang_nhiet is False
+    assert "D" in mh.hang
+
+    # So sánh đạo hàm ∂Δy/∂D ước lượng với sai phân từ core.optics tại S=20, T=26, T_tc=22
+    S_e, T_e, T_tc_e = 20.0, 26.0, 22.0
+    h = 1e-3
+    d_dy_dD_ly_thuyet = (
+        op.delta_y_vi_sai_px(S_e, T_e, T_tc_e - h, cfg)
+        - op.delta_y_vi_sai_px(S_e, T_e, T_tc_e + h, cfg)
+    ) / (2.0 * h)
+    d_dy_dD_mo_hinh = mh.dao_ham_theo_D(S_e, T_e, T_tc=T_tc_e)
+    assert abs(d_dy_dD_mo_hinh - d_dy_dD_ly_thuyet) / abs(d_dy_dD_ly_thuyet) < 0.05
+
+    # Cảnh báo khi |D| > nguong_lech_T_hai_ngan_C
+    dy_lech = float(mh.du_doan_delta_y(20.0, 30.0, T_tc=22.0)[0])
+    kq_lech = cal.uoc_luong_do_man(
+        mh, dy_lech, 30.0, T_tham_chieu_C=22.0, sigma_T_C=0.2, sigma_T_tham_chieu_C=0.2
+    )
+    assert kq_lech.S_ppt == pytest.approx(20.0, abs=0.2)
+    assert "nhiet_do_tham_chieu" in kq_lech.thanh_phan_bat_dinh
+    assert any("Chênh nhiệt độ hai ngăn" in c for c in kq_lech.canh_bao)
 

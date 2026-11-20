@@ -47,6 +47,7 @@ CONFIG_MAC_DINH = Path(__file__).resolve().parents[1] / "config.yaml"
 # ---------------------------------------------------------------------------
 COT_DO_MAN = "do_man_chuan_ppt"        # độ mặn chuẩn của dung dịch (‰)
 COT_NHIET_DO = "nhiet_do_C"            # nhiệt độ mẫu khi đo (°C)
+COT_NHIET_DO_TC = "nhiet_do_tham_chieu_C"  # nhiệt độ ngăn tham chiếu (°C, tùy chọn)
 COT_DELTA_Y = "delta_y_px"             # Δy đo được (pixel)
 COT_DO_DUC = "do_duc_tuong_doi"        # chỉ số độ đục tương đối (0–1)
 COT_GHI_CHU = "ghi_chu"
@@ -63,6 +64,7 @@ COT_BAT_BUOC = [
 BI_DANH_COT = {
     "do_man": COT_DO_MAN, "S_ppt": COT_DO_MAN, "do_man_ppt": COT_DO_MAN,
     "nhiet_do": COT_NHIET_DO, "T_C": COT_NHIET_DO,
+    "T_tc": COT_NHIET_DO_TC, "nhiet_do_tc": COT_NHIET_DO_TC, "T_tham_chieu_C": COT_NHIET_DO_TC,
     "delta_y": COT_DELTA_Y, "dy_px": COT_DELTA_Y,
     "do_duc": COT_DO_DUC,
     "id_dt": COT_ID_DIEN_THOAI, "id_phone": COT_ID_DIEN_THOAI,
@@ -94,6 +96,7 @@ class CauHinhHieuChuan:
     he_so_phu_k: float = 2.0
     sai_so_nhiet_ke_C: float = 0.5
     nguong_lech_T_khong_bu_C: float = 1.0
+    nguong_lech_T_hai_ngan_C: float = 0.5
     seed: int = 0
 
     @classmethod
@@ -109,6 +112,7 @@ class CauHinhHieuChuan:
             he_so_phu_k=float(c.get("he_so_phu_k", mac_dinh.he_so_phu_k)),
             sai_so_nhiet_ke_C=float(c.get("sai_so_nhiet_ke_C", mac_dinh.sai_so_nhiet_ke_C)),
             nguong_lech_T_khong_bu_C=float(c.get("nguong_lech_T_khong_bu_C", mac_dinh.nguong_lech_T_khong_bu_C)),
+            nguong_lech_T_hai_ngan_C=float(c.get("nguong_lech_T_hai_ngan_C", mac_dinh.nguong_lech_T_hai_ngan_C)),
             seed=int(c.get("seed", mac_dinh.seed)),
         )
 
@@ -160,6 +164,15 @@ def doc_csv_hieu_chuan(nguon: str | Path | IO[Any]) -> pd.DataFrame:
     df = df.dropna(subset=[COT_DO_MAN, COT_NHIET_DO, COT_DELTA_Y]).reset_index(drop=True)
     df.attrs["so_dong_bi_loai"] = n_truoc - len(df)
 
+    if COT_NHIET_DO_TC not in df.columns:
+        df[COT_NHIET_DO_TC] = df[COT_NHIET_DO]
+        df.attrs["gia_dinh_can_bang_nhiet"] = True
+    else:
+        df[COT_NHIET_DO_TC] = pd.to_numeric(df[COT_NHIET_DO_TC], errors="coerce")
+        thieu_tc = bool(df[COT_NHIET_DO_TC].isna().any())
+        df[COT_NHIET_DO_TC] = df[COT_NHIET_DO_TC].fillna(df[COT_NHIET_DO])
+        df.attrs["gia_dinh_can_bang_nhiet"] = thieu_tc
+
     if len(df) == 0:
         raise ValueError("Không còn dòng hợp lệ nào (thiếu S, T hoặc Δy).")
     if (df[COT_DO_MAN] < 0).any():
@@ -198,32 +211,53 @@ def la_du_lieu_thuc_te(df: pd.DataFrame) -> bool:
 # ---------------------------------------------------------------------------
 # Đa thức và khớp bình phương tối thiểu
 # ---------------------------------------------------------------------------
-def chon_so_hang(bac: int, co_T: bool, co_TT: bool) -> list[str]:
+def chon_so_hang(bac: int, co_T: bool, co_TT: bool, co_D: bool = False) -> list[str]:
     """Danh sách số hạng của đa thức.
 
-    "1": hằng số; "S": S; "T": ΔT; "SS": S²; "ST": S·ΔT; "TT": ΔT².
+    "1": hằng số; "S": S; "T": ΔT = T − T_ref; "D": chênh nhiệt độ hai ngăn T_mẫu − T_tc;
+    "SS": S²; "ST": S·ΔT; "TT": ΔT²; "SD": S·D.
     - Không có nhiệt độ thay đổi trong dữ liệu (co_T=False) -> bỏ mọi số hạng chứa T.
     - Chỉ có 2 mức nhiệt độ -> không xác định được ΔT² (co_TT=False).
+    - Chênh nhiệt độ hai ngăn D biến thiên (≥ 2 mức, cách nhau ≥ 0,5 °C) -> thêm D (và S·D ở bậc 2).
     """
     hang = ["1", "S"]
     if co_T:
         hang.append("T")
+    if co_D:
+        hang.append("D")
     if bac >= 2:
         hang.append("SS")
         if co_T:
             hang.append("ST")
             if co_TT:
                 hang.append("TT")
+        if co_D:
+            hang.append("SD")
     return hang
 
 
-def ma_tran_dac_trung(S: Any, T: Any, hang: list[str], T_ref: float) -> np.ndarray:
+def ma_tran_dac_trung(
+    S: Any, T: Any, hang: list[str], T_ref: float, T_tc: Any = None
+) -> np.ndarray:
     """Ma trận thiết kế X (mỗi dòng một phép đo, mỗi cột một số hạng)."""
-    S_arr, T_arr = np.broadcast_arrays(np.atleast_1d(np.asarray(S, float)),
-                                       np.atleast_1d(np.asarray(T, float)))
+    T_tc_val = T if T_tc is None else T_tc
+    S_arr, T_arr, T_tc_arr = np.broadcast_arrays(
+        np.atleast_1d(np.asarray(S, float)),
+        np.atleast_1d(np.asarray(T, float)),
+        np.atleast_1d(np.asarray(T_tc_val, float)),
+    )
     dT = T_arr - T_ref
-    gia_tri = {"1": np.ones_like(S_arr), "S": S_arr, "T": dT,
-               "SS": S_arr**2, "ST": S_arr * dT, "TT": dT**2}
+    D = T_arr - T_tc_arr
+    gia_tri = {
+        "1": np.ones_like(S_arr),
+        "S": S_arr,
+        "T": dT,
+        "D": D,
+        "SS": S_arr**2,
+        "ST": S_arr * dT,
+        "TT": dT**2,
+        "SD": S_arr * D,
+    }
     return np.column_stack([gia_tri[h] for h in hang])
 
 
@@ -239,7 +273,8 @@ class KetQuaKhop:
 
 
 def khop_binh_phuong_toi_thieu(
-    S: np.ndarray, T: np.ndarray, y: np.ndarray, hang: list[str], T_ref: float
+    S: np.ndarray, T: np.ndarray, y: np.ndarray, hang: list[str], T_ref: float,
+    T_tc: np.ndarray | None = None,
 ) -> KetQuaKhop:
     """Khớp y = X·c bằng bình phương tối thiểu thường.
 
@@ -249,7 +284,7 @@ def khop_binh_phuong_toi_thieu(
     Raises:
         ValueError: nếu số điểm không lớn hơn số hệ số.
     """
-    X = ma_tran_dac_trung(S, T, hang, T_ref)
+    X = ma_tran_dac_trung(S, T, hang, T_ref, T_tc=T_tc)
     n, p = X.shape
     if n <= p:
         raise ValueError(f"Cần nhiều hơn {p} điểm để khớp {p} hệ số (đang có {n}).")
@@ -263,7 +298,7 @@ def khop_binh_phuong_toi_thieu(
 
 def rmse_kiem_dinh_cheo(
     S: np.ndarray, T: np.ndarray, y: np.ndarray, hang: list[str], T_ref: float,
-    so_fold: int = 5, seed: int = 0,
+    so_fold: int = 5, seed: int = 0, T_tc: np.ndarray | None = None,
 ) -> float:
     """RMSE kiểm định chéo k-phần (k-fold).
 
@@ -279,8 +314,10 @@ def rmse_kiem_dinh_cheo(
         train = np.setdiff1d(chi_so, phan)
         if len(train) <= len(hang):
             return float("inf")
-        kq = khop_binh_phuong_toi_thieu(S[train], T[train], y[train], hang, T_ref)
-        du_doan = ma_tran_dac_trung(S[phan], T[phan], hang, T_ref) @ kq.he_so
+        tc_tr = None if T_tc is None else T_tc[train]
+        tc_val = None if T_tc is None else T_tc[phan]
+        kq = khop_binh_phuong_toi_thieu(S[train], T[train], y[train], hang, T_ref, T_tc=tc_tr)
+        du_doan = ma_tran_dac_trung(S[phan], T[phan], hang, T_ref, T_tc=tc_val) @ kq.he_so
         sai_so.extend((y[phan] - du_doan).tolist())
     return float(np.sqrt(np.mean(np.square(sai_so))))
 
@@ -309,6 +346,10 @@ class MoHinhHieuChuan:
     RMSE_px: float
     la_mo_phong: bool
     nguon_du_lieu: str = ""
+    co_bu_chenh_T: bool = False
+    D_min: float = 0.0
+    D_max: float = 0.0
+    gia_dinh_can_bang_nhiet: bool = True
     id_thiet_bi: list[str] = field(default_factory=list)
     id_dien_thoai: list[str] = field(default_factory=list)
     ngay_tao: str = ""
@@ -336,29 +377,44 @@ class MoHinhHieuChuan:
             return NHAN_DA_HIEU_CHUAN_THAT
         return NHAN_CHUA_XAC_NHAN_NGUON
 
-    def du_doan_delta_y(self, S: Any, T: Any) -> np.ndarray:
-        """Δy dự đoán (px) tại (S, T)."""
-        return ma_tran_dac_trung(S, T, self.hang, self.T_ref) @ np.asarray(self.he_so)
+    def du_doan_delta_y(self, S: Any, T: Any, T_tc: Any = None) -> np.ndarray:
+        """Δy dự đoán (px) tại (S, T, T_tc)."""
+        return ma_tran_dac_trung(S, T, self.hang, self.T_ref, T_tc=T_tc) @ np.asarray(self.he_so)
 
-    def _dao_ham(self, S: float, T: float, theo: str) -> float:
+    def _dao_ham(self, S: float, T: float, theo: str, T_tc: float | None = None) -> float:
         dT = T - self.T_ref
+        D = 0.0 if T_tc is None else (T - T_tc)
         if theo == "S":
-            d = {"1": 0.0, "S": 1.0, "T": 0.0, "SS": 2 * S, "ST": dT, "TT": 0.0}
+            d = {"1": 0.0, "S": 1.0, "T": 0.0, "D": 0.0, "SS": 2 * S, "ST": dT, "TT": 0.0, "SD": D}
+        elif theo == "D":
+            d = {"1": 0.0, "S": 0.0, "T": 0.0, "D": 1.0, "SS": 0.0, "ST": 0.0, "TT": 0.0, "SD": S}
+        elif theo == "T_tc":
+            d = {"1": 0.0, "S": 0.0, "T": 0.0, "D": -1.0, "SS": 0.0, "ST": 0.0, "TT": 0.0, "SD": -S}
         else:
-            d = {"1": 0.0, "S": 0.0, "T": 1.0, "SS": 0.0, "ST": S, "TT": 2 * dT}
+            phan_d = 1.0 if T_tc is not None else 0.0
+            phan_sd = S if T_tc is not None else 0.0
+            d = {"1": 0.0, "S": 0.0, "T": 1.0, "D": phan_d, "SS": 0.0, "ST": S, "TT": 2 * dT, "SD": phan_sd}
         return float(sum(c * d[h] for c, h in zip(self.he_so, self.hang)))
 
-    def dao_ham_theo_S(self, S: float, T: float) -> float:
+    def dao_ham_theo_S(self, S: float, T: float, T_tc: float | None = None) -> float:
         """∂f/∂S (px/‰): độ nhạy thực nghiệm của thiết bị."""
-        return self._dao_ham(S, T, "S")
+        return self._dao_ham(S, T, "S", T_tc=T_tc)
 
-    def dao_ham_theo_T(self, S: float, T: float) -> float:
-        """∂f/∂T (px/°C): ảnh hưởng nhiệt độ cần bù."""
-        return self._dao_ham(S, T, "T")
+    def dao_ham_theo_T(self, S: float, T: float, T_tc: float | None = None) -> float:
+        """∂f/∂T (px/°C): ảnh hưởng nhiệt độ mẫu cần bù."""
+        return self._dao_ham(S, T, "T", T_tc=T_tc)
 
-    def phuong_sai_du_doan(self, S: float, T: float) -> float:
+    def dao_ham_theo_D(self, S: float, T: float, T_tc: float | None = None) -> float:
+        """∂f/∂D (px/°C): độ nhạy theo chênh lệch nhiệt độ hai ngăn D = T_mẫu − T_tc."""
+        return self._dao_ham(S, T, "D", T_tc=T_tc)
+
+    def dao_ham_theo_T_tc(self, S: float, T: float, T_tc: float | None = None) -> float:
+        """∂f/∂T_tc (px/°C): ảnh hưởng nhiệt độ ngăn tham chiếu."""
+        return self._dao_ham(S, T, "T_tc", T_tc=T_tc)
+
+    def phuong_sai_du_doan(self, S: float, T: float, T_tc: float | None = None) -> float:
         """u_fit² = xᵀ·Cov·x : phương sai của Δy dự đoán do bất định hệ số."""
-        x = ma_tran_dac_trung(S, T, self.hang, self.T_ref)[0]
+        x = ma_tran_dac_trung(S, T, self.hang, self.T_ref, T_tc=T_tc)[0]
         return float(x @ np.asarray(self.hiep_phuong_sai) @ x)
 
     # --- lưu / đọc ---------------------------------------------------------
@@ -400,29 +456,62 @@ def _so_muc(gia_tri: np.ndarray, buoc: float) -> int:
     return int(len(np.unique(np.round(gia_tri / buoc))))
 
 
+def _lay_nhiet_do_tc(df: pd.DataFrame) -> np.ndarray:
+    if COT_NHIET_DO_TC in df.columns:
+        t_tc = pd.to_numeric(df[COT_NHIET_DO_TC], errors="coerce")
+        return t_tc.fillna(df[COT_NHIET_DO]).to_numpy(float)
+    return df[COT_NHIET_DO].to_numpy(float)
+
+
+def _xac_dinh_co_bu_nhiet(T: np.ndarray, T_tc: np.ndarray) -> tuple[bool, bool, bool]:
+    """Xác định các số hạng nhiệt độ cần bật: (co_T, co_TT, co_D) và tránh đa cộng tuyến."""
+    D = T - T_tc
+    so_muc_T = _so_muc(T, 0.5)
+    so_muc_D = _so_muc(D, 0.5)
+    co_D = (so_muc_D >= 2) and (float(D.max() - D.min()) >= 0.5)
+    co_T = so_muc_T >= 2
+    co_TT = so_muc_T >= 3
+
+    if co_D and co_T:
+        so_muc_T_tc = _so_muc(T_tc, 0.5)
+        std_T = float(np.std(T))
+        std_D = float(np.std(D))
+        tuong_quan_cao = (
+            std_T > 0.0 and std_D > 0.0 and abs(float(np.corrcoef(T, D)[0, 1])) > 0.995
+        )
+        if so_muc_T_tc < 2 or tuong_quan_cao:
+            # Nếu T_tc cố định khiến D và ΔT cộng tuyến hoàn toàn, ưu tiên số hạng vật lí D
+            co_T = False
+            co_TT = False
+
+    return co_T, co_TT, co_D
+
+
 def tao_mo_hinh(df: pd.DataFrame, bac: int) -> MoHinhHieuChuan:
     """Khớp đường chuẩn bậc `bac` trên toàn bộ DataFrame.
 
-    - Bù nhiệt chỉ bật khi dữ liệu có ≥ 2 mức nhiệt độ (cách nhau ≥ 0,5 °C).
+    - Bù nhiệt T chỉ bật khi dữ liệu có ≥ 2 mức nhiệt độ (cách nhau ≥ 0,5 °C).
+    - Bù chênh nhiệt độ hai ngăn D = T_mẫu − T_tc bật khi D có ≥ 2 mức (cách nhau ≥ 0,5 °C).
     - Bậc 2 cần ≥ 3 mức độ mặn khác nhau.
     """
     S = df[COT_DO_MAN].to_numpy(float)
     T = df[COT_NHIET_DO].to_numpy(float)
+    T_tc = _lay_nhiet_do_tc(df)
+    D = T - T_tc
     y = df[COT_DELTA_Y].to_numpy(float)
 
-    so_muc_T = _so_muc(T, 0.5)
-    co_T = so_muc_T >= 2
-    co_TT = so_muc_T >= 3
+    co_T, co_TT, co_D = _xac_dinh_co_bu_nhiet(T, T_tc)
     if bac >= 2 and _so_muc(S, 0.01) < 3:
         raise ValueError("Bậc 2 cần ít nhất 3 mức độ mặn chuẩn khác nhau.")
 
     T_ref = float(np.round(np.mean(T), 1))
-    hang = chon_so_hang(bac, co_T, co_TT)
-    kq = khop_binh_phuong_toi_thieu(S, T, y, hang, T_ref)
+    hang = chon_so_hang(bac, co_T, co_TT, co_D=co_D)
+    kq = khop_binh_phuong_toi_thieu(S, T, y, hang, T_ref, T_tc=T_tc)
 
     ss_tot = float(np.sum((y - y.mean()) ** 2))
     ss_res = float(np.sum(kq.phan_du**2))
     nguon_du_lieu = xac_dinh_nguon_du_lieu(df)
+    gia_dinh_cb = bool(df.attrs.get("gia_dinh_can_bang_nhiet", COT_NHIET_DO_TC not in df.columns))
     return MoHinhHieuChuan(
         bac=bac, hang=hang,
         he_so=[float(c) for c in kq.he_so],
@@ -435,6 +524,10 @@ def tao_mo_hinh(df: pd.DataFrame, bac: int) -> MoHinhHieuChuan:
         RMSE_px=float(np.sqrt(np.mean(kq.phan_du**2))),
         la_mo_phong=(nguon_du_lieu == NHAN_MO_PHONG),
         nguon_du_lieu=nguon_du_lieu,
+        co_bu_chenh_T=co_D,
+        D_min=float(D.min()),
+        D_max=float(D.max()),
+        gia_dinh_can_bang_nhiet=gia_dinh_cb,
         id_thiet_bi=sorted({str(v) for v in df[COT_ID_THIET_BI]} - {""}),
         id_dien_thoai=sorted({str(v) for v in df[COT_ID_DIEN_THOAI]} - {""}),
         ngay_tao=datetime.now().isoformat(timespec="seconds"),
@@ -463,8 +556,10 @@ class KetQuaDoMan:
     han_che: str = HAN_CHE_NACL
 
 
-def _tim_nghiem_S(mh: MoHinhHieuChuan, delta_y: float, T: float) -> float:
-    """Tìm S sao cho f(S, T) = Δy.
+def _tim_nghiem_S(
+    mh: MoHinhHieuChuan, delta_y: float, T: float, T_tc: float | None = None
+) -> float:
+    """Tìm S sao cho f(S, T, T_tc) = Δy.
 
     Quét lưới trong khoảng rộng hơn dải hiệu chuẩn 50% mỗi phía để tìm các điểm đổi dấu,
     rồi tinh chỉnh bằng phương pháp chia đôi (brentq). Nếu có nhiều nghiệm (đa thức bậc 2
@@ -475,14 +570,16 @@ def _tim_nghiem_S(mh: MoHinhHieuChuan, delta_y: float, T: float) -> float:
     nhip = max(mh.S_max - mh.S_min, 1.0)
     lo, hi = mh.S_min - 0.5 * nhip, mh.S_max + 0.5 * nhip
     luoi = np.linspace(lo, hi, 801)
-    g = mh.du_doan_delta_y(luoi, T) - delta_y
+    g = mh.du_doan_delta_y(luoi, T, T_tc=T_tc) - delta_y
     nghiem: list[float] = []
     for i in np.nonzero(np.sign(g[:-1]) * np.sign(g[1:]) <= 0)[0]:
         a, b = luoi[i], luoi[i + 1]
         if g[i] == 0:
             nghiem.append(float(a))
         elif g[i] * g[i + 1] < 0:
-            nghiem.append(float(brentq(lambda s: float(mh.du_doan_delta_y(s, T)[0]) - delta_y, a, b)))
+            nghiem.append(
+                float(brentq(lambda s: float(mh.du_doan_delta_y(s, T, T_tc=T_tc)[0]) - delta_y, a, b))
+            )
     if not nghiem:
         raise ValueError(
             f"Δy = {delta_y:.2f} px nằm quá xa ngoài dải đường chuẩn "
@@ -502,31 +599,47 @@ def uoc_luong_do_man(
     sigma_T_C: float = 0.0,
     k: float = 2.0,
     nguong_lech_T_khong_bu_C: float = 1.0,
+    T_tham_chieu_C: float | None = None,
+    sigma_T_tham_chieu_C: float = 0.0,
+    nguong_lech_T_hai_ngan_C: float = 0.5,
 ) -> KetQuaDoMan:
-    """Ước lượng độ mặn từ Δy và nhiệt độ, kèm bất định và cờ cảnh báo.
+    """Ước lượng độ mặn từ Δy và nhiệt độ hai ngăn, kèm bất định và cờ cảnh báo.
 
     Truyền sai số bậc 1 (xem docstring đầu mô-đun). Các nguồn bất định (đơn vị ‰):
       - "do_anh": bất định Δy của chính phép đo này (từ Cột mốc 2, σ_Δy).
-      - "lap_lai_duong_chuan": độ tản mát s_res của điểm chuẩn (gồm nhiễu ảnh, pha dung
-        dịch, đặt cuvet...). Có thể trùng một phần với "do_anh" -> ước lượng hơi thận trọng.
+      - "lap_lai_duong_chuan": độ tản mát s_res của điểm chuẩn.
       - "he_so_duong_chuan": do hệ số đường chuẩn chỉ ước lượng từ số điểm hữu hạn.
-      - "nhiet_do": do nhiệt kế sai σ_T, qua ∂f/∂T.
+      - "nhiet_do": do nhiệt kế mẫu sai σ_T, qua ∂f/∂T.
+      - "nhiet_do_tham_chieu": do nhiệt kế ngăn tham chiếu sai σ_T_tc, qua ∂f/∂T_tc.
     """
     if not (math.isfinite(delta_y_px) and math.isfinite(T_C)):
         raise ValueError("Δy hoặc nhiệt độ không hợp lệ (NaN/vô cực).")
+    if T_tham_chieu_C is not None and not math.isfinite(T_tham_chieu_C):
+        raise ValueError("Nhiệt độ ngăn tham chiếu không hợp lệ (NaN/vô cực).")
 
-    S = _tim_nghiem_S(mh, delta_y_px, T_C)
-    f_S = mh.dao_ham_theo_S(S, T_C)
+    S = _tim_nghiem_S(mh, delta_y_px, T_C, T_tc=T_tham_chieu_C)
+    f_S = mh.dao_ham_theo_S(S, T_C, T_tc=T_tham_chieu_C)
     if abs(f_S) < 1e-9:
         raise ValueError("Độ nhạy ∂Δy/∂S ≈ 0 tại điểm này – không giải ngược được.")
-    f_T = mh.dao_ham_theo_T(S, T_C) if mh.co_bu_nhiet else 0.0
+    f_T = (
+        mh.dao_ham_theo_T(S, T_C, T_tc=T_tham_chieu_C)
+        if (mh.co_bu_nhiet or (T_tham_chieu_C is not None and mh.co_bu_chenh_T))
+        else 0.0
+    )
+    f_T_tc = (
+        mh.dao_ham_theo_T_tc(S, T_C, T_tc=T_tham_chieu_C)
+        if (mh.co_bu_chenh_T and T_tham_chieu_C is not None)
+        else 0.0
+    )
 
     thanh_phan = {
         "do_anh": abs(sigma_delta_y_px / f_S),
         "lap_lai_duong_chuan": abs(mh.s_res_px / f_S),
-        "he_so_duong_chuan": math.sqrt(max(mh.phuong_sai_du_doan(S, T_C), 0.0)) / abs(f_S),
+        "he_so_duong_chuan": math.sqrt(max(mh.phuong_sai_du_doan(S, T_C, T_tc=T_tham_chieu_C), 0.0)) / abs(f_S),
         "nhiet_do": abs(f_T * sigma_T_C / f_S),
     }
+    if T_tham_chieu_C is not None or sigma_T_tham_chieu_C > 0 or mh.co_bu_chenh_T:
+        thanh_phan["nhiet_do_tham_chieu"] = abs(f_T_tc * sigma_T_tham_chieu_C / f_S)
     u = math.sqrt(sum(v * v for v in thanh_phan.values()))
 
     canh_bao: list[str] = []
@@ -542,11 +655,23 @@ def uoc_luong_do_man(
             f"Nhiệt độ {T_C:.1f} °C nằm ngoài khoảng đã hiệu chuẩn "
             f"({mh.T_min:.1f}–{mh.T_max:.1f} °C): bù nhiệt là ngoại suy."
         )
-    if not mh.co_bu_nhiet and abs(T_C - mh.T_ref) > nguong_lech_T_khong_bu_C:
+    if not mh.co_bu_nhiet and not mh.co_bu_chenh_T and abs(T_C - mh.T_ref) > nguong_lech_T_khong_bu_C:
         canh_bao.append(
             f"Đường chuẩn chỉ đo ở một nhiệt độ (~{mh.T_ref:.1f} °C) nên KHÔNG bù nhiệt; "
             f"mẫu đang ở {T_C:.1f} °C. Hãy hiệu chuẩn thêm ở nhiều nhiệt độ."
         )
+    if T_tham_chieu_C is None:
+        canh_bao.append("Chưa đo nhiệt độ ngăn tham chiếu: giả định hai ngăn cân bằng nhiệt, chưa đo.")
+    else:
+        chenh_T = T_C - T_tham_chieu_C
+        if abs(chenh_T) > nguong_lech_T_hai_ngan_C:
+            msg_chenh = (
+                f"Chênh nhiệt độ hai ngăn |T_mẫu − T_tc| = {abs(chenh_T):.2f} °C > {nguong_lech_T_hai_ngan_C:g} °C: "
+                "hãy đợi cân bằng nhiệt hoặc đo cả hai nhiệt độ."
+            )
+            if not mh.co_bu_chenh_T:
+                msg_chenh += " (Đường chuẩn hiện tại chưa có số hạng bù chênh nhiệt độ D.)"
+            canh_bao.append(msg_chenh)
     if mh.la_mo_phong:
         canh_bao.append(f"{NHAN_CHUA_HIEU_CHUAN}: con số này KHÔNG phải kết quả đo thật.")
     elif not mh.da_xac_nhan_thuc_te:
@@ -639,17 +764,20 @@ def chia_train_test(
 
 def _bang_sai_so(mh: MoHinhHieuChuan, df: pd.DataFrame, k: float) -> pd.DataFrame:
     """Bảng từng điểm: Δy dự đoán, phần dư, S ước lượng ngược, sai số S."""
+    t_tc_arr = _lay_nhiet_do_tc(df)
     dong = []
-    for _, r in df.iterrows():
+    for idx, (_, r) in enumerate(df.iterrows()):
         S0, T0, y0 = float(r[COT_DO_MAN]), float(r[COT_NHIET_DO]), float(r[COT_DELTA_Y])
+        T_tc0 = float(t_tc_arr[idx])
         try:
-            S_est = uoc_luong_do_man(mh, y0, T0, k=k).S_ppt
+            S_est = uoc_luong_do_man(mh, y0, T0, k=k, T_tham_chieu_C=T_tc0).S_ppt
         except ValueError:
             S_est = float("nan")
+        dy_du_doan = float(mh.du_doan_delta_y(S0, T0, T_tc=T_tc0)[0])
         dong.append({
-            COT_DO_MAN: S0, COT_NHIET_DO: T0, COT_DELTA_Y: y0,
-            "delta_y_du_doan_px": float(mh.du_doan_delta_y(S0, T0)[0]),
-            "phan_du_px": y0 - float(mh.du_doan_delta_y(S0, T0)[0]),
+            COT_DO_MAN: S0, COT_NHIET_DO: T0, COT_NHIET_DO_TC: T_tc0, COT_DELTA_Y: y0,
+            "delta_y_du_doan_px": dy_du_doan,
+            "phan_du_px": y0 - dy_du_doan,
             "S_uoc_luong_ppt": S_est,
             "sai_so_S_ppt": S_est - S0,
         })
@@ -680,6 +808,10 @@ def dung_duong_chuan(
         canh_bao.append(
             f"{NHAN_CHUA_XAC_NHAN_NGUON}: thiếu cột nguon_du_lieu hoặc có dòng chưa ghi rõ THUC_TE."
         )
+    if bool(df.attrs.get("gia_dinh_can_bang_nhiet", COT_NHIET_DO_TC not in df.columns)):
+        canh_bao.append(
+            "Thiếu cột nhiet_do_tham_chieu_C: giả định hai ngăn cân bằng nhiệt, chưa đo."
+        )
     if df.attrs.get("so_dong_bi_loai", 0):
         canh_bao.append(f"Đã loại {df.attrs['so_dong_bi_loai']} dòng thiếu dữ liệu.")
     if _so_muc(df[COT_DO_MAN].to_numpy(float), 0.01) < 3:
@@ -693,16 +825,17 @@ def dung_duong_chuan(
 
     S = df_train[COT_DO_MAN].to_numpy(float)
     T = df_train[COT_NHIET_DO].to_numpy(float)
+    T_tc = _lay_nhiet_do_tc(df_train)
     y = df_train[COT_DELTA_Y].to_numpy(float)
-    so_muc_T = _so_muc(T, 0.5)
+    co_T_tr, co_TT_tr, co_D_tr = _xac_dinh_co_bu_nhiet(T, T_tc)
     T_ref = float(np.round(np.mean(T), 1))
 
     rmse_cv: dict[int, float] = {}
     for bac in (1, 2):
         if bac == 2 and _so_muc(S, 0.01) < 3:
             continue
-        hang = chon_so_hang(bac, so_muc_T >= 2, so_muc_T >= 3)
-        rmse_cv[bac] = rmse_kiem_dinh_cheo(S, T, y, hang, T_ref, ch.so_fold, ch.seed)
+        hang = chon_so_hang(bac, co_T_tr, co_TT_tr, co_D=co_D_tr)
+        rmse_cv[bac] = rmse_kiem_dinh_cheo(S, T, y, hang, T_ref, ch.so_fold, ch.seed, T_tc=T_tc)
 
     if bac_ep is not None:
         bac_chon, ly_do = bac_ep, f"Bậc {bac_ep} do người dùng chỉ định."
@@ -718,7 +851,7 @@ def dung_duong_chuan(
 
     mh_train = tao_mo_hinh(df_train, bac_chon)
     mh_full = tao_mo_hinh(df, bac_chon)
-    if not mh_full.co_bu_nhiet:
+    if not mh_full.co_bu_nhiet and not mh_full.co_bu_chenh_T:
         canh_bao.append("Dữ liệu chỉ có một mức nhiệt độ: đường chuẩn KHÔNG bù nhiệt được.")
 
     if len(df_test):
@@ -795,7 +928,10 @@ def ve_phan_du(bc: BaoCaoHieuChuan):  # -> matplotlib.figure.Figure
     for d, nhan, kieu in ((bc.df_train, "train", "o"), (bc.df_test, "test", "x")):
         if len(d):
             du = d[COT_DELTA_Y].to_numpy(float) - mh.du_doan_delta_y(
-                d[COT_DO_MAN].to_numpy(float), d[COT_NHIET_DO].to_numpy(float))
+                d[COT_DO_MAN].to_numpy(float),
+                d[COT_NHIET_DO].to_numpy(float),
+                T_tc=_lay_nhiet_do_tc(d),
+            )
             ax.scatter(d[COT_DO_MAN], du, s=20, marker=kieu, label=nhan)
     ax.axhline(0, color="k", lw=0.8)
     for dau in (-2, 2):
