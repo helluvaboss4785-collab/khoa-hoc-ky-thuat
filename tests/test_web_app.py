@@ -360,3 +360,44 @@ def test_q5_api_measure_multi_can_bang_nhiet():
     assert len(cb["thoi_gian_hop_le_s"]) == 5
     assert len(cb["duong_khop_t_s"]) == 25
 
+
+def test_q7_api_optics_sim_quan_fry_va_canh_bao_ngoai_dai():
+    """Q7: Tab mô phỏng hỗ trợ tuyến tính | Quan-Fry và phát cảnh báo khi ngoài dải 0-30°C, 0-35‰, 400-700nm."""
+    # 1. Mặc định giữ tuyến tính
+    r_lin = _run_coro(web_app.api_optics_sim(_make_request("POST", "/api/optics-sim", {"S_ppt": 20.0, "T_C": 25.0})))
+    assert r_lin.status_code == 200
+    d_lin = json.loads(r_lin.body.decode("utf-8"))
+    assert d_lin["mo_hinh_chiet_suat"] == "tuyen_tinh"
+    assert d_lin["canh_bao_mo_hinh"] == []
+
+    # 2. Quan-Fry trong dải -> không cảnh báo ngoài dải
+    r_qf_ok = _run_coro(
+        web_app.api_optics_sim(
+            _make_request(
+                "POST",
+                "/api/optics-sim",
+                {"S_ppt": 20.0, "T_C": 25.0, "mo_hinh_chiet_suat": "quan_fry", "buoc_song_nm": 650},
+            )
+        )
+    )
+    assert r_qf_ok.status_code == 200
+    d_qf_ok = json.loads(r_qf_ok.body.decode("utf-8"))
+    assert d_qf_ok["mo_hinh_chiet_suat"] == "quan_fry"
+    assert d_qf_ok["canh_bao_mo_hinh"] == []
+
+    # 3. Quan-Fry ngoài dải T=35°C -> cảnh báo rõ ràng
+    r_qf_bad = _run_coro(
+        web_app.api_optics_sim(
+            _make_request(
+                "POST",
+                "/api/optics-sim",
+                {"S_ppt": 20.0, "T_C": 35.0, "mo_hinh_chiet_suat": "quan_fry", "buoc_song_nm": 650},
+            )
+        )
+    )
+    assert r_qf_bad.status_code == 200
+    d_qf_bad = json.loads(r_qf_bad.body.decode("utf-8"))
+    assert len(d_qf_bad["canh_bao_mo_hinh"]) >= 1
+    assert any("0–30 °C" in m for m in d_qf_bad["canh_bao_mo_hinh"])
+
+

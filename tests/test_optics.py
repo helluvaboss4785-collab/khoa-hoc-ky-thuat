@@ -81,8 +81,8 @@ def test_ngan_sach_sai_so():
     r = op.ngan_sach_sai_so(17.5, 20.0, CFG, 0.05, 0.5, 0.05, 5.0, 0.01)
     assert set(r) == {"tim_tam", "nhiet_do", "goc_A", "troi_laser", "tong_RSS"}
     assert all(v >= 0 for v in r.values())
-    # ΔT = 0,5 °C => |dn/dT|·ΔT/(dn/dS) = 1e-4·0,5/1,8e-4 ≈ 0,278 ‰
-    assert r["nhiet_do"] == pytest.approx(0.5 * 1e-4 / 1.8e-4, rel=1e-9)
+    # ΔT = 0,5 °C => |dn/dT|·ΔT/(dn/dS) = 1.1e-4·0,5/1,8e-4 ≈ 0,3056 ‰ (xấp xỉ tại 650 nm, 25 °C)
+    assert r["nhiet_do"] == pytest.approx(0.5 * 1.1e-4 / 1.8e-4, rel=1e-9)
     assert r["tong_RSS"] >= max(v for k, v in r.items() if k != "tong_RSS")
 
 

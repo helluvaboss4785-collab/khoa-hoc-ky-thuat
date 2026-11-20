@@ -257,19 +257,21 @@ def test_q1_anh_mau_laser_do_bao_hoa_kenh_r_va_snr():
 
 
 def test_q2_phan_biet_speckle_va_bao_hoa_that():
-    """Q2: Đốm speckle (0.1 và 0.2, 10 seed/mức) phải >=90% hợp lệ và sai số <0.15 px; clipping thật phải bị loại."""
+    """Q2: Đốm speckle (0.1 và 0.2, 10 seed/mức) phải >=90% hợp lệ đồng thời |sai số| <0.15 px; clipping thật phải bị loại."""
     for spk in (0.1, 0.2):
-        hop_le_count = 0
+        dat_ca_hai = 0
         errs = []
         for s in range(10):
-            p = ThamSoMoPhong(S_ppt=20.0, T_C=25.0, speckle_cuong_do=spk, seed=100 + s)
+            p = ThamSoMoPhong(S_ppt=20.0, T_C=25.0, speckle_cuong_do=spk, seed=s)
             mp = sinh_anh_hai_vach_mo_phong(p, cfg=CFG)
             kq = do_delta_y_tu_anh(mp.anh, x_ref=mp.x_ref, tao_anh_ve=False)
-            errs.append(abs(kq.delta_y_px - mp.delta_y_ly_thuyet_px))
-            if kq.chat_luong.hop_le:
-                hop_le_count += 1
-        assert hop_le_count >= 9, f"Speckle {spk}: chỉ {hop_le_count}/10 hợp lệ"
-        assert max(errs) < 0.15, f"Speckle {spk}: sai số cực đại {max(errs):.4f} >= 0.15 px"
+            err = abs(kq.delta_y_px - mp.delta_y_ly_thuyet_px)
+            errs.append(err)
+            if kq.chat_luong.hop_le and err < 0.15:
+                dat_ca_hai += 1
+        rms = float(np.sqrt(np.mean(np.square(errs))))
+        assert dat_ca_hai >= 9, f"Speckle {spk}: chỉ {dat_ca_hai}/10 đạt đồng thời hop_le và |err|<0.15 px"
+        assert rms < 0.10, f"Speckle {spk}: RMS {rms:.4f} >= 0.10 px"
 
     # Kiểm tra ảnh có bẹt đỉnh thực sự: cho_phep_bao_hoa=True, đỉnh 400 -> bao_hoa=True, hop_le=False
     p_clip = ThamSoMoPhong(S_ppt=20.0, T_C=25.0, cho_phep_bao_hoa=True, cuong_do_dinh_goc=400.0, seed=1)

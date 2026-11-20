@@ -8,7 +8,7 @@ quang_hoc:
   khoang_cach_man_D_m: 1.0       # tổng quãng đường từ lăng kính tới màn (m) - cần đo lại
   chiet_suat_nuoc_ngot: 1.333    # n nước ngọt - cần xác nhận bằng tài liệu và đường chuẩn thực nghiệm
   dn_dS_moi_phan_nghin: 1.8e-4   # dn/dS (mỗi ‰) - cần xác nhận bằng tài liệu và đường chuẩn thực nghiệm
-  dn_dT_moi_do_C: -1.0e-4        # dn/dT (mỗi °C) - cần xác nhận bằng tài liệu và đường chuẩn thực nghiệm
+  dn_dT_moi_do_C: -1.1e-4        # xấp xỉ từ công thức Quan–Fry tại 650 nm, 25 °C, S = 0; chưa đối chiếu bài gốc
   nhiet_do_tham_chieu_C: 20.0    # GIẢ ĐỊNH: nhiệt độ ứng với n = 1,333 - cần xác nhận
   bien_an_toan_TIR: 0.02         # cảnh báo khi n*sin(A) > 1 - biên này (gần phản xạ toàn phần)
   mo_hinh_chiet_suat: "tuyen_tinh"  # "tuyen_tinh" (mặc định) hoặc "quan_fry"

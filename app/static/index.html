@@ -889,6 +889,20 @@
                 <input type="range" id="t5-t" class="slider-25d" min="10" max="40" step="1" value="25" />
               </div>
 
+              <div class="control-row-2">
+                <div class="control-group">
+                  <div class="control-label"><span>Mô hình chiết suất</span></div>
+                  <select id="t5-model" class="select-25d">
+                    <option value="tuyen_tinh" selected>Tuyến tính (mặc định)</option>
+                    <option value="quan_fry">Quan–Fry (cần đối chiếu 1995)</option>
+                  </select>
+                </div>
+                <div class="control-group">
+                  <div class="control-label"><span>Bước sóng λ (nm)</span></div>
+                  <input type="number" id="t5-wavelength" class="input-25d" step="5" min="350" max="850" value="650" />
+                </div>
+              </div>
+
               <hr class="panel-divider" />
               <button type="button" id="t5-btn-save-config" class="btn-25d btn-navy-25d btn-full btn-sm">
                 💾 Lưu A, D, mm/px vào config.yaml
@@ -901,6 +915,7 @@
               <div class="step-badge-title"><span class="step-num-25d">2</span> Sơ đồ tia sáng 2.5D &amp; Kết quả định luật Snell</div>
               <div id="t5-svg-container"></div>
               <div id="t5-tir-alert"></div>
+              <div id="t5-model-alert"></div>
               <div class="kpi-row-3" style="margin-top:12px; margin-bottom:0;">
                 <div class="kpi-card-25d tone-emerald">
                   <div class="kpi-label">GÓC LÓ θ_ra</div>

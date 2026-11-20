@@ -16,6 +16,7 @@ import sys
 import threading
 import unicodedata
 import urllib.parse
+import warnings
 import webbrowser
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -1907,6 +1908,10 @@ async def api_optics_sim(request: Request) -> JSONResponse:
         err_a = float(body.get("sai_so_goc_A_do", 0.05))
         err_troi = float(body.get("troi_laser_px", 5.0))
         he_so_triet = float(body.get("he_so_triet_chung", 0.01))
+        mo_hinh_cs = str(body.get("mo_hinh_chiet_suat") or "tuyen_tinh").strip().lower()
+        if mo_hinh_cs not in ("tuyen_tinh", "quan_fry"):
+            return _json_err(f"Mô hình chiết suất '{mo_hinh_cs}' không hợp lệ (chọn tuyen_tinh hoặc quan_fry).", 400)
+        buoc_song_nm = float(body.get("buoc_song_nm", cfg_cur.buoc_song_nm))
 
         cfg_sim = op.CauHinhQuangHoc(
             A_do=a_sim,
@@ -1917,44 +1922,57 @@ async def api_optics_sim(request: Request) -> JSONResponse:
             T_tham_chieu_C=cfg_cur.T_tham_chieu_C,
             bien_TIR=cfg_cur.bien_TIR,
             pixel_mm=px_sim,
+            mo_hinh_chiet_suat=mo_hinh_cs,
+            buoc_song_nm=buoc_song_nm,
         )
 
-        n_calc = op.chiet_suat(s_eval, t_eval, cfg_sim)
-        n_tc_calc = op.chiet_suat(0.0, t_eval, cfg_sim)
         tir = False
         theta_ra = None
         delta_goc = None
         dy_px_sim = 0.0
         sens_px = None
         ngan_sach = None
-        n_sin_a = n_calc * math.sin(math.radians(a_sim))
-
-        try:
-            theta_ra = op.goc_ra(n_calc, a_sim)
-            delta_goc = op.goc_lech(n_calc, a_sim)
-            dy_px_sim = op.delta_y_vi_sai_px(s_eval, t_eval, t_eval, cfg_sim, A_do=a_sim)
-            sens_px = op.pixel_moi_phan_nghin(s_eval, t_eval, cfg_sim, A_do=a_sim, D_m=d_sim)
-            ngan_sach = op.ngan_sach_sai_so(
-                s_eval, t_eval, cfg_sim, err_tam, err_t, err_a, err_troi, he_so_triet
-            )
-        except op.PhanXaToanPhanError:
-            tir = True
+        canh_bao_mo_hinh: list[str] = []
+        with warnings.catch_warnings(record=True) as w_rec:
+            warnings.simplefilter("always", op.NgoaiDaiQuanFryWarning)
+            n_calc = op.chiet_suat(s_eval, t_eval, cfg_sim)
+            n_tc_calc = op.chiet_suat(0.0, t_eval, cfg_sim)
+            n_sin_a = n_calc * math.sin(math.radians(a_sim))
+            try:
+                theta_ra = op.goc_ra(n_calc, a_sim)
+                delta_goc = op.goc_lech(n_calc, a_sim)
+                dy_px_sim = op.delta_y_vi_sai_px(s_eval, t_eval, t_eval, cfg_sim, A_do=a_sim)
+                sens_px = op.pixel_moi_phan_nghin(s_eval, t_eval, cfg_sim, A_do=a_sim, D_m=d_sim)
+                ngan_sach = op.ngan_sach_sai_so(
+                    s_eval, t_eval, cfg_sim, err_tam, err_t, err_a, err_troi, he_so_triet
+                )
+            except op.PhanXaToanPhanError:
+                tir = True
+        for w_item in w_rec:
+            if issubclass(w_item.category, op.NgoaiDaiQuanFryWarning):
+                msg_w = str(w_item.message)
+                if msg_w not in canh_bao_mo_hinh:
+                    canh_bao_mo_hinh.append(msg_w)
 
         cac_goc_a = np.linspace(25.0, 47.0, 90)
         do_nhay_a = []
-        for a_val in cac_goc_a:
-            try:
-                do_nhay_a.append(round(op.pixel_moi_phan_nghin(s_eval, t_eval, cfg_sim, A_do=float(a_val), D_m=d_sim), 4))
-            except op.PhanXaToanPhanError:
-                do_nhay_a.append(None)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", op.NgoaiDaiQuanFryWarning)
+            for a_val in cac_goc_a:
+                try:
+                    do_nhay_a.append(round(op.pixel_moi_phan_nghin(s_eval, t_eval, cfg_sim, A_do=float(a_val), D_m=d_sim), 4))
+                except op.PhanXaToanPhanError:
+                    do_nhay_a.append(None)
 
         cac_muc_s = np.linspace(0.0, 35.0, 71)
         dy_20: list[float] = []
         dy_30: list[float] = []
         response_tir = False
         try:
-            dy_20 = [round(op.delta_y_vi_sai_px(float(sv), 20.0, 20.0, cfg_sim), 3) for sv in cac_muc_s]
-            dy_30 = [round(op.delta_y_vi_sai_px(float(sv), 30.0, 30.0, cfg_sim), 3) for sv in cac_muc_s]
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", op.NgoaiDaiQuanFryWarning)
+                dy_20 = [round(op.delta_y_vi_sai_px(float(sv), 20.0, 20.0, cfg_sim), 3) for sv in cac_muc_s]
+                dy_30 = [round(op.delta_y_vi_sai_px(float(sv), 30.0, 30.0, cfg_sim), 3) for sv in cac_muc_s]
         except op.PhanXaToanPhanError:
             response_tir = True
 
@@ -1964,6 +1982,9 @@ async def api_optics_sim(request: Request) -> JSONResponse:
             "pixel_mm": px_sim,
             "S_ppt": s_eval,
             "T_C": t_eval,
+            "mo_hinh_chiet_suat": mo_hinh_cs,
+            "buoc_song_nm": buoc_song_nm,
+            "canh_bao_mo_hinh": canh_bao_mo_hinh,
             "n_mau": n_calc,
             "n_tc": n_tc_calc,
             "n_sin_A": n_sin_a,

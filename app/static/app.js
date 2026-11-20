@@ -1842,6 +1842,8 @@ async function runOpticsSim() {
       pixel_mm: Number($("#t5-pxmm").value || 0.05),
       S_ppt: Number($("#t5-s").value),
       T_C: Number($("#t5-t").value),
+      mo_hinh_chiet_suat: $("#t5-model")?.value || "tuyen_tinh",
+      buoc_song_nm: Number($("#t5-wavelength")?.value || 650),
       sai_so_tim_tam_px: Number($("#t5-err-tam").value || 0.05),
       lech_nhiet_do_C: Number($("#t5-err-t").value || 0.5),
       sai_so_goc_A_do: Number($("#t5-err-a").value || 0.05),
@@ -1864,6 +1866,17 @@ async function runOpticsSim() {
       $("#t5-kpi-dy").textContent = `Δy = ${fmt(data.delta_y_px, 1)} px`;
       $("#t5-kpi-sens").textContent = fmt(data.sens_px, 2);
       $("#t5-kpi-sens-sub").textContent = `Tại A=${data.A_do}°, D=${data.D_m}m`;
+    }
+    const mAlertEl = $("#t5-model-alert");
+    if (mAlertEl) {
+      const warns = data.canh_bao_mo_hinh || [];
+      if (warns.length) {
+        mAlertEl.innerHTML = `<div class="banner-25d warn" style="margin-top:8px;"><div class="banner-icon">⚠️</div><div>${warns.map(esc).join("<br>")}</div></div>`;
+      } else if (data.mo_hinh_chiet_suat === "quan_fry") {
+        mAlertEl.innerHTML = `<div class="banner-25d info" style="margin-top:8px;"><div class="banner-icon">ℹ️</div><div>Đang dùng công thức Quan–Fry (λ=${fmt(data.buoc_song_nm, 0)} nm, hiệu lực 0–30 °C, 0–35 ‰, 400–700 nm). Các hệ số do nhóm cung cấp và phải đối chiếu bài gốc Quan &amp; Fry (1995) trước khi đưa vào báo cáo.</div></div>`;
+      } else {
+        mAlertEl.innerHTML = "";
+      }
     }
 
     if (data.ngan_sach) {
@@ -2798,8 +2811,8 @@ function bindEvents() {
       debounce("t5", runOpticsSim, 75);
     });
   });
-  ["t5-pxmm", "t5-err-tam", "t5-err-t", "t5-err-a", "t5-err-troi", "t5-err-triet"].forEach((id) => {
-    $(`#${id}`).addEventListener("change", runOpticsSim);
+  ["t5-pxmm", "t5-model", "t5-wavelength", "t5-err-tam", "t5-err-t", "t5-err-a", "t5-err-troi", "t5-err-triet"].forEach((id) => {
+    $(`#${id}`)?.addEventListener("change", runOpticsSim);
   });
   $("#t5-btn-save-config").addEventListener("click", saveOpticsConfig);
 
