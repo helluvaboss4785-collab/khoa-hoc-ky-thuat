@@ -30,6 +30,7 @@ xu_ly_anh:                       # Tham số thuật toán tìm tâm và đánh 
   ti_le_cot_bao_hoa_nghiem_trong: 0.30  # GIẢ ĐỊNH, cần chỉnh bằng ảnh thật (vượt mức này -> hop_le=False)
   so_cot_lien_tiep_bao_hoa: 15   # GIẢ ĐỊNH, cần chỉnh bằng ảnh thật (đoạn cột bão hòa liên tiếp ≥ 15 -> bẹt đỉnh thực sự)
   nguong_nen_khong_deu: 30.0     # GIẢ ĐỊNH, cần chỉnh bằng ảnh thật (biến thiên nền hình thái p95-p5 > ngưỡng -> cảnh báo nền không đều)
+  nguong_on_dinh_nhiet_px_moi_phut: 0.05  # GIẢ ĐỊNH, cần chỉnh bằng ảnh thật (độ dốc còn lại |dΔy/dt| <= ngưỡng -> đã ổn định nhiệt)
   snr_toi_thieu: 10.0            # tỉ số tín hiệu / nhiễu tối thiểu (giá trị mặc định, cần xác nhận bằng dữ liệu đo thật)
   r2_gauss_toi_thieu: 0.80       # hệ số xác định R² tối thiểu khi khớp Gauss
   fwhm_toi_thieu_px: 1.5         # độ rộng FWHM tối thiểu (px)

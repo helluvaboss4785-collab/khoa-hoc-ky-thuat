@@ -975,6 +975,35 @@ function renderMeasureResults(d) {
     }
   }
 
+  // Biểu đồ cân bằng nhiệt theo thời gian (Q5)
+  const thCard = $("#t1-thermal-card");
+  if (thCard) {
+    const cb = d.can_bang_nhiet;
+    if (cb && Array.isArray(cb.thoi_gian_hop_le_s) && cb.thoi_gian_hop_le_s.length >= 4) {
+      thCard.style.display = "block";
+      const thVerd = $("#t1-thermal-verdict");
+      if (thVerd) {
+        const cls = cb.da_on_dinh ? "ok" : "warn";
+        const icon = cb.da_on_dinh ? "✅" : "⏳";
+        thVerd.innerHTML = `<div class="banner-25d ${cls}"><div class="banner-icon">${icon}</div><div>${esc(cb.khuyen_nghi)}</div></div>`;
+      }
+      const ptsRaw = cb.thoi_gian_hop_le_s.map((tVal, idx) => ({ x: tVal, y: cb.delta_y_hop_le_px[idx] }));
+      const ptsFit = (cb.duong_khop_t_s || []).map((tVal, idx) => ({ x: tVal, y: cb.duong_khop_dy_px[idx] }));
+      drawXYChart($("#canvas-thermal-drift"), $("#tip-thermal-drift"), {
+        title: `Diễn biến Δy(t) (${cb.mo_hinh_khop === "phang" ? "Chuỗi phẳng" : `τ = ${fmt(cb.tau_s, 1)} s`})`,
+        xLabel: "Thời gian t (giây)",
+        yLabel: "Độ lệch Δy (px)",
+        series: [
+          { type: "scatter", color: "#2563eb", radius: 3.5, label: "Δy đo từng khung", points: ptsRaw },
+          { type: "line", color: "#059669", width: 2, label: "Đường khớp Δy(t)", points: ptsFit },
+        ],
+        hlines: [{ y: cb.delta_y_vo_cuc_px, color: "#f59e0b", dash: [5, 3], width: 1.4 }],
+      });
+    } else {
+      thCard.style.display = "none";
+    }
+  }
+
   // Ảnh đánh dấu
   if (d.anh_danh_dau_b64) {
     $("#t1-annotated-img").src = d.anh_danh_dau_b64;
@@ -2011,6 +2040,7 @@ function setCameraUi(isOn) {
   $("#btn-cam-start").disabled = isOn || !cameraSupported();
   $("#btn-cam-snap").disabled = !isOn;
   if ($("#btn-cam-burst")) $("#btn-cam-burst").disabled = !isOn;
+  if ($("#btn-cam-thermal")) $("#btn-cam-thermal").disabled = !isOn;
   $("#btn-cam-stop").disabled = !isOn;
   $("#camera-live-dot").style.display = isOn ? "block" : "none";
   $("#camera-placeholder").style.display = isOn ? "none" : "flex";
@@ -2081,7 +2111,7 @@ function snapCameraAndMeasure() {
   runMeasure();
 }
 
-async function runMeasureMulti(imagesB64, label) {
+async function runMeasureMulti(imagesB64, label, timesSec = null) {
   if (!Array.isArray(imagesB64) || imagesB64.length < 2) {
     toast("Cần ít nhất 2 khung ảnh để đo đa khung.");
     return;
@@ -2090,6 +2120,9 @@ async function runMeasureMulti(imagesB64, label) {
   delete basePayload.image_base64;
   basePayload.mode = "upload";
   basePayload.images_base64 = imagesB64;
+  if (Array.isArray(timesSec) && timesSec.length === imagesB64.length) {
+    basePayload.thoi_gian_s = timesSec;
+  }
   const seq = ++STATE.measureSeq;
   toast(`🎞️ Đang phân tích chuỗi ${imagesB64.length} khung (${label})...`);
   try {
@@ -2126,6 +2159,31 @@ async function snapBurstAndMeasure(nFrames = 5) {
   STATE.cameraImageB64 = frames[0];
   $("#cam-status").textContent = `🎞️ Đã chụp chuỗi ${frames.length} khung (${c.width}×${c.height} px) — đang xử lí...`;
   await runMeasureMulti(frames, "Camera burst");
+}
+
+async function snapThermalMonitor(nFrames = 8, intervalMs = 1500) {
+  const video = $("#camera-video");
+  if (!STATE.cameraStream || !video.videoWidth) {
+    toast("Hãy bật Camera trước khi theo dõi cân bằng nhiệt!");
+    return;
+  }
+  const frames = [];
+  const times = [];
+  const c = document.createElement("canvas");
+  c.width = video.videoWidth;
+  c.height = video.videoHeight;
+  const ctx = c.getContext("2d");
+  const t0 = performance.now();
+  for (let i = 0; i < nFrames; i++) {
+    ctx.drawImage(video, 0, 0);
+    frames.push(c.toDataURL("image/jpeg", 0.92));
+    times.push(Math.round(((performance.now() - t0) / 1000.0) * 100) / 100);
+    $("#cam-status").textContent = `⏱️ Đang ghi cân bằng nhiệt khung ${i + 1}/${nFrames}...`;
+    if (i < nFrames - 1) await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  STATE.cameraImageB64 = frames[frames.length - 1];
+  $("#cam-status").textContent = `⏱️ Đã thu ${frames.length} khung theo thời gian — đang khớp Δy(t)...`;
+  await runMeasureMulti(frames, "Cân bằng nhiệt", times);
 }
 
 function readFileAsDataUrl(file) {
@@ -2623,6 +2681,7 @@ function bindEvents() {
   $("#btn-cam-start").addEventListener("click", startCamera);
   $("#btn-cam-snap").addEventListener("click", snapCameraAndMeasure);
   $("#btn-cam-burst")?.addEventListener("click", () => snapBurstAndMeasure(5));
+  $("#btn-cam-thermal")?.addEventListener("click", () => snapThermalMonitor(8, 1500));
   $("#btn-cam-stop").addEventListener("click", () => stopCamera(true));
   window.addEventListener("pagehide", () => stopCamera(false));
   document.addEventListener("visibilitychange", () => {

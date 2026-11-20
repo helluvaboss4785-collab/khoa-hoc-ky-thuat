@@ -312,3 +312,51 @@ def test_api_logs_toc_do_bien_doi_do_man(tmp_path: Path, monkeypatch) -> None:
     assert by_note["lan 2"]["toc_do_ppt_gio"] == pytest.approx(2.0)
     assert by_note["lan 2"]["u_toc_do_ppt_gio"] == pytest.approx(math.hypot(0.3, 0.4) / 2.0)
     assert by_note["khac nguon"]["toc_do_ppt_gio"] is None
+
+
+def test_q5_api_measure_multi_can_bang_nhiet():
+    """Q5: Endpoint /api/measure-multi trả phân tích cân bằng nhiệt khi gửi kèm mốc thời gian."""
+    import base64
+    import math
+    import cv2
+    from core import optics as op
+    from sim.synth import ThamSoMoPhong, sinh_anh_hai_vach_mo_phong
+
+    cfg = op.CauHinhQuangHoc.tu_yaml()
+    times_s = [0.0, 15.0, 30.0, 45.0, 60.0]
+    imgs_b64 = []
+    for i, t_sec in enumerate(times_s):
+        # Mô phỏng nhiệt độ mẫu hạ dần về 25°C (chênh nhiệt ban đầu +8°C, τ = 35s)
+        t_mau = 25.0 + 8.0 * math.exp(-t_sec / 35.0)
+        obj = sinh_anh_hai_vach_mo_phong(
+            ThamSoMoPhong(S_ppt=20.0, T_C=t_mau, T_tham_chieu_C=25.0, seed=70 + i),
+            cfg=cfg,
+            gan_watermark=False,
+        )
+        ok, buf = cv2.imencode(".png", obj.anh)
+        assert ok
+        imgs_b64.append("data:image/png;base64," + base64.b64encode(buf.tobytes()).decode("ascii"))
+
+    resp = _run_coro(
+        web_app.api_measure_multi(
+            _make_request(
+                "POST",
+                "/api/measure-multi",
+                {
+                    "mode": "upload",
+                    "images_base64": imgs_b64,
+                    "thoi_gian_s": times_s,
+                    "nhiet_do_do": 25.0,
+                    "nhiet_do_tham_chieu": 25.0,
+                },
+            )
+        )
+    )
+    assert resp.status_code == 200
+    d = json.loads(resp.body.decode("utf-8"))
+    cb = d.get("can_bang_nhiet")
+    assert isinstance(cb, dict)
+    assert cb["da_on_dinh"] is False
+    assert len(cb["thoi_gian_hop_le_s"]) == 5
+    assert len(cb["duong_khop_t_s"]) == 25
+

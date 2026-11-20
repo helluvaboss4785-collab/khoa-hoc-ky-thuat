@@ -50,6 +50,7 @@ from core.measure import (
     chuyen_anh_xam,
     do_delta_y_da_khung_hinh,
     do_delta_y_tu_anh,
+    phan_tich_can_bang_nhiet,
 )
 from sim.synth import (
     ThamSoMoPhong,
@@ -164,6 +165,7 @@ def _ensure_config_cache() -> None:
         "ti_le_cot_bao_hoa_nghiem_trong": float(img_raw.get("ti_le_cot_bao_hoa_nghiem_trong", 0.30)),
         "so_cot_lien_tiep_bao_hoa": int(img_raw.get("so_cot_lien_tiep_bao_hoa", 15)),
         "nguong_nen_khong_deu": float(img_raw.get("nguong_nen_khong_deu", 30.0)),
+        "nguong_on_dinh_nhiet_px_moi_phut": float(img_raw.get("nguong_on_dinh_nhiet_px_moi_phut", 0.05)),
         "snr_toi_thieu": float(img_raw.get("snr_toi_thieu", 10.0)),
         "kenh_laser": str(img_raw.get("kenh_laser", "auto")),
     }
@@ -1315,7 +1317,9 @@ async def api_measure_multi(request: Request) -> JSONResponse:
         exif_info: dict[str, Any] = {}
 
         if mode == "sim":
-            so_khung = max(2, min(20, int(body.get("so_khung", 5))))
+            raw_times = body.get("thoi_gian_s")
+            so_khung_mac_dinh = len(raw_times) if isinstance(raw_times, list) and len(raw_times) >= 2 else 5
+            so_khung = max(2, min(60, int(body.get("so_khung", so_khung_mac_dinh))))
             s_mp = float(body.get("S_ppt", 16.5))
             t_mp = float(body.get("T_C", nhiet_do_do))
             t_tc_mp = float(body.get("T_tham_chieu_C", nhiet_do_tham_chieu if nhiet_do_tham_chieu is not None else t_mp))
@@ -1324,10 +1328,14 @@ async def api_measure_multi(request: Request) -> JSONResponse:
             bo_tri = "doc" if body.get("bo_tri") == "doc" else "ngang"
             cho_phep_bao_hoa = bool(body.get("cho_phep_bao_hoa", False))
             seed = int(body.get("seed", 42))
+            dt0_nhiet = float(body.get("delta_T_khoi_dau_C", 0.0) or 0.0)
+            tau_nhiet = max(float(body.get("tau_nhiet_s", 45.0) or 45.0), 1e-3)
             for i in range(so_khung):
+                t_sec_i = float(raw_times[i]) if (isinstance(raw_times, list) and i < len(raw_times)) else float(i)
+                t_c_i = t_mp + (dt0_nhiet * math.exp(-max(t_sec_i, 0.0) / tau_nhiet) if dt0_nhiet != 0.0 else 0.0)
                 p_synth = ThamSoMoPhong(
                     S_ppt=s_mp,
-                    T_C=t_mp,
+                    T_C=t_c_i,
                     T_tham_chieu_C=t_tc_mp,
                     drift_chung_px=drift_px + ((i - so_khung / 2.0) * 0.5),
                     do_duc=do_duc,
@@ -1465,6 +1473,38 @@ async def api_measure_multi(request: Request) -> JSONResponse:
         anh_b64 = _encode_preview_b64(kq_rep.anh_danh_dau if kq_rep.anh_danh_dau is not None else anh_rep)
         h_img, w_img = anh_rep.shape[:2]
 
+        can_bang_nhiet_dict: dict[str, Any] | None = None
+        raw_times = body.get("thoi_gian_s")
+        if isinstance(raw_times, list) and len(raw_times) == tong_so_gui:
+            try:
+                times_valid = [float(raw_times[raw_idx_map[k]]) for k in kq_da.chi_so_khung_hop_le]
+                if len(times_valid) >= 4 and (max(times_valid) - min(times_valid)) > 0:
+                    cb_kq = phan_tich_can_bang_nhiet(
+                        times_valid,
+                        kq_da.danh_sach_delta_y,
+                        nguong_on_dinh_px_moi_phut=float(img_cfg.get("nguong_on_dinh_nhiet_px_moi_phut", 0.05)),
+                    )
+                    can_bang_nhiet_dict = {
+                        "tau_s": cb_kq.tau_s,
+                        "u_tau_s": cb_kq.u_tau_s,
+                        "delta_y_vo_cuc_px": cb_kq.delta_y_vo_cuc_px,
+                        "u_delta_y_vo_cuc_px": cb_kq.u_delta_y_vo_cuc_px,
+                        "bien_do_A_px": cb_kq.bien_do_A_px,
+                        "do_doc_con_lai_px_moi_phut": cb_kq.do_doc_con_lai_px_moi_phut,
+                        "da_on_dinh": cb_kq.da_on_dinh,
+                        "nguong_px_moi_phut": cb_kq.nguong_px_moi_phut,
+                        "mo_hinh_khop": cb_kq.mo_hinh_khop,
+                        "r2": cb_kq.r2,
+                        "thoi_gian_da_cho_s": cb_kq.thoi_gian_da_cho_s,
+                        "khuyen_nghi": cb_kq.khuyen_nghi,
+                        "duong_khop_t_s": cb_kq.duong_khop_t_s,
+                        "duong_khop_dy_px": cb_kq.duong_khop_dy_px,
+                        "thoi_gian_hop_le_s": times_valid,
+                        "delta_y_hop_le_px": list(kq_da.danh_sach_delta_y),
+                    }
+            except (ValueError, TypeError):
+                can_bang_nhiet_dict = None
+
         return _json_ok({
             "da_khung_hinh": True,
             "la_anh_mo_phong": la_anh_mo_phong,
@@ -1492,6 +1532,7 @@ async def api_measure_multi(request: Request) -> JSONResponse:
             "canh_bao_troi_theo_thoi_gian": kq_da.canh_bao_troi_theo_thoi_gian,
             "canh_bao_dao_dong_phoi_sang": kq_da.canh_bao_dao_dong_phoi_sang,
             "canh_bao_da_khung": kq_da.canh_bao_da_khung,
+            "can_bang_nhiet": can_bang_nhiet_dict,
             "chat_luong": chat_luong_multi_dict,
             "vach_tham_chieu": _serialize_line_fit(kq_rep.vach_tham_chieu),
             "vach_mau": _serialize_line_fit(kq_rep.vach_mau),

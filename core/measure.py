@@ -24,6 +24,7 @@ from typing import Literal
 
 import cv2
 import numpy as np
+from scipy.optimize import curve_fit
 
 from core.spot import (
     KetQuaUocLuongVach,
@@ -92,6 +93,27 @@ class KetQuaDoDaKhungHinh:
     canh_bao_troi_theo_thoi_gian: bool = False
     canh_bao_dao_dong_phoi_sang: bool = False
     canh_bao_da_khung: list[str] = field(default_factory=list)
+    chi_so_khung_hop_le: list[int] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class KetQuaCanBangNhiet:
+    """Kết quả khớp đường tiến tới cân bằng nhiệt Δy(t) = Δy∞ + A·exp(−t/τ) (Q5)."""
+
+    tau_s: float | None
+    u_tau_s: float | None
+    delta_y_vo_cuc_px: float
+    u_delta_y_vo_cuc_px: float
+    bien_do_A_px: float
+    do_doc_con_lai_px_moi_phut: float
+    da_on_dinh: bool
+    nguong_px_moi_phut: float
+    mo_hinh_khop: str
+    r2: float
+    thoi_gian_da_cho_s: float
+    khuyen_nghi: str
+    duong_khop_t_s: list[float] = field(default_factory=list)
+    duong_khop_dy_px: list[float] = field(default_factory=list)
 
 
 def chuyen_anh_xam(anh: np.ndarray) -> np.ndarray:
@@ -932,4 +954,199 @@ def do_delta_y_da_khung_hinh(
         canh_bao_troi_theo_thoi_gian=co_troi_thoi_gian,
         canh_bao_dao_dong_phoi_sang=co_dao_dong_sang,
         canh_bao_da_khung=canh_bao_da_khung,
+        chi_so_khung_hop_le=ds_chi_so_khung,
+    )
+
+
+def _ham_mu_can_bang_nhiet(t: np.ndarray, dy_inf: float, amp: float, tau: float) -> np.ndarray:
+    """Mô hình truyền nhiệt Newton bậc 1 làm chiết suất và Δy hội tụ theo hàm mũ."""
+    return dy_inf + amp * np.exp(-t / np.maximum(tau, 1e-6))
+
+
+def phan_tich_can_bang_nhiet(
+    thoi_gian_s: list[float] | np.ndarray,
+    danh_sach_delta_y: list[float] | np.ndarray,
+    nguong_on_dinh_px_moi_phut: float = 0.05,
+) -> KetQuaCanBangNhiet:
+    """Khớp Δy(t) = Δy∞ + A·exp(−t/τ) cho chuỗi đa khung có mốc thời gian (Q5).
+
+    Đánh giá độ dốc còn lại |dΔy/dt| tại thời điểm cuối (px/phút) so với ngưỡng cấu hình.
+    TUYỆT ĐỐI không gợi ý thời gian chờ cố định; khuyến nghị hoàn toàn dựa trên tốc độ trôi đo được.
+    """
+    t_arr = np.asarray(thoi_gian_s, dtype=float)
+    y_arr = np.asarray(danh_sach_delta_y, dtype=float)
+    if t_arr.ndim != 1 or y_arr.ndim != 1 or len(t_arr) != len(y_arr):
+        raise ValueError("Danh sách thời gian và Δy phải cùng chiều dài.")
+
+    hop_le = np.isfinite(t_arr) & np.isfinite(y_arr)
+    t_arr = t_arr[hop_le]
+    y_arr = y_arr[hop_le]
+    if len(t_arr) < 4:
+        raise ValueError("Cần ít nhất 4 điểm thời gian hợp lệ để phân tích cân bằng nhiệt.")
+
+    thu_tu = np.argsort(t_arr)
+    t_raw = t_arr[thu_tu]
+    y = y_arr[thu_tu]
+    t0 = float(t_raw[0])
+    t_rel = t_raw - t0
+    t_span = float(t_rel[-1])
+    if t_span <= 0.0:
+        raise ValueError("Các mốc thời gian phải trải trên khoảng dương (> 0 giây).")
+
+    nguong = max(float(nguong_on_dinh_px_moi_phut), 1e-6)
+    ss_tot = float(np.sum((y - float(np.mean(y))) ** 2))
+
+    # 1. Kiểm tra chuỗi phẳng bằng hồi quy tuyến tính + so sánh độ tán nhiễu từng bước
+    t_c = t_rel - float(np.mean(t_rel))
+    denom_t = float(np.dot(t_c, t_c))
+    slope_lin = float(np.dot(t_c, y - float(np.mean(y))) / denom_t) if denom_t > 0.0 else 0.0
+    res_lin = y - (float(np.mean(y)) + slope_lin * t_c)
+    s_lin = math.sqrt(float(np.dot(res_lin, res_lin)) / max(len(y) - 2, 1))
+    se_slope = s_lin / math.sqrt(max(denom_t, 1e-12))
+    do_doc_lin_phut = abs(slope_lin) * 60.0
+    sigma_buoc = max(1.4826 * float(np.median(np.abs(np.diff(y)))) / math.sqrt(2.0), 1e-4)
+
+    # Thử khớp hàm mũ đa điểm khởi tạo để so sánh với đường phẳng
+    best_fit: tuple[np.ndarray, np.ndarray, float] | None = None
+    ymin, ymax = float(np.min(y)), float(np.max(y))
+    span_y = max(ymax - ymin, 0.1)
+    amp_lim = max(50.0, 20.0 * span_y)
+    lb = [ymin - 10.0 * span_y - 20.0, -amp_lim, max(t_span / 200.0, 0.05)]
+    ub = [ymax + 10.0 * span_y + 20.0, amp_lim, t_span * 100.0]
+
+    for mult in (0.08, 0.20, 0.45, 1.0, 2.2):
+        tau0 = float(np.clip(mult * t_span, lb[2] * 1.1, ub[2] * 0.9))
+        e_col = np.exp(-t_rel / tau0)
+        mat = np.column_stack([np.ones_like(e_col), e_col])
+        try:
+            beta, *_ = np.linalg.lstsq(mat, y, rcond=None)
+            y_inf0 = float(np.clip(beta[0], lb[0] + 1e-3, ub[0] - 1e-3))
+            amp0 = float(np.clip(beta[1], lb[1] + 1e-3, ub[1] - 1e-3))
+            popt, pcov = curve_fit(
+                _ham_mu_can_bang_nhiet,
+                t_rel,
+                y,
+                p0=[y_inf0, amp0, tau0],
+                bounds=(lb, ub),
+                maxfev=8000,
+            )
+            pred = _ham_mu_can_bang_nhiet(t_rel, *popt)
+            ssr = float(np.sum((y - pred) ** 2))
+            if best_fit is None or ssr < best_fit[2]:
+                best_fit = (popt, pcov, ssr)
+        except Exception:
+            continue
+
+    la_phang = False
+    if do_doc_lin_phut <= nguong and abs(slope_lin) <= 2.5 * se_slope:
+        bien_thien_exp = 0.0
+        if best_fit is not None:
+            p_b = best_fit[0]
+            bien_thien_exp = abs(float(p_b[1]) * (1.0 - math.exp(-t_span / max(float(p_b[2]), 1e-6))))
+        if bien_thien_exp <= max(3.5 * sigma_buoc, (nguong / 60.0) * t_span * 1.5):
+            la_phang = True
+
+    t_grid_rel = np.linspace(0.0, t_span, 25)
+    t_grid_raw = (t_grid_rel + t0).tolist()
+
+    if la_phang or best_fit is None:
+        if la_phang:
+            y_med = float(np.median(y))
+            mad = float(np.median(np.abs(y - y_med)))
+            u_inf = max(1.4826 * mad / math.sqrt(len(y)), s_lin / math.sqrt(len(y)))
+            da_on = do_doc_lin_phut <= nguong
+            r2_val = 1.0 - (float(np.dot(res_lin, res_lin)) / ss_tot) if ss_tot > 1e-12 else 1.0
+            msg = (
+                f"Đã ổn định nhiệt (chuỗi phẳng, độ trôi {do_doc_lin_phut:.3f} ≤ {nguong:.3f} px/phút; "
+                f"Δy = {y_med:.3f} ± {u_inf:.3f} px). Có thể chốt kết quả đo."
+            )
+            return KetQuaCanBangNhiet(
+                tau_s=None,
+                u_tau_s=None,
+                delta_y_vo_cuc_px=y_med,
+                u_delta_y_vo_cuc_px=float(u_inf),
+                bien_do_A_px=0.0,
+                do_doc_con_lai_px_moi_phut=float(do_doc_lin_phut),
+                da_on_dinh=bool(da_on),
+                nguong_px_moi_phut=nguong,
+                mo_hinh_khop="phang",
+                r2=float(max(min(r2_val, 1.0), 0.0)),
+                thoi_gian_da_cho_s=t_span,
+                khuyen_nghi=msg,
+                duong_khop_t_s=[float(x) for x in t_grid_raw],
+                duong_khop_dy_px=[y_med] * len(t_grid_raw),
+            )
+        # Fallback tuyến tính nếu curve_fit không hội tụ trên dữ liệu dị thường
+        y_end = float(np.mean(y) + slope_lin * (t_rel[-1] - float(np.mean(t_rel))))
+        u_end = float(s_lin / math.sqrt(max(len(y), 1)))
+        da_on = do_doc_lin_phut <= nguong
+        r2_val = 1.0 - (float(np.dot(res_lin, res_lin)) / ss_tot) if ss_tot > 1e-12 else 0.0
+        msg = (
+            f"{'Đã ổn định nhiệt' if da_on else 'Chưa ổn định nhiệt'} theo độ dốc cuối tuyến tính "
+            f"({do_doc_lin_phut:.3f} px/phút vs ngưỡng {nguong:.3f} px/phút)."
+        )
+        return KetQuaCanBangNhiet(
+            tau_s=None,
+            u_tau_s=None,
+            delta_y_vo_cuc_px=y_end,
+            u_delta_y_vo_cuc_px=u_end,
+            bien_do_A_px=0.0,
+            do_doc_con_lai_px_moi_phut=float(do_doc_lin_phut),
+            da_on_dinh=bool(da_on),
+            nguong_px_moi_phut=nguong,
+            mo_hinh_khop="tuyen_tinh_du_phong",
+            r2=float(r2_val),
+            thoi_gian_da_cho_s=t_span,
+            khuyen_nghi=msg,
+            duong_khop_t_s=[float(x) for x in t_grid_raw],
+            duong_khop_dy_px=[float(np.mean(y) + slope_lin * (tr - float(np.mean(t_rel)))) for tr in t_grid_rel],
+        )
+
+    popt_b, pcov_b, ssr_b = best_fit
+    y_inf_val = float(popt_b[0])
+    amp_val = float(popt_b[1])
+    tau_val = float(popt_b[2])
+    r2_exp = 1.0 - (ssr_b / ss_tot) if ss_tot > 1e-12 else 1.0
+
+    res_std = math.sqrt(ssr_b / max(len(y) - 3, 1))
+    u_inf_val = res_std / math.sqrt(max(len(y), 1))
+    u_tau_val = float("nan")
+    if pcov_b is not None and pcov_b.shape == (3, 3) and np.all(np.isfinite(pcov_b)):
+        if pcov_b[0, 0] >= 0:
+            u_inf_val = float(math.sqrt(pcov_b[0, 0]))
+        if pcov_b[2, 2] >= 0:
+            u_tau_val = float(math.sqrt(pcov_b[2, 2]))
+
+    do_doc_con_lai = float(abs((-amp_val / max(tau_val, 1e-9)) * math.exp(-t_span / max(tau_val, 1e-9))) * 60.0)
+    da_on = bool(do_doc_con_lai <= nguong)
+    u_tau_out = u_tau_val if math.isfinite(u_tau_val) else None
+    tau_txt = f"{tau_val:.1f} ± {u_tau_out:.1f} s" if u_tau_out is not None else f"{tau_val:.1f} s"
+
+    if da_on:
+        khuyen_nghi = (
+            f"Đã ổn định nhiệt (độ trôi còn lại {do_doc_con_lai:.3f} ≤ {nguong:.3f} px/phút; "
+            f"τ = {tau_txt}, Δy∞ = {y_inf_val:.3f} ± {u_inf_val:.3f} px). Có thể dùng kết quả đo."
+        )
+    else:
+        khuyen_nghi = (
+            f"Chưa ổn định nhiệt — nên đợi thêm (độ trôi còn lại {do_doc_con_lai:.3f} > {nguong:.3f} px/phút; "
+            f"τ = {tau_txt}, Δy∞ ước lượng = {y_inf_val:.3f} ± {u_inf_val:.3f} px) rồi đo tiếp để xác nhận hội tụ."
+        )
+
+    duong_khop_y = _ham_mu_can_bang_nhiet(t_grid_rel, y_inf_val, amp_val, tau_val)
+    return KetQuaCanBangNhiet(
+        tau_s=tau_val,
+        u_tau_s=u_tau_out,
+        delta_y_vo_cuc_px=y_inf_val,
+        u_delta_y_vo_cuc_px=float(u_inf_val),
+        bien_do_A_px=amp_val,
+        do_doc_con_lai_px_moi_phut=do_doc_con_lai,
+        da_on_dinh=da_on,
+        nguong_px_moi_phut=nguong,
+        mo_hinh_khop="ham_mu",
+        r2=float(r2_exp),
+        thoi_gian_da_cho_s=t_span,
+        khuyen_nghi=khuyen_nghi,
+        duong_khop_t_s=[float(x) for x in t_grid_raw],
+        duong_khop_dy_px=[float(v) for v in duong_khop_y],
     )

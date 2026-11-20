@@ -231,6 +231,7 @@
                   <button type="button" id="btn-cam-start" class="btn-25d btn-navy-25d btn-sm">📷 Bật Camera</button>
                   <button type="button" id="btn-cam-snap" class="btn-25d btn-primary-25d btn-sm" disabled>📸 Chụp &amp; Đo</button>
                   <button type="button" id="btn-cam-burst" class="btn-25d btn-teal-25d btn-sm" disabled>🎞️ Chuỗi 5 khung</button>
+                  <button type="button" id="btn-cam-thermal" class="btn-25d btn-sm" disabled>⏱️ Chờ cân bằng nhiệt</button>
                   <button type="button" id="btn-cam-stop" class="btn-25d btn-sm" disabled>⏹️ Tắt Camera</button>
                 </div>
                 <div id="cam-status" class="cam-status">
@@ -396,6 +397,14 @@
                 <div>Kết quả đánh giá an toàn sẽ hiển thị tại đây.</div>
               </div>
               <div id="t1-multi-summary"></div>
+              <div id="t1-thermal-card" class="chassis-panel-25d" style="display:none; margin:10px 0;">
+                <div class="step-badge-title">⏱️ Theo dõi cân bằng nhiệt Δy(t) = Δy∞ + A·exp(−t/τ)</div>
+                <div id="t1-thermal-verdict" style="margin-bottom:8px;"></div>
+                <div class="chart-canvas-wrap">
+                  <canvas id="canvas-thermal-drift"></canvas>
+                  <div class="chart-tooltip" id="tip-thermal-drift"></div>
+                </div>
+              </div>
               <div id="t1-warnings-box"></div>
             </div>
 

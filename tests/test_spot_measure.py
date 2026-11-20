@@ -15,6 +15,7 @@ from core.measure import (
     chon_kenh_laser,
     do_delta_y_tu_anh,
     do_delta_y_da_khung_hinh,
+    phan_tich_can_bang_nhiet,
     tinh_chi_so_do_duc_tuong_doi,
     tu_dong_tim_roi_hai_vach,
 )
@@ -414,6 +415,40 @@ def test_q3_anh_12mp_nhanh_duoi_3s_va_loi_nen_khong_deu():
     with pytest.raises(KhongTimThayVachError) as exc_info:
         tu_dong_tim_roi_hai_vach(anh_nen_doc, nguong_nen_khong_deu=30.0)
     assert "nền sáng không đều" in str(exc_info.value).lower()
+
+
+def test_q5_phan_tich_can_bang_nhiet_ham_mu_va_phang():
+    """Q5: Khớp Δy(t) = Δy∞ + A·exp(-t/τ) trong 10%, phân biệt chuỗi phẳng (ổn định) vs đang trôi."""
+    rng = np.random.default_rng(123)
+    # 1. Dữ liệu hàm mũ có nhiễu -> khớp đúng τ và Δy∞ trong ±10%, chưa ổn định ở 50s và ổn định ở 240s
+    tau_true = 40.0
+    dy_inf_true = 95.0
+    amp_true = -8.0
+    t_ngan = np.linspace(0.0, 50.0, 11)
+    y_ngan = dy_inf_true + amp_true * np.exp(-t_ngan / tau_true) + rng.normal(0.0, 0.04, size=len(t_ngan))
+    kq_ngan = phan_tich_can_bang_nhiet(t_ngan, y_ngan, nguong_on_dinh_px_moi_phut=0.05)
+    assert kq_ngan.mo_hinh_khop == "ham_mu"
+    assert abs(kq_ngan.tau_s - tau_true) / tau_true <= 0.10
+    assert abs(kq_ngan.delta_y_vo_cuc_px - dy_inf_true) / dy_inf_true <= 0.10
+    assert kq_ngan.da_on_dinh is False
+    assert "đợi thêm" in kq_ngan.khuyen_nghi.lower()
+
+    # Chuỗi kéo dài đủ lâu để độ dốc còn lại < 0.05 px/phút (~3.4 px/min -> e^-t/40 -> t >= 240s)
+    t_dai = np.linspace(0.0, 260.0, 27)
+    y_dai = dy_inf_true + amp_true * np.exp(-t_dai / tau_true) + rng.normal(0.0, 0.04, size=len(t_dai))
+    kq_dai = phan_tich_can_bang_nhiet(t_dai, y_dai, nguong_on_dinh_px_moi_phut=0.05)
+    assert abs(kq_dai.tau_s - tau_true) / tau_true <= 0.10
+    assert abs(kq_dai.delta_y_vo_cuc_px - dy_inf_true) / dy_inf_true <= 0.10
+    assert kq_dai.da_on_dinh is True
+
+    # 2. Chuỗi phẳng ổn định sẵn
+    t_phang = np.linspace(0.0, 120.0, 10)
+    y_phang = 82.0 + rng.normal(0.0, 0.03, size=len(t_phang))
+    kq_phang = phan_tich_can_bang_nhiet(t_phang, y_phang, nguong_on_dinh_px_moi_phut=0.05)
+    assert kq_phang.da_on_dinh is True
+    assert kq_phang.mo_hinh_khop == "phang"
+    assert abs(kq_phang.delta_y_vo_cuc_px - 82.0) < 0.1
+
 
 
 
