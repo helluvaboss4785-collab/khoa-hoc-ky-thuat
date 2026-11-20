@@ -70,7 +70,10 @@ BI_DANH_COT = {
 
 NHAN_MO_PHONG = "MO_PHONG"
 NHAN_THUC_TE = "THUC_TE"
+NHAN_CHUA_XAC_DINH = "CHUA_XAC_DINH"
 NHAN_CHUA_HIEU_CHUAN = "CHƯA HIỆU CHUẨN – DỮ LIỆU MÔ PHỎNG"
+NHAN_CHUA_XAC_NHAN_NGUON = "CHƯA XÁC NHẬN NGUỒN DỮ LIỆU"
+NHAN_DA_HIEU_CHUAN_THAT = "ĐÃ HIỆU CHUẨN (dữ liệu đo thật)"
 HAN_CHE_NACL = (
     "Đường chuẩn dựng bằng dung dịch NaCl. Nước tự nhiên còn nhiều ion khác "
     "(Mg²⁺, Ca²⁺, K⁺, SO₄²⁻, HCO₃⁻…) và chất hữu cơ hòa tan, nên chiết suất có thể "
@@ -120,7 +123,8 @@ def doc_csv_hieu_chuan(nguon: str | Path | IO[Any]) -> pd.DataFrame:
     ghi_chu, id_thiet_bi, id_dien_thoai. Cột tùy chọn: nguon_du_lieu.
 
     - Dòng thiếu S, T hoặc Δy bị loại (số dòng bị loại lưu ở df.attrs["so_dong_bi_loai"]).
-    - Nếu không có cột nguon_du_lieu thì coi là dữ liệu THUC_TE (do người dùng cung cấp).
+    - Nếu không có cột nguon_du_lieu (hoặc để trống) thì gán "CHUA_XAC_DINH",
+      TUYỆT ĐỐI KHÔNG mặc định là THUC_TE. Chỉ các dòng ghi rõ "THUC_TE" mới là đo thật.
 
     Raises:
         ValueError: thiếu cột bắt buộc hoặc không còn dòng hợp lệ.
@@ -141,8 +145,16 @@ def doc_csv_hieu_chuan(nguon: str | Path | IO[Any]) -> pd.DataFrame:
     for c in (COT_GHI_CHU, COT_ID_THIET_BI, COT_ID_DIEN_THOAI):
         df[c] = df[c].fillna("").astype(str)
     if COT_NGUON not in df.columns:
-        df[COT_NGUON] = NHAN_THUC_TE
-    df[COT_NGUON] = df[COT_NGUON].fillna(NHAN_THUC_TE).astype(str).str.upper()
+        df[COT_NGUON] = NHAN_CHUA_XAC_DINH
+    else:
+        df[COT_NGUON] = (
+            df[COT_NGUON]
+            .fillna(NHAN_CHUA_XAC_DINH)
+            .astype(str)
+            .str.strip()
+            .str.upper()
+            .replace({"": NHAN_CHUA_XAC_DINH, "NAN": NHAN_CHUA_XAC_DINH, "NONE": NHAN_CHUA_XAC_DINH})
+        )
 
     n_truoc = len(df)
     df = df.dropna(subset=[COT_DO_MAN, COT_NHIET_DO, COT_DELTA_Y]).reset_index(drop=True)
@@ -155,11 +167,32 @@ def doc_csv_hieu_chuan(nguon: str | Path | IO[Any]) -> pd.DataFrame:
     return df
 
 
+def xac_dinh_nguon_du_lieu(df: pd.DataFrame) -> str:
+    """Xác định nguồn dữ liệu chuẩn của DataFrame theo nguyên tắc thận trọng.
+
+    - Nếu có bất kì dòng nào là MO_PHONG / SIMULATED -> MO_PHONG.
+    - Chỉ khi có ít nhất 1 dòng và MỌI dòng đều ghi rõ THUC_TE -> THUC_TE.
+    - Các trường hợp còn lại (thiếu cột nguồn, có dòng trống hoặc CHUA_XAC_DINH) -> CHUA_XAC_DINH.
+    """
+    if len(df) == 0 or COT_NGUON not in df.columns:
+        return NHAN_CHUA_XAC_DINH
+    nguon = df[COT_NGUON].fillna(NHAN_CHUA_XAC_DINH).astype(str).str.strip().str.upper()
+    if nguon.isin([NHAN_MO_PHONG, "SIMULATED"]).any():
+        return NHAN_MO_PHONG
+    if (nguon == NHAN_THUC_TE).all():
+        return NHAN_THUC_TE
+    return NHAN_CHUA_XAC_DINH
+
+
 def la_du_lieu_mo_phong(df: pd.DataFrame) -> bool:
     """True nếu BẤT KÌ dòng nào được đánh dấu là mô phỏng (thận trọng: một dòng mô phỏng
     cũng làm cả đường chuẩn bị coi là chưa hiệu chuẩn thật)."""
-    nguon = df.get(COT_NGUON, pd.Series([], dtype=str)).astype(str).str.upper()
-    return bool(nguon.isin([NHAN_MO_PHONG, "SIMULATED"]).any())
+    return xac_dinh_nguon_du_lieu(df) == NHAN_MO_PHONG
+
+
+def la_du_lieu_thuc_te(df: pd.DataFrame) -> bool:
+    """True chỉ khi mọi dòng đều được đánh dấu tường minh là THUC_TE."""
+    return xac_dinh_nguon_du_lieu(df) == NHAN_THUC_TE
 
 
 # ---------------------------------------------------------------------------
@@ -275,15 +308,33 @@ class MoHinhHieuChuan:
     R2: float
     RMSE_px: float
     la_mo_phong: bool
+    nguon_du_lieu: str = ""
     id_thiet_bi: list[str] = field(default_factory=list)
     id_dien_thoai: list[str] = field(default_factory=list)
     ngay_tao: str = ""
 
+    def __post_init__(self) -> None:
+        if not self.nguon_du_lieu:
+            self.nguon_du_lieu = NHAN_MO_PHONG if self.la_mo_phong else NHAN_CHUA_XAC_DINH
+        else:
+            self.nguon_du_lieu = str(self.nguon_du_lieu).strip().upper()
+            if self.la_mo_phong:
+                self.nguon_du_lieu = NHAN_MO_PHONG
+
     # --- tính toán ---------------------------------------------------------
+    @property
+    def da_xac_nhan_thuc_te(self) -> bool:
+        """Chỉ True khi dữ liệu không phải mô phỏng và mọi dòng đều khai báo THUC_TE."""
+        return (not self.la_mo_phong) and (self.nguon_du_lieu == NHAN_THUC_TE)
+
     @property
     def nhan(self) -> str:
         """Nhãn trạng thái hiển thị cho người dùng."""
-        return NHAN_CHUA_HIEU_CHUAN if self.la_mo_phong else "ĐÃ HIỆU CHUẨN (dữ liệu đo thật)"
+        if self.la_mo_phong:
+            return NHAN_CHUA_HIEU_CHUAN
+        if self.da_xac_nhan_thuc_te:
+            return NHAN_DA_HIEU_CHUAN_THAT
+        return NHAN_CHUA_XAC_NHAN_NGUON
 
     def du_doan_delta_y(self, S: Any, T: Any) -> np.ndarray:
         """Δy dự đoán (px) tại (S, T)."""
@@ -313,14 +364,25 @@ class MoHinhHieuChuan:
     # --- lưu / đọc ---------------------------------------------------------
     def sang_dict(self) -> dict[str, Any]:
         d = asdict(self)
-        d["NGUON"] = NHAN_MO_PHONG if self.la_mo_phong else NHAN_THUC_TE
+        d["NGUON"] = self.nguon_du_lieu
+        d["nguon_du_lieu"] = self.nguon_du_lieu
+        d["da_xac_nhan_thuc_te"] = self.da_xac_nhan_thuc_te
         d["nhan"] = self.nhan
         return d
 
     @classmethod
     def tu_dict(cls, d: dict[str, Any]) -> "MoHinhHieuChuan":
         ten_truong = cls.__dataclass_fields__.keys()
-        return cls(**{k: v for k, v in d.items() if k in ten_truong})
+        kw = {k: v for k, v in d.items() if k in ten_truong}
+        if not kw.get("nguon_du_lieu"):
+            raw_ng = d.get("NGUON")
+            if raw_ng:
+                kw["nguon_du_lieu"] = str(raw_ng)
+            elif d.get("la_mo_phong"):
+                kw["nguon_du_lieu"] = NHAN_MO_PHONG
+            else:
+                kw["nguon_du_lieu"] = NHAN_CHUA_XAC_DINH
+        return cls(**kw)
 
     def luu_json(self, duong_dan: str | Path) -> None:
         """Lưu hệ số đường chuẩn ra file JSON (đọc được bằng mắt)."""
@@ -360,6 +422,7 @@ def tao_mo_hinh(df: pd.DataFrame, bac: int) -> MoHinhHieuChuan:
 
     ss_tot = float(np.sum((y - y.mean()) ** 2))
     ss_res = float(np.sum(kq.phan_du**2))
+    nguon_du_lieu = xac_dinh_nguon_du_lieu(df)
     return MoHinhHieuChuan(
         bac=bac, hang=hang,
         he_so=[float(c) for c in kq.he_so],
@@ -370,7 +433,8 @@ def tao_mo_hinh(df: pd.DataFrame, bac: int) -> MoHinhHieuChuan:
         so_diem=len(y),
         R2=1.0 - ss_res / ss_tot if ss_tot > 0 else float("nan"),
         RMSE_px=float(np.sqrt(np.mean(kq.phan_du**2))),
-        la_mo_phong=la_du_lieu_mo_phong(df),
+        la_mo_phong=(nguon_du_lieu == NHAN_MO_PHONG),
+        nguon_du_lieu=nguon_du_lieu,
         id_thiet_bi=sorted({str(v) for v in df[COT_ID_THIET_BI]} - {""}),
         id_dien_thoai=sorted({str(v) for v in df[COT_ID_DIEN_THOAI]} - {""}),
         ngay_tao=datetime.now().isoformat(timespec="seconds"),
@@ -393,6 +457,8 @@ class KetQuaDoMan:
     ngoai_dai_T: bool
     la_mo_phong: bool
     nhan: str
+    nguon_du_lieu: str = NHAN_CHUA_XAC_DINH
+    da_xac_nhan_thuc_te: bool = False
     canh_bao: list[str] = field(default_factory=list)
     han_che: str = HAN_CHE_NACL
 
@@ -483,13 +549,17 @@ def uoc_luong_do_man(
         )
     if mh.la_mo_phong:
         canh_bao.append(f"{NHAN_CHUA_HIEU_CHUAN}: con số này KHÔNG phải kết quả đo thật.")
+    elif not mh.da_xac_nhan_thuc_te:
+        canh_bao.append(f"{NHAN_CHUA_XAC_NHAN_NGUON}: thiếu xác nhận nguon_du_lieu=THUC_TE.")
     if f_S <= 0:
         canh_bao.append("Đường chuẩn có độ nhạy âm/không đơn điệu tại điểm này – kiểm tra lại dữ liệu.")
 
     return KetQuaDoMan(
         S_ppt=float(S), u_S_ppt=u, U_S_ppt=k * u, k=k,
         thanh_phan_bat_dinh=thanh_phan, ngoai_dai_S=ngoai_S, ngoai_dai_T=ngoai_T,
-        la_mo_phong=mh.la_mo_phong, nhan=mh.nhan, canh_bao=canh_bao,
+        la_mo_phong=mh.la_mo_phong, nhan=mh.nhan,
+        nguon_du_lieu=mh.nguon_du_lieu, da_xac_nhan_thuc_te=mh.da_xac_nhan_thuc_te,
+        canh_bao=canh_bao,
     )
 
 
@@ -603,8 +673,13 @@ def dung_duong_chuan(
     """
     ch = cau_hinh or CauHinhHieuChuan()
     canh_bao: list[str] = []
-    if la_du_lieu_mo_phong(df):
+    nguon_df = xac_dinh_nguon_du_lieu(df)
+    if nguon_df == NHAN_MO_PHONG:
         canh_bao.append(f"{NHAN_CHUA_HIEU_CHUAN}: đường chuẩn này dựng từ dữ liệu mô phỏng.")
+    elif nguon_df != NHAN_THUC_TE:
+        canh_bao.append(
+            f"{NHAN_CHUA_XAC_NHAN_NGUON}: thiếu cột nguon_du_lieu hoặc có dòng chưa ghi rõ THUC_TE."
+        )
     if df.attrs.get("so_dong_bi_loai", 0):
         canh_bao.append(f"Đã loại {df.attrs['so_dong_bi_loai']} dòng thiếu dữ liệu.")
     if _so_muc(df[COT_DO_MAN].to_numpy(float), 0.01) < 3:
@@ -700,7 +775,9 @@ def ve_duong_chuan(bc: BaoCaoHieuChuan):  # -> matplotlib.figure.Figure
     tieu_de = f"Đường chuẩn bậc {mh.bac}  (R² = {mh.R2:.5f})"
     if mh.la_mo_phong:
         tieu_de += f"\n{NHAN_CHUA_HIEU_CHUAN}"
-    ax.set_title(tieu_de, fontsize=10, color="red" if mh.la_mo_phong else "black")
+    elif not mh.da_xac_nhan_thuc_te:
+        tieu_de += f"\n{NHAN_CHUA_XAC_NHAN_NGUON}"
+    ax.set_title(tieu_de, fontsize=10, color="red" if not mh.da_xac_nhan_thuc_te else "black")
     ax.grid(alpha=0.3)
     ax.legend(fontsize=7)
     fig.tight_layout()
@@ -728,7 +805,9 @@ def ve_phan_du(bc: BaoCaoHieuChuan):  # -> matplotlib.figure.Figure
     tieu_de = f"Phần dư (đường nét đứt: ±2·s_res = ±{2 * mh.s_res_px:.3f} px)"
     if mh.la_mo_phong:
         tieu_de += f"\n{NHAN_CHUA_HIEU_CHUAN}"
-    ax.set_title(tieu_de, fontsize=10, color="red" if mh.la_mo_phong else "black")
+    elif not mh.da_xac_nhan_thuc_te:
+        tieu_de += f"\n{NHAN_CHUA_XAC_NHAN_NGUON}"
+    ax.set_title(tieu_de, fontsize=10, color="red" if not mh.da_xac_nhan_thuc_te else "black")
     ax.grid(alpha=0.3)
     ax.legend(fontsize=8)
     fig.tight_layout()

@@ -118,6 +118,30 @@ def test_api_logs_and_template_csv() -> None:
 
 def test_mau_hieu_chuan_csv_valid() -> None:
     csv_path = Path(__file__).resolve().parents[1] / "data" / "mau_hieu_chuan.csv"
-    df = pd.read_csv(csv_path)
-    assert len(df) == 16
-    assert {"do_man_chuan_ppt", "nhiet_do_C", "delta_y_px"}.issubset(df.columns)
+    df = pd.read_csv(csv_path, encoding="utf-8-sig")
+    assert len(df) == 0
+    assert {"do_man_chuan_ppt", "nhiet_do_C", "delta_y_px", "nguon_du_lieu"}.issubset(df.columns)
+
+
+def test_api_calibrate_thieu_nguon_khong_gan_do_that() -> None:
+    csv_text = (
+        "do_man_chuan_ppt,nhiet_do_C,delta_y_px,do_duc_tuong_doi,ghi_chu,id_thiet_bi,id_dien_thoai\n"
+        "0,25,0.0,0,a,TB1,DT1\n"
+        "5,25,25.0,0,b,TB1,DT1\n"
+        "10,25,50.0,0,c,TB1,DT1\n"
+        "15,25,75.0,0,d,TB1,DT1\n"
+        "20,25,100.0,0,e,TB1,DT1\n"
+        "25,25,125.0,0,f,TB1,DT1\n"
+        "30,25,150.0,0,g,TB1,DT1\n"
+        "35,25,175.0,0,h,TB1,DT1\n"
+    )
+    resp = _run_coro(
+        web_app.api_calibrate(
+            _make_request("POST", "/api/calibrate", {"mode": "csv", "csv_text": csv_text, "activate": False})
+        )
+    )
+    assert resp.status_code == 200
+    data = json.loads(resp.body.decode("utf-8"))
+    mh = data["mo_hinh"]
+    assert mh["da_xac_nhan_thuc_te"] is False
+    assert mh["nhan"] == "CHƯA XÁC NHẬN NGUỒN DỮ LIỆU"

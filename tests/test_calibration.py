@@ -48,7 +48,7 @@ def test_doc_csv_thieu_cot_bao_loi():
         cal.doc_csv_hieu_chuan(io.StringIO(csv))
 
 
-def test_doc_csv_hop_le_loai_dong_thieu_va_mac_dinh_thuc_te():
+def test_doc_csv_hop_le_loai_dong_thieu_va_mac_dinh_chua_xac_dinh():
     csv = (
         "do_man_chuan_ppt,nhiet_do_C,delta_y_px,do_duc_tuong_doi,ghi_chu,id_thiet_bi,id_dien_thoai\n"
         "0,25,0.1,0.0,a,TB1,DT1\n"
@@ -58,7 +58,48 @@ def test_doc_csv_hop_le_loai_dong_thieu_va_mac_dinh_thuc_te():
     df = cal.doc_csv_hieu_chuan(io.StringIO(csv))
     assert len(df) == 2
     assert df.attrs["so_dong_bi_loai"] == 1
-    assert not cal.la_du_lieu_mo_phong(df)  # không có cột nguồn -> coi là đo thật
+    assert (df[cal.COT_NGUON] == cal.NHAN_CHUA_XAC_DINH).all()
+    assert not cal.la_du_lieu_thuc_te(df)
+
+
+def test_csv_thieu_cot_nguon_khong_duoc_gan_nhan_do_that():
+    """CSV thiếu cột nguon_du_lieu (hoặc để trống) phải báo CHƯA XÁC NHẬN NGUỒN DỮ LIỆU."""
+    csv_thieu = (
+        "do_man_chuan_ppt,nhiet_do_C,delta_y_px,do_duc_tuong_doi,ghi_chu,id_thiet_bi,id_dien_thoai\n"
+        "0,25,0.1,0.0,a,TB1,DT1\n"
+        "10,25,50.2,0.0,b,TB1,DT1\n"
+        "20,25,100.4,0.0,c,TB1,DT1\n"
+        "30,25,150.6,0.0,d,TB1,DT1\n"
+    )
+    df_thieu = cal.doc_csv_hieu_chuan(io.StringIO(csv_thieu))
+    mh_thieu = cal.tao_mo_hinh(df_thieu, bac=1)
+    assert mh_thieu.da_xac_nhan_thuc_te is False
+    assert mh_thieu.nhan == cal.NHAN_CHUA_XAC_NHAN_NGUON
+    assert "đo thật" not in mh_thieu.nhan.lower()
+
+    csv_thuc_te = (
+        "do_man_chuan_ppt,nhiet_do_C,delta_y_px,do_duc_tuong_doi,ghi_chu,id_thiet_bi,id_dien_thoai,nguon_du_lieu\n"
+        "0,25,0.1,0.0,a,TB1,DT1,THUC_TE\n"
+        "10,25,50.2,0.0,b,TB1,DT1,THUC_TE\n"
+        "20,25,100.4,0.0,c,TB1,DT1,THUC_TE\n"
+        "30,25,150.6,0.0,d,TB1,DT1,THUC_TE\n"
+    )
+    df_real = cal.doc_csv_hieu_chuan(io.StringIO(csv_thuc_te))
+    mh_real = cal.tao_mo_hinh(df_real, bac=1)
+    assert mh_real.da_xac_nhan_thuc_te is True
+    assert mh_real.nhan == cal.NHAN_DA_HIEU_CHUAN_THAT
+
+    csv_tron = (
+        "do_man_chuan_ppt,nhiet_do_C,delta_y_px,do_duc_tuong_doi,ghi_chu,id_thiet_bi,id_dien_thoai,nguon_du_lieu\n"
+        "0,25,0.1,0.0,a,TB1,DT1,THUC_TE\n"
+        "10,25,50.2,0.0,b,TB1,DT1,\n"
+        "20,25,100.4,0.0,c,TB1,DT1,THUC_TE\n"
+        "30,25,150.6,0.0,d,TB1,DT1,THUC_TE\n"
+    )
+    df_tron = cal.doc_csv_hieu_chuan(io.StringIO(csv_tron))
+    mh_tron = cal.tao_mo_hinh(df_tron, bac=1)
+    assert mh_tron.da_xac_nhan_thuc_te is False
+    assert mh_tron.nhan == cal.NHAN_CHUA_XAC_NHAN_NGUON
 
 
 def test_doc_csv_chap_nhan_bi_danh_cot():
@@ -69,12 +110,13 @@ def test_doc_csv_chap_nhan_bi_danh_cot():
 
 
 def test_file_mau_csv_doc_duoc_va_khong_co_so_lieu():
-    """File mẫu trong data/ phải có đủ các cột bắt buộc."""
+    """File mẫu trong data/ phải có đủ các cột bắt buộc và KHÔNG chứa số liệu giả (0 dòng)."""
     from pathlib import Path
     p = Path(cal.__file__).resolve().parents[1] / "data" / "mau_hieu_chuan.csv"
     df = pd.read_csv(p, encoding="utf-8-sig")
     assert set(cal.COT_BAT_BUOC) <= set(df.columns)
-    assert len(df) >= 0
+    assert cal.COT_NGUON in df.columns
+    assert len(df) == 0
 
 
 # ------------------------------------------------------------------ chọn bậc

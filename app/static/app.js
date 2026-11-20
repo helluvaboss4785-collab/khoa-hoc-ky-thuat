@@ -596,6 +596,7 @@ async function loadBootstrap() {
 
 function updateModelBadges(mh, qh, logCount) {
   const isSim = Boolean(mh.la_mo_phong);
+  const isRealVerified = !isSim && Boolean(mh.da_xac_nhan_thuc_te);
   const badge = $("#badge-model-mode");
   const sbBox = $("#sb-calib-status");
   if (isSim) {
@@ -605,13 +606,20 @@ function updateModelBadges(mh, qh, logCount) {
     $("#sb-calib-body").innerHTML =
       `<b>CHƯA HIỆU CHUẨN (MÔ PHỎNG)</b><br>Bậc ${mh.bac} | R² = ${fmt(mh.R2, 5)}<br>` +
       `Dải S: ${fmt(mh.S_min, 0)}–${fmt(mh.S_max, 0)} ‰ | T: ${fmt(mh.T_min, 1)}–${fmt(mh.T_max, 1)} °C`;
-  } else {
+  } else if (isRealVerified) {
     badge.className = "pill-25d pill-green";
-    badge.textContent = "✅ ĐÃ HIỆU CHUẨN ĐO THẬT";
+    badge.textContent = "✅ ĐÃ HIỆU CHUẨN (dữ liệu đo thật)";
     sbBox.className = "sb-card-25d status-real";
     $("#sb-calib-body").innerHTML =
-      `<b>ĐÃ HIỆU CHUẨN ĐO THẬT</b><br>Bậc ${mh.bac} | R² = ${fmt(mh.R2, 5)} | ${mh.so_diem} mẫu<br>` +
+      `<b>ĐÃ HIỆU CHUẨN (dữ liệu đo thật)</b><br>Bậc ${mh.bac} | R² = ${fmt(mh.R2, 5)} | ${mh.so_diem} mẫu<br>` +
       `Dải S: ${fmt(mh.S_min, 0)}–${fmt(mh.S_max, 0)} ‰`;
+  } else {
+    badge.className = "pill-25d pill-amber";
+    badge.textContent = "⚠️ CHƯA XÁC NHẬN NGUỒN DỮ LIỆU";
+    sbBox.className = "sb-card-25d status-sim";
+    $("#sb-calib-body").innerHTML =
+      `<b>CHƯA XÁC NHẬN NGUỒN DỮ LIỆU</b><br>Bậc ${mh.bac} | R² = ${fmt(mh.R2, 5)} | ${mh.so_diem} mẫu<br>` +
+      `Thiếu nguon_du_lieu=THUC_TE • Dải S: ${fmt(mh.S_min, 0)}–${fmt(mh.S_max, 0)} ‰`;
   }
   if (qh) {
     $("#badge-prism").textContent = `📐 Lăng kính A = ${Number(qh.A_do).toFixed(1)}°`;
@@ -948,7 +956,9 @@ async function saveMeasurementToLog() {
   const d = STATE.lastMeasure;
   const km = d.mo_hinh_man;
   const spName = $("#t1-species-select").selectedOptions[0]?.textContent || "Chưa chọn";
-  const nguon = d.la_anh_mo_phong || km.la_mo_phong ? "MÔ PHỎNG" : "ĐO THẬT";
+  const nguon = (d.la_anh_mo_phong || km.la_mo_phong)
+    ? "MÔ PHỎNG"
+    : (km.da_xac_nhan_thuc_te ? "ĐO THẬT" : "CHƯA XÁC NHẬN NGUỒN");
   const now = new Date();
   const pad2 = (n) => String(n).padStart(2, "0");
   const tsLocal = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())} ${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`;
@@ -1424,8 +1434,10 @@ async function runCalibrate(activate = false) {
     $("#t4-equation-box").textContent = mh.phuong_trinh;
     if (mh.la_mo_phong) {
       $("#t4-model-warning").innerHTML = `<div class="banner-25d warn"><div class="banner-icon">⚠️</div><div>Đường chuẩn này dựng từ <b>DỮ LIỆU MÔ PHỎNG</b>, không phải số đo thực nghiệm.</div></div>`;
+    } else if (mh.da_xac_nhan_thuc_te) {
+      $("#t4-model-warning").innerHTML = `<div class="banner-25d ok"><div class="banner-icon">✅</div><div><b>ĐÃ HIỆU CHUẨN (dữ liệu đo thật)!</b></div></div>`;
     } else {
-      $("#t4-model-warning").innerHTML = `<div class="banner-25d ok"><div class="banner-icon">✅</div><div><b>ĐÃ HIỆU CHUẨN THÀNH CÔNG TỪ DỮ LIỆU THỰC NGHIỆM!</b></div></div>`;
+      $("#t4-model-warning").innerHTML = `<div class="banner-25d warn"><div class="banner-icon">⚠️</div><div><b>CHƯA XÁC NHẬN NGUỒN DỮ LIỆU:</b> File CSV thiếu cột <code>nguon_du_lieu=THUC_TE</code> nên KHÔNG được gắn nhãn đo thật.</div></div>`;
     }
 
     $("#t4-level-table-body").innerHTML = (data.sai_so_theo_muc || []).map((r) => `

@@ -57,14 +57,8 @@ HE_SO_JSON_PATH = OUTPUTS_DIR / "he_so_hieu_chuan.json"
 HE_SO_MP_PATH = OUTPUTS_DIR / "he_so_hieu_chuan_MO_PHONG.json"
 
 CSV_TEMPLATE_7_COT = (
-    "do_man_chuan_ppt,nhiet_do_C,delta_y_px,do_duc_tuong_doi,ghi_chu,id_thiet_bi,id_dien_thoai\n"
-    "0.0,25.0,0.05,0.01,Nuoc cat,TB01,DT01\n"
-    "5.0,25.0,24.80,0.01,NaCl 5 ppt,TB01,DT01\n"
-    "10.0,25.0,49.65,0.01,NaCl 10 ppt,TB01,DT01\n"
-    "15.0,25.0,74.50,0.01,NaCl 15 ppt,TB01,DT01\n"
-    "20.0,25.0,99.45,0.01,NaCl 20 ppt,TB01,DT01\n"
-    "25.0,25.0,124.50,0.01,NaCl 25 ppt,TB01,DT01\n"
-    "30.0,25.0,149.60,0.01,NaCl 30 ppt,TB01,DT01\n"
+    "do_man_chuan_ppt,nhiet_do_C,nhiet_do_tham_chieu_C,delta_y_px,px_per_mm,do_duc_tuong_doi,"
+    "ma_me_pha,ngay_do,ghi_chu,id_thiet_bi,id_dien_thoai,nguon_du_lieu,khoa_ae_af\n"
 )
 
 
@@ -200,11 +194,21 @@ def _slug_ho_so(ho_so: str) -> str:
     return (slug[:40] if slug else "mac_dinh")
 
 
-def _model_path_for_profile(ho_so: str, la_mo_phong: bool) -> Path:
+def _model_suffix(la_mo_phong: bool, da_xac_nhan_thuc_te: bool) -> str:
+    if la_mo_phong:
+        return "_MO_PHONG"
+    if not da_xac_nhan_thuc_te:
+        return "_CHUA_XAC_NHAN"
+    return ""
+
+
+def _model_path_for_profile(
+    ho_so: str, la_mo_phong: bool, da_xac_nhan_thuc_te: bool = True
+) -> Path:
     clean = _clean_ho_so(ho_so)
+    suffix = _model_suffix(la_mo_phong, da_xac_nhan_thuc_te)
     if clean == "mac_dinh":
-        return HE_SO_MP_PATH if la_mo_phong else HE_SO_JSON_PATH
-    suffix = "_MO_PHONG" if la_mo_phong else ""
+        return OUTPUTS_DIR / f"he_so_hieu_chuan{suffix}.json"
     return OUTPUTS_DIR / f"he_so_hieu_chuan_{_slug_ho_so(clean)}{suffix}.json"
 
 
@@ -215,23 +219,19 @@ def get_model_for_profile(ho_so: str | None = None) -> cal.MoHinhHieuChuan:
     cache: dict[str, cal.MoHinhHieuChuan] = APP_STATE.setdefault("mo_hinh_theo_ho_so", {})
     if clean in cache:
         return cache[clean]
-    p_real = _model_path_for_profile(clean, False)
-    if p_real.exists():
-        mh = cal.MoHinhHieuChuan.doc_json(p_real)
-        cache[clean] = mh
-        return mh
-    p_sim = _model_path_for_profile(clean, True)
-    if p_sim.exists():
-        mh = cal.MoHinhHieuChuan.doc_json(p_sim)
-        cache[clean] = mh
-        return mh
+    for is_sim, verified in ((False, True), (False, False), (True, False)):
+        p = _model_path_for_profile(clean, is_sim, verified)
+        if p.exists():
+            mh = cal.MoHinhHieuChuan.doc_json(p)
+            cache[clean] = mh
+            return mh
     return APP_STATE["mo_hinh"]
 
 
 def set_model_for_profile(ho_so: str | None, mh: cal.MoHinhHieuChuan) -> Path:
     clean = _clean_ho_so(ho_so)
     OUTPUTS_DIR.mkdir(exist_ok=True)
-    luu_path = _model_path_for_profile(clean, mh.la_mo_phong)
+    luu_path = _model_path_for_profile(clean, mh.la_mo_phong, mh.da_xac_nhan_thuc_te)
     mh.luu_json(luu_path)
     if clean == "mac_dinh":
         APP_STATE["mo_hinh"] = mh
@@ -785,6 +785,8 @@ async def api_measure(request: Request) -> JSONResponse:
                     "ngoai_dai_S": kq_man.ngoai_dai_S,
                     "ngoai_dai_T": kq_man.ngoai_dai_T,
                     "la_mo_phong": kq_man.la_mo_phong,
+                    "nguon_du_lieu": kq_man.nguon_du_lieu,
+                    "da_xac_nhan_thuc_te": kq_man.da_xac_nhan_thuc_te,
                     "nhan": kq_man.nhan,
                     "canh_bao": kq_man.canh_bao,
                     "han_che": kq_man.han_che,
