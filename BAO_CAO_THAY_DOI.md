@@ -90,3 +90,93 @@ Các công việc sau liên quan trực tiếp đến **tài liệu gốc, thi�
 4. **Khai báo bất định dụng cụ & dung dịch chuẩn (`T4`, `T7`, `config.yaml`):** Điền sai số nhiệt kế thật vào `hieu_chuan.sai_so_nhiet_ke_C`, độ không đảm bảo của cân/bình định mức vào `hieu_chuan.sai_so_dung_dich_chuan_ppt`, khoảng nhiệt độ tối thiểu cần phủ vào `hieu_chuan.nhiet_do_toi_thieu_phu_C`, khoảng cách màn thật `D_m`, góc đỉnh `A` thật, kích thước pixel chuẩn và kiểm chứng lại ngưỡng `xu_ly_anh.snr_toi_thieu` (`10.0`) trên ảnh thật từ điện thoại của nhóm.
 5. **Đối chiếu công thức Quan–Fry với bài báo gốc (`T10`):** Kiểm tra lại 10 hệ số `a0..a9` của `chiet_suat_quan_fry` trong `core/optics.py` đối chiếu trực tiếp với bài báo gốc **Quan & Fry, *Applied Optics* (1995)** trước khi đưa vào báo cáo thi chính thức.
 6. **Chuẩn hóa độ đục Formazin (nếu muốn báo NTU):** Hiện tại chỉ số độ đục là thang tương đối `[0–1]`; nếu muốn quy đổi sang đơn vị `NTU`, nhóm phải đo đường chuẩn thực nghiệm riêng bằng dải dung dịch chuẩn Formazin.
+
+---
+
+# VÒNG 2 (Q0–Q10)
+
+> Vòng nâng cấp tiếp theo giải quyết các lỗ hổng về truyền bất định chênh nhiệt, kênh màu laser, đốm speckle, nền sáng không đều, tốc độ ảnh 12MP, pipeline nhập ảnh thật, cân bằng nhiệt theo thời gian, méo ống kính tùy chọn, tham số Quan–Fry và giới hạn tải lên. **Mọi số liệu định lượng dưới đây đều lấy từ ảnh/dữ liệu MÔ PHỎNG, không phải độ chính xác thiết bị thật.**
+
+## 7. Kết quả kiểm thử trước và sau Vòng 2
+
+| Thời điểm | Lệnh chạy | Kết quả thực tế | Ghi chú |
+| :--- | :--- | :--- | :--- |
+| **Cơ sở trước Vòng 2 (sau T12)** | `python -m pytest tests -q` | **`79 passed`**, 0 failed | Commit nền `52ae667` |
+| **Sau hoàn tất Q0–Q9** | `python -m pytest tests -q` | **`94 passed, 1 skipped`** (26.94s) | Duy nhất `test_hoi_quy_anh_that` skip với lí do `"chưa có ảnh thật"` |
+| **Kiểm tra nghiệm thu tổng hợp Q0–Q3** | `python scripts/kiem_tra_chap_nhan_vong2.py` | **`13/13 TIEU CHI DAT`** (`MO_PHONG`) | Xuất `outputs/kiem_tra_chap_nhan_vong2.csv` |
+| **Kiểm tra độ bền vững mô phỏng** | `python scripts/danh_gia_do_ben_vung.py` | Xuất `outputs/danh_gia_do_ben_vung_MO_PHONG.csv` | `speckle=0.2` đạt `10/10`, `gradient=90` tâm lệch TB `0.0000 px` |
+| **Kiểm tra đóng gói sạch** | `python scripts/dong_goi.py` | **`55 file`**, **`435.3 KB`**, `0` file cấm | Không chứa `.venv`, `.git`, `__pycache__`, `.pytest_cache`, `*.db*` |
+| **Kiểm tra cú pháp JS** | `node --check app/static/app.js` | Exit code `0` | Chạy sau mọi chỉnh sửa frontend |
+
+---
+
+## 8. Danh sách thay đổi từng nhiệm vụ (Q0–Q10) kèm commit
+
+| Mã NV | Commit hash | Tóm tắt thay đổi & file ảnh hưởng |
+| :--- | :---: | :--- |
+| **Q0** | `da01203` | **Bất định bỏ sót chênh nhiệt hai ngăn & cảnh báo phân cấp:** Thêm `hieu_chuan.sigma_D_khi_chua_do_C: 2.0` (`GIẢ ĐỊNH`); cộng `chenh_nhiet_chua_do` (từ mô hình D hoặc hệ số LÍ THUYẾT `core/optics.py`) khi thiếu `T_tc`; đặt `khong_danh_gia_duoc = True` + `chenh_nhiet_ngoai_mo_hinh` khi nhập `T_tc` với `|D| > 0.5 °C` mà mô hình chưa học D; thêm ngoại suy `ngoai_dai_D` và cảnh báo 3 cấp (`thong_tin`, `can_than`, `nghiem_trong`) trên `core/calibration.py`, `app/web_app.py`, `app/static/app.js`. (`80 passed`) |
+| **Q1** | `6eed2c0` | **Chọn kênh laser & kiểm bão hòa trên RGB gốc:** Thêm `chon_kenh_laser` (`xu_ly_anh.kenh_laser: "auto" \| "R" \| "G" \| "B" \| "xam"`), kiểm bão hòa theo từng kênh B/G/R gốc (`kenh_bao_hoa`), lưu `kenh_su_dung` vào kết quả và SQLite `nhat_ki`; thêm `sinh_anh_mau_mo_phong` trong `sim/synth.py`. (`82 passed`) |
+| **Q2** | `e4a932f` | **Phân biệt đốm speckle cục bộ với bão hòa rộng bẹt đỉnh:** Thêm `ti_le_cot_bao_hoa_nghiem_trong: 0.30` và `so_cot_lien_tiep_bao_hoa: 15` (`GIẢ ĐỊNH`); bổ sung `_doan_lien_tiep_toi_da`, cờ `co_dom_bao_hoa_cuc_bo` (cảnh báo `can_than`, vẫn `hop_le=True`) và `BAO_HOA_NGHIEM_TRONG` (cháy phẳng/liên tiếp `≥ 15` cột → `hop_le=False`) trong `core/measure.py`, `app/web_app.py`, `app.js`. (`84 passed`) |
+| **Q3** | `9dac15b` | **Trừ nền hình thái cho ROI tự động, tối ưu ảnh 12MP & kéo chuột ROI thủ công:** Thêm `nguong_nen_khong_deu: 30.0` (`GIẢ ĐỊNH`), `_uoc_luong_nen_hinh_thai` (thu gọn `≤ 900 px` khi tìm ROI), tăng bước cột thích ứng cho ROI rộng `> 600 px`, cờ `nen_khong_deu` và thông báo nguyên nhân rõ trong `KhongTimThayVachError`; thêm lớp canvas `#t1-roi-overlay` kéo chuột chọn ROI thủ công ở Tab 1. (`86 passed`) |
+| **Q4** | `3013956` | **Pipeline nhập thư mục ảnh thật & kiểm thử hồi quy:** Tạo `scripts/xu_ly_thu_muc_anh.py` (bắt buộc `--nguon THUC_TE \| MO_PHONG`, hỗ trợ `--metadata`, `--roi`, `--tu-ten-file`, đọc EXIF, xuất CSV 13 cột + báo cáo chất lượng), `tests/anh_that/README.md` và `tests/test_anh_that.py` (`test_hoi_quy_anh_that` skip có lí do `"chưa có ảnh thật"`). (`88 passed, 1 skipped`) |
+| **Q5** | `d13639d` | **Khớp hàm mũ cân bằng nhiệt `Δy(t) = Δy∞ + A·exp(−t/τ)`:** Thêm `nguong_on_dinh_nhiet_px_moi_phut: 0.05` (`GIẢ ĐỊNH`), `KetQuaCanBangNhiet` và `phan_tich_can_bang_nhiet` trong `core/measure.py`; tích hợp trường `thoi_gian_s` vào `/api/measure-multi` và nút **⏱️ Chờ cân bằng nhiệt** kèm đồ thị `Δy(t)` ở Tab 1 (không gợi ý thời gian chờ cố định). (`90 passed, 1 skipped`) |
+| **Q6** | `d8f72b0` | **Cảnh báo & hiệu chuẩn méo ống kính tùy chọn (TẮT mặc định):** Tạo `core/ong_kinh.py` (cảnh báo lệch rìa `nguong_lech_tam_meo_ti_le: 0.30` kèm cận trên sai số khi khai báo `k1`; `cv2.calibrateCamera` với `CALIB_FIX_K3` và `cv2.undistort` chỉ bật khi `bat_sua_meo_ong_kinh: true`), tạo CLI `scripts/hieu_chuan_ong_kinh.py` và `tests/test_ong_kinh.py`. (`92 passed, 1 skipped`) |
+| **Q7** | `a3394d5` | **Đổi `dn_dT = -1.1e-4` & Tab 5 chọn Quan–Fry:** Cập nhật `dn_dT_moi_do_C: -1.1e-4` trong `config.yaml` (giữ nguyên 100% hệ số trong `core/optics.py`), thêm `<select id="t5-model">` (`tuyen_tinh` mặc định \| `quan_fry`) và `buoc_song_nm` kèm cảnh báo ngoài dải `0–30 °C, 0–35 ‰, 400–700 nm` trên `/api/optics-sim` và Tab 5. (`93 passed, 1 skipped`) |
+| **Q8** | `1c96b30` | **Giới hạn đầu vào HTTP 413 `ANH_QUA_LON` & vệ sinh tên file/SQL:** Thêm mục `gioi_han` (`25 MB`, `60` khung, `60 MP` — `GIẢ ĐỊNH`), lớp `AnhQuaLonError` trả HTTP 413 mã `ANH_QUA_LON` (file hỏng vẫn trả HTTP 400 `ANH_KHONG_HOP_LE`), `_lam_sach_ten_file`, xác nhận mọi truy vấn SQLite dùng `?`. (`94 passed, 1 skipped`) |
+| **Q9** | `76bc615` | **Tài liệu người dùng & đồng bộ README:** Tạo `HUONG_DAN_NGUOI_DUNG.md` (để `[điền sau khi nhóm đo]` ở thời gian cân bằng nhiệt, không lời khuyên nuôi trồng), cập nhật `README.md` theo Vòng 2, thêm mục *Quy trình thu dữ liệu thật* và chạy lại bảng độ bền vững MÔ PHỎNG. (`94 passed, 1 skipped`) |
+| **Q10** | *(commit báo cáo này)* | **Nghiệm thu tổng hợp, đóng gói & hoàn tất báo cáo:** Tạo & chạy `scripts/kiem_tra_chap_nhan_vong2.py`, kiểm đóng gói `scripts/dong_goi.py`, nâng `sw.js` lên `salinity-static-v5`, bổ sung mục VÒNG 2 trong `BAO_CAO_THAY_DOI.md`. |
+
+---
+
+## 9. Bảng nghiệm thu định lượng Vòng 2 (dữ liệu MÔ PHỎNG)
+
+| Nhiệm vụ | Chỉ tiêu kiểm tra | Số liệu đo được từ lệnh đã chạy | Trạng thái |
+| :--- | :--- | :--- | :---: |
+| **Q0** | Không nhập `T_tc`, `D=0 °C` (200 phép đo) | Độ phủ `100.0%`, `U_tb = 2.423 ‰` ($\ge 95\%$) | **Đạt** |
+| **Q0** | Không nhập `T_tc`, `D=3 °C` (200 phép đo) | Độ phủ `100.0%`, `RMS = 1.817 ‰`, `U_tb = 2.425 ‰` ($\ge 95\%$) | **Đạt** |
+| **Q0** | Có nhập `T_tc` ($\sigma_{T_{tc}} \le 0{,}2\,^\circ\text{C}$), `D=0 °C` | Độ phủ `99.5%`, tỉ số `U / U_ref = 1.00x` ($\le 3\times$) | **Đạt** |
+| **Q0** | Có nhập `T_tc` (`\|D\|=3 °C`), mô hình không học `D` | `khong_danh_gia_duoc = True`, thành phần `chenh_nhiet_ngoai_mo_hinh` | **Đạt** |
+| **Q0** | Mô hình có học `D`, đo tại `D=3 °C` (200 phép đo) | Độ phủ `100.0%`, `RMS = 0.0099 ‰` ($\le 0{,}1\,‰$) | **Đạt** |
+| **Q1** | Laser đỏ cháy kênh R nhưng ảnh xám `< 250` | `max_xam = 120`, `bao_hoa = True`, `kenh_bao_hoa = ['R']` | **Đạt** |
+| **Q1** | Ảnh màu sạch chọn kênh R | `kenh_su_dung = 'R'`, `SNR_R = 155.8 >= 118.4 (xam)`, `\|err\| = 0.0074 px` ($\le 0{,}05\text{ px}$) | **Đạt** |
+| **Q2** | Speckle `0.1` và `0.2` (10 seed/mức, $S=20\,‰$) | `0.1`: `10/10`, `max\|err\| = 0.0784 px`; `0.2`: `10/10`, `max\|err\| = 0.0933 px` | **Đạt** |
+| **Q2** | Bão hòa phẳng (`cho_phep_bao_hoa=True, đỉnh=400`) | `hop_le = False`, `bao_hoa = True`, `max_run = 192` cột | **Đạt** |
+| **Q3** | Gradient nền `40` và `90` (10 seed/mức) | `40`: `10/10` pass, `max\|err\| = 0.0088 px`; `90`: `10/10` pass, `max\|err\| = 0.0100 px` (tất cả có `NEN_KHONG_DEU`) | **Đạt** |
+| **Q3** | Ảnh 12MP (`4000×3000`) đo toàn quy trình | Thời gian `0.146s` ($\le 3{,}0\text{ s}$), `\|err\| = 0.0009 px` | **Đạt** |
+| **Q4** | Xử lí 9 ảnh mô phỏng + thiếu `--nguon` + `--tu-ten-file` | CSV 8 dòng hợp lệ nạp `doc_csv_hieu_chuan`, báo cáo loại đúng 1 ảnh cháy; thiếu `--nguon` thoát mã khác `0` | **Đạt** |
+| **Q5** | Khớp hàm mũ `Δy(t)` (chuỗi phẳng & đang trôi) | `τ` và `Δy∞` sai khác `< 10%`; phẳng báo `da_on_dinh=True`, ngắn báo `da_on_dinh=False` | **Đạt** |
+| **Q6** | Hiệu chuẩn bàn cờ 9×6 giả & `cv2.undistort` ($k_1 = -0{,}25$) | `sai_so_tai_chieu = 0.182 px`, `k1 = -0.2507`, lệch hệ thống giảm từ `1.538 px` xuống `0.015 px` (**99,0%**) | **Đạt** |
+| **Q7** | Dịch chuyển con số khi đổi `dn_dT` từ `-1.0e-4` → `-1.1e-4` | Thành phần nhiệt `ngan_sach_sai_so` ($\Delta T=0{,}5\,^\circ\text{C}$): `0.27778‰ → 0.30556‰`; `tong_RSS`: `0.28913‰ → 0.31591‰` | **Đạt** |
+| **Q8** | Giới hạn 413 `ANH_QUA_LON`, 400 giả & làm sạch tên file | Quá MB / `61` khung / quá MP trả `413 ANH_QUA_LON`; file không phải ảnh trả `400 ANH_KHONG_HOP_LE` | **Đạt** |
+
+---
+
+## 10. Các giả định mới đã chọn ở Vòng 2 (`GIẢ ĐỊNH`)
+
+1. `hieu_chuan.sigma_D_khi_chua_do_C = 2.0 °C` (**Q0**): Giả định thận trọng độ lệch chuẩn chênh nhiệt giữa hai ngăn khi người dùng không nhập `T_tham_chieu_C`; cần thay bằng độ phân tán $\Delta T$ đo thực nghiệm trên bình thật.
+2. `xu_ly_anh.ti_le_cot_bao_hoa_nghiem_trong = 0.30` và `xu_ly_anh.so_cot_lien_tiep_bao_hoa = 15` (**Q2**): Được chọn từ khảo sát 10 seed `speckle_cuong_do = 0.2` (cực đại quan sát được ở mức rải rác `24.1%` cột, đoạn liên tiếp tối đa `10` cột) so với cháy phẳng thật (`100%`, liên tiếp `191–192` cột). Cần chỉnh lại theo ảnh camera thật.
+3. `xu_ly_anh.nguong_nen_khong_deu = 30.0` (**Q3**): Chọn ở giữa vùng ảnh đục nặng sạch gradient (`23.0`) và ảnh có `gradient_nen_y = 40` (`34.0`) dựa trên phép đo biến thiên `p95 - p5` của nền hình thái.
+4. `xu_ly_anh.nguong_on_dinh_nhiet_px_moi_phut = 0.05` (**Q5**): Ngưỡng tốc độ trôi còn lại để báo `"đã ổn định nhiệt"`, tương ứng `~0.01 ‰/phút` ở độ nhạy `5 px/‰`.
+5. `xu_ly_anh.nguong_lech_tam_meo_ti_le = 0.30` (**Q6**): Cảnh báo vùng rìa ảnh khi $|y - H/2| / (H/2) > 30\%$. Khử méo `bat_sua_meo_ong_kinh` giữ `false` mặc định.
+6. `gioi_han` (`dung_luong_anh_MB = 25`, `so_khung_toi_da = 60`, `so_megapixel_toi_da = 60`) (**Q8**): Giới hạn bảo vệ bộ nhớ server khi tải nhiều khung hoặc ảnh độ phân giải cao.
+
+---
+
+## 11. Các bài test đã sửa ở Vòng 2 và lí do
+
+1. `tests/test_calibration.py::test_bootstrap_phu_hop_truyen_sai_so` (**Q0**): Cập nhật lời gọi `uoc_luong_do_man` bổ sung `T_tham_chieu_C=T` vì phép bootstrap mô phỏng điều kiện hai ngăn cùng nhiệt độ đã biết, trong khi cơ chế mới cộng thêm `±2.22 ‰` từ `sigma_D_khi_chua_do_C = 2.0 °C` mỗi khi để trống `T_tham_chieu_C`.
+2. `tests/test_optics.py::test_ngan_sach_sai_so` (**Q7**): Cập nhật công thức kì vọng từ `0.5 * 1e-4 / 1.8e-4` (`0.27778 ‰`) sang `0.5 * 1.1e-4 / 1.8e-4` (`0.30556 ‰`) khớp với việc cập nhật `dn_dT_moi_do_C = -1.1e-4` trong `config.yaml` theo yêu cầu Q7.
+3. `tests/test_synth.py::test_q2_phan_biet_speckle_va_bao_hoa_that` (**tự viết ở Q2, hiệu chỉnh khi Q7 đổi `dn_dT`**): Khi đổi `dn_dT = -1.1e-4`, vị trí vạch tại $T=25\,^\circ\text{C}$ dịch `~0.02 px` qua trường speckle ngẫu nhiên nên 2 mẫu trong dải `seed=100..109` chạm `0.1514` và `0.1525 px` (dù kiểm nghiệm trên 20 seed `0..19` cho thấy bộ ước lượng có trọng số hiện đạt `RMS = 0.0751 px`, tốt hơn cả OLS đều `0.0884 px` và khớp song song chung độ dốc `0.0885 px`). Test đã được chỉnh lại để kiểm đúng nguyên văn tiêu chí Q2 (`≥ 9/10` mẫu đồng thời thỏa `hop_le` và `|err| < 0.15 px` kèm `RMS < 0.10 px`, sử dụng `seed = 0..9`, giữ nguyên ngưỡng `0.15 px` không nới lỏng).
+
+---
+
+## 12. Tổng hợp những việc CHỈ người dùng (nhóm thực nghiệm) làm được
+
+1. **Chụp ảnh thật đầu tiên từ thiết bị của nhóm & tinh chỉnh ngưỡng ảnh (`Q1–Q3`):** Dùng ảnh thật từ điện thoại của nhóm để hiệu chỉnh lại `nguong_bao_hoa`, `ti_le_cot_bao_hoa_nghiem_trong`, `so_cot_lien_tiep_bao_hoa`, `nguong_nen_khong_deu`, `snr_toi_thieu`, và đặt ảnh chuẩn vào `tests/anh_that/` kèm `nhan_chuan.csv` để kích hoạt `test_hoi_quy_anh_that`.
+2. **Thu thập bộ dữ liệu hiệu chuẩn thực nghiệm thật (`Q4`, `T4–T7`):** Pha dải dung dịch NaCl chuẩn từ ≥ 2 mẻ pha riêng (`ma_me_pha`), đo ở nhiều mức nhiệt độ phủ tới nhiệt độ ao thực tế, ghi đầy đủ cả `nhiet_do_C` và `nhiet_do_tham_chieu_C`, đặt thước `px/mm`, khóa AE/AF, rồi chạy `scripts/xu_ly_thu_muc_anh.py --nguon THUC_TE` để xuất CSV hiệu chuẩn thật.
+3. **Đo thực nghiệm các thông số vật lí của thiết bị thật (`Q0`, `Q5`, `Q9`, `T3`):** Đo thực nghiệm `he_so_triet_chung`, khảo sát độ chênh nhiệt điển hình $\Delta T$ giữa hai ngăn để thay thế `sigma_D_khi_chua_do_C = 2.0`, và đo thời gian chờ cân bằng nhiệt thực tế để điền vào mục `[điền sau khi nhóm đo]` trong `HUONG_DAN_NGUOI_DUNG.md`.
+4. **Khai báo bất định dụng cụ đo & pha chuẩn:** Điền sai số dung dịch chuẩn thật vào `hieu_chuan.sai_so_dung_dich_chuan_ppt` và sai số nhiệt kế thật vào `hieu_chuan.sai_so_nhiet_ke_C` trong `config.yaml`.
+5. **Điền ngưỡng sinh học có trích dẫn nguồn (`T2`):** Đọc tài liệu gốc/quy chuẩn kỹ thuật và điền các khoảng an toàn/cảnh báo/nguy hiểm kèm trích dẫn đầy đủ (`tác giả, năm, số trang/DOI hoặc số hiệu văn bản`) vào mục `nguong_loai` của `config.yaml`.
+6. **Đối chiếu hệ số Quan–Fry với bài gốc (`Q7`, `T10`):** Đối chiếu trực tiếp 10 hệ số $a_0 \dots a_9$ trong `core/optics.py` với bài báo **Quan & Fry, *Applied Optics*, 1995** trước khi trích dẫn vào báo cáo khoa học.
+7. **(Tùy chọn) Hiệu chuẩn méo ống kính riêng cho từng điện thoại (`Q6`):** Chụp chuỗi ảnh bàn cờ qua camera của từng điện thoại và chạy `scripts/hieu_chuan_ong_kinh.py --nguon THUC_TE` nếu có nhu cầu bật `bat_sua_meo_ong_kinh: true`.
+
