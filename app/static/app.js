@@ -996,6 +996,7 @@ function drawTab1Charts(d) {
       he_so_duong_chuan: "Hệ số hồi quy (u_fit)",
       nhiet_do: "Nhiệt kế mẫu (σ_T)",
       nhiet_do_tham_chieu: "Nhiệt kế ngăn TC (σ_Ttc)",
+      dung_dich_chuan: "Dung dịch chuẩn NaCl",
     };
     const colors = ["#14b8a6", "#1b4965", "#f59e0b", "#e5383b"];
     const bars = Object.entries(km.thanh_phan_bat_dinh).map(([k, v], i) => ({

@@ -923,6 +923,7 @@ async def api_measure(request: Request) -> JSONResponse:
                     nguong_lech_T_hai_ngan_C=cfg_cal.nguong_lech_T_hai_ngan_C,
                     px_per_mm=px_per_mm_val,
                     u_px_per_mm=u_px_per_mm_val,
+                    sigma_dung_dich_chuan_ppt=cfg_cal.sai_so_dung_dich_chuan_ppt,
                 )
                 canh_bao_man = list(kq_man.canh_bao)
                 if khong_do_nhiet_do:

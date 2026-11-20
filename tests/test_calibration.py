@@ -282,3 +282,56 @@ def test_bu_chenh_nhiet_do_hai_ngan_D_va_canh_bao():
     assert "nhiet_do_tham_chieu" in kq_lech.thanh_phan_bat_dinh
     assert any("Chênh nhiệt độ hai ngăn" in c for c in kq_lech.canh_bao)
 
+
+def test_chia_nhom_va_group_kfold_theo_ma_me_pha():
+    """T7: Chia train/test và CV theo mẻ pha chế `ma_me_pha`, không làm rò rỉ điểm lặp."""
+    rng = np.random.default_rng(7)
+    rows = []
+    # Mỗi mức S có 2 mẻ pha độc lập (tổng 16 mẻ), mỗi mẻ đo lặp 3 lần (48 điểm)
+    for S in range(0, 36, 5):
+        for b_idx in range(2):
+            me = f"ME_S{S}_{b_idx}"
+            batch_bias = 0.6 if b_idx == 0 else -0.6
+            for T in (22.0, 25.0, 28.0):
+                rows.append({
+                    cal.COT_DO_MAN: float(S),
+                    cal.COT_NHIET_DO: float(T),
+                    cal.COT_DELTA_Y: 5.0 * S - 0.1 * (T - 25.0) + batch_bias + rng.normal(0.0, 0.03),
+                    cal.COT_DO_DUC: 0.0,
+                    cal.COT_MA_ME_PHA: me,
+                    cal.COT_NGAY_DO: "2026-11-20",
+                    cal.COT_GHI_CHU: "test group split",
+                    cal.COT_ID_THIET_BI: "TB1",
+                    cal.COT_ID_DIEN_THOAI: "DT1",
+                    cal.COT_NGUON: cal.NHAN_THUC_TE,
+                })
+    df = pd.DataFrame(rows)
+    bc = cal.dung_duong_chuan(df)
+    train_groups = set(bc.df_train[cal.COT_MA_ME_PHA])
+    test_groups = set(bc.df_test[cal.COT_MA_ME_PHA])
+    assert len(test_groups) >= 2
+    assert train_groups.isdisjoint(test_groups)
+    assert not any("Không có cột ma_me_pha" in c for c in bc.canh_bao)
+
+    # Nếu xóa cột ma_me_pha -> phải phát cảnh báo sai số test bị đánh giá thấp
+    df_no_batch = df.drop(columns=[cal.COT_MA_ME_PHA])
+    bc_no = cal.dung_duong_chuan(df_no_batch)
+    assert any("ma_me_pha" in c for c in bc_no.canh_bao)
+
+
+def test_bat_dinh_dung_dich_chuan_va_canh_bao_dai_T_hep():
+    """T7: Đưa sai_so_dung_dich_chuan_ppt vào U và cảnh báo khi null hoặc dải T hẹp."""
+    df = _df_tong_hop(lambda S, T: 5.0 * S - 0.1 * (T - 25.0), range(0, 36, 5), (22.0, 25.0, 28.0))
+    ch = cal.CauHinhHieuChuan(sai_so_dung_dich_chuan_ppt=0.25, nhiet_do_toi_thieu_phu_C=10.0)
+    bc = cal.dung_duong_chuan(df, cau_hinh=ch)
+    # Dải T thật = 28 - 22 = 6 °C < 10 °C -> phải cảnh báo
+    assert any("Dải nhiệt độ hiệu chuẩn" in c for c in bc.canh_bao)
+
+    kq_null = cal.uoc_luong_do_man(bc.mo_hinh, 75.0, 25.0, sigma_dung_dich_chuan_ppt=None)
+    assert "dung_dich_chuan" not in kq_null.thanh_phan_bat_dinh
+    assert any("dung dịch chuẩn" in c for c in kq_null.canh_bao)
+
+    kq_co = cal.uoc_luong_do_man(bc.mo_hinh, 75.0, 25.0, sigma_dung_dich_chuan_ppt=0.25)
+    assert kq_co.thanh_phan_bat_dinh["dung_dich_chuan"] == pytest.approx(0.25)
+    assert kq_co.u_S_ppt > kq_null.u_S_ppt
+

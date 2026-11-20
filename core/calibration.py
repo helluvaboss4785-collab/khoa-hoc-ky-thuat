@@ -55,6 +55,8 @@ COT_NHIET_DO_TC = "nhiet_do_tham_chieu_C"  # nhiệt độ ngăn tham chiếu (�
 COT_DELTA_Y = "delta_y_px"             # Δy đo được (pixel)
 COT_PX_PER_MM = "px_per_mm"            # thang pixel/mm của ảnh (tùy chọn)
 COT_DO_DUC = "do_duc_tuong_doi"        # chỉ số độ đục tương đối (0–1)
+COT_MA_ME_PHA = "ma_me_pha"            # mã mẻ dung dịch chuẩn (tùy chọn - dùng chia nhóm GroupKFold)
+COT_NGAY_DO = "ngay_do"                # ngày/đợt đo (tùy chọn)
 COT_GHI_CHU = "ghi_chu"
 COT_ID_THIET_BI = "id_thiet_bi"
 COT_ID_DIEN_THOAI = "id_dien_thoai"
@@ -73,6 +75,8 @@ BI_DANH_COT = {
     "T_tc": COT_NHIET_DO_TC, "nhiet_do_tc": COT_NHIET_DO_TC, "T_tham_chieu_C": COT_NHIET_DO_TC,
     "delta_y": COT_DELTA_Y, "dy_px": COT_DELTA_Y,
     "px_mm": COT_PX_PER_MM, "scale_px_per_mm": COT_PX_PER_MM,
+    "me_pha": COT_MA_ME_PHA, "batch_id": COT_MA_ME_PHA,
+    "ngay": COT_NGAY_DO, "date": COT_NGAY_DO,
     "ae_af_lock": COT_KHOA_AE_AF,
     "do_duc": COT_DO_DUC,
     "id_dt": COT_ID_DIEN_THOAI, "id_phone": COT_ID_DIEN_THOAI,
@@ -105,6 +109,8 @@ class CauHinhHieuChuan:
     sai_so_nhiet_ke_C: float = 0.5
     nguong_lech_T_khong_bu_C: float = 1.0
     nguong_lech_T_hai_ngan_C: float = 0.5
+    sai_so_dung_dich_chuan_ppt: float | None = None
+    nhiet_do_toi_thieu_phu_C: float | None = None
     seed: int = 0
 
     @classmethod
@@ -113,6 +119,8 @@ class CauHinhHieuChuan:
         with open(duong_dan, encoding="utf-8") as f:
             c = (yaml.safe_load(f) or {}).get("hieu_chuan", {}) or {}
         mac_dinh = cls()
+        raw_dd = c.get("sai_so_dung_dich_chuan_ppt", mac_dinh.sai_so_dung_dich_chuan_ppt)
+        raw_t_phu = c.get("nhiet_do_toi_thieu_phu_C", mac_dinh.nhiet_do_toi_thieu_phu_C)
         return cls(
             ti_le_test=float(c.get("ti_le_tap_test", mac_dinh.ti_le_test)),
             so_fold=int(c.get("so_fold_kiem_dinh_cheo", mac_dinh.so_fold)),
@@ -121,6 +129,8 @@ class CauHinhHieuChuan:
             sai_so_nhiet_ke_C=float(c.get("sai_so_nhiet_ke_C", mac_dinh.sai_so_nhiet_ke_C)),
             nguong_lech_T_khong_bu_C=float(c.get("nguong_lech_T_khong_bu_C", mac_dinh.nguong_lech_T_khong_bu_C)),
             nguong_lech_T_hai_ngan_C=float(c.get("nguong_lech_T_hai_ngan_C", mac_dinh.nguong_lech_T_hai_ngan_C)),
+            sai_so_dung_dich_chuan_ppt=float(raw_dd) if raw_dd is not None else None,
+            nhiet_do_toi_thieu_phu_C=float(raw_t_phu) if raw_t_phu is not None else None,
             seed=int(c.get("seed", mac_dinh.seed)),
         )
 
@@ -160,6 +170,9 @@ def doc_csv_hieu_chuan(nguon: str | Path | IO[Any]) -> pd.DataFrame:
         df[COT_KHOA_AE_AF] = df[COT_KHOA_AE_AF].fillna(0)
     for c in (COT_GHI_CHU, COT_ID_THIET_BI, COT_ID_DIEN_THOAI):
         df[c] = df[c].fillna("").astype(str)
+    for c_opt in (COT_MA_ME_PHA, COT_NGAY_DO):
+        if c_opt in df.columns:
+            df[c_opt] = df[c_opt].fillna("").astype(str).str.strip()
     if COT_NGUON not in df.columns:
         df[COT_NGUON] = NHAN_CHUA_XAC_DINH
     else:
@@ -308,20 +321,52 @@ def khop_binh_phuong_toi_thieu(
     return KetQuaKhop(he_so, cov, math.sqrt(s2), bac_tu_do, phan_du)
 
 
+def _lay_nhom_me_pha(df: pd.DataFrame) -> np.ndarray | None:
+    """Trả mảng tên mẻ pha chế nếu cột `ma_me_pha` đầy đủ và có >= 2 mẻ khác nhau."""
+    if COT_MA_ME_PHA not in df.columns or len(df) == 0:
+        return None
+    vals = df[COT_MA_ME_PHA].fillna("").astype(str).str.strip()
+    if (vals == "").any():
+        return None
+    arr = vals.to_numpy(dtype=str)
+    if len(np.unique(arr)) < 2:
+        return None
+    return arr
+
+
 def rmse_kiem_dinh_cheo(
     S: np.ndarray, T: np.ndarray, y: np.ndarray, hang: list[str], T_ref: float,
     so_fold: int = 5, seed: int = 0, T_tc: np.ndarray | None = None,
+    nhom: np.ndarray | None = None,
 ) -> float:
-    """RMSE kiểm định chéo k-phần (k-fold).
+    """RMSE kiểm định chéo k-phần (k-fold hoặc GroupKFold thuần NumPy theo `nhom`).
 
-    Chia dữ liệu thành k phần; lần lượt bỏ ra 1 phần, khớp trên phần còn lại rồi dự đoán
-    phần bị bỏ ra. Mô hình quá khớp (học cả nhiễu) sẽ dự đoán điểm mới kém -> RMSE lớn.
+    Nếu truyền `nhom` (cùng số phần tử với `y`, >= 2 nhóm), thực hiện GroupKFold: mọi lần
+    đo lặp của cùng một mẻ dung dịch luôn đi cùng nhau vào train hoặc validation.
     """
     n = len(y)
-    k = max(2, min(so_fold, n))
     rng = np.random.default_rng(seed)
-    chi_so = rng.permutation(n)
     sai_so: list[float] = []
+    if nhom is not None:
+        u_groups = np.unique(nhom).copy()
+        if len(u_groups) >= 2:
+            rng.shuffle(u_groups)
+            k_g = max(2, min(so_fold, len(u_groups)))
+            for g_val in np.array_split(u_groups, k_g):
+                mask_val = np.isin(nhom, g_val)
+                val = np.nonzero(mask_val)[0]
+                train = np.nonzero(~mask_val)[0]
+                if len(train) <= len(hang) or len(val) == 0:
+                    return float("inf")
+                tc_tr = None if T_tc is None else T_tc[train]
+                tc_val = None if T_tc is None else T_tc[val]
+                kq = khop_binh_phuong_toi_thieu(S[train], T[train], y[train], hang, T_ref, T_tc=tc_tr)
+                du_doan = ma_tran_dac_trung(S[val], T[val], hang, T_ref, T_tc=tc_val) @ kq.he_so
+                sai_so.extend((y[val] - du_doan).tolist())
+            return float(np.sqrt(np.mean(np.square(sai_so))))
+
+    k = max(2, min(so_fold, n))
+    chi_so = rng.permutation(n)
     for phan in np.array_split(chi_so, k):
         train = np.setdiff1d(chi_so, phan)
         if len(train) <= len(hang):
@@ -633,6 +678,7 @@ def uoc_luong_do_man(
     nguong_lech_T_hai_ngan_C: float = 0.5,
     px_per_mm: float | None = None,
     u_px_per_mm: float = 0.0,
+    sigma_dung_dich_chuan_ppt: float | None = None,
 ) -> KetQuaDoMan:
     """Ước lượng độ mặn từ Δy và nhiệt độ hai ngăn, kèm bất định và cờ cảnh báo.
 
@@ -680,9 +726,15 @@ def uoc_luong_do_man(
     }
     if T_tham_chieu_C is not None or sigma_T_tham_chieu_C > 0 or mh.co_bu_chenh_T:
         thanh_phan["nhiet_do_tham_chieu"] = abs(f_T_tc * sigma_T_tham_chieu_C / f_S)
+    if sigma_dung_dich_chuan_ppt is not None and float(sigma_dung_dich_chuan_ppt) > 0.0:
+        thanh_phan["dung_dich_chuan"] = float(sigma_dung_dich_chuan_ppt)
     u = math.sqrt(sum(v * v for v in thanh_phan.values()))
 
     canh_bao: list[str] = []
+    if sigma_dung_dich_chuan_ppt is None:
+        canh_bao.append(
+            "Chưa khai báo bất định của dung dịch chuẩn (hieu_chuan.sai_so_dung_dich_chuan_ppt đang để null)."
+        )
     if getattr(mh, "don_vi_y", "px") == "px":
         canh_bao.append("Đường chuẩn theo pixel: chỉ đúng cho đúng một cấu hình camera và khoảng cách.")
     ngoai_S = not (mh.S_min <= S <= mh.S_max)
@@ -790,13 +842,69 @@ class BaoCaoHieuChuan:
 def chia_train_test(
     df: pd.DataFrame, ti_le_test: float = 0.25, seed: int = 0
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Chia train/test phân tầng theo mức độ mặn.
+    """Chia train/test theo nhóm `ma_me_pha` (nếu có) hoặc phân tầng theo mức S.
 
-    Mỗi mức S đưa khoảng `ti_le_test` số điểm vào test nhưng luôn giữ ≥ 1 điểm ở train,
-    để train phủ hết dải S (tránh việc test phải ngoại suy).
+    Khi có `ma_me_pha`: toàn bộ các lần đo lặp của một mẻ pha dung dịch luôn cùng ở train
+    hoặc cùng ở test, tránh đánh giá thấp sai số do rò rỉ lặp giữa train và test.
     """
     rng = np.random.default_rng(seed)
-    chi_so_test: list[int] = []
+    nhom_arr = _lay_nhom_me_pha(df)
+    if nhom_arr is not None:
+        u_groups = list(dict.fromkeys(nhom_arr.tolist()))
+        g_to_idx: dict[str, list[Any]] = {g: [] for g in u_groups}
+        g_to_s: dict[str, set[float]] = {g: set() for g in u_groups}
+        for idx, g, s_val in zip(df.index.tolist(), nhom_arr.tolist(), df[COT_DO_MAN].to_numpy(float)):
+            g_to_idx[g].append(idx)
+            g_to_s[g].add(round(float(s_val), 3))
+
+        s_vals_unique = sorted({s for sset in g_to_s.values() for s in sset})
+        s_count: dict[float, int] = {s: sum(1 for g in u_groups if s in g_to_s[g]) for s in s_vals_unique}
+        s_min_val, s_max_val = s_vals_unique[0], s_vals_unique[-1]
+
+        shuffled = list(u_groups)
+        rng.shuffle(shuffled)
+        n_test_target = max(1, int(round(len(u_groups) * ti_le_test)))
+        max_test_rows = max(1, int(math.floor(len(df) * 0.45)))
+
+        nhom_test: list[str] = []
+        s_test_taken: dict[float, int] = {}
+        rows_test = 0
+        for g in shuffled:
+            if len(nhom_test) >= n_test_target:
+                break
+            g_rows = len(g_to_idx[g])
+            if len(df) - (rows_test + g_rows) < 4:
+                continue
+            if rows_test + g_rows > max_test_rows and nhom_test:
+                continue
+            # Nếu còn nhiều mức S, giữ nguyên 2 đầu mút S_min/S_max ở train nếu chỉ có 1 mẻ duy nhất
+            if len(s_vals_unique) >= 3:
+                if (s_min_val in g_to_s[g] and s_count[s_min_val] - s_test_taken.get(s_min_val, 0) <= 1):
+                    continue
+                if (s_max_val in g_to_s[g] and s_count[s_max_val] - s_test_taken.get(s_max_val, 0) <= 1):
+                    continue
+            # Tránh rút hết sạch mọi nhóm của cùng một mức S nếu có >1 mẻ ở mức đó
+            if any(s_count[s] > 1 and (s_count[s] - s_test_taken.get(s, 0) <= 1) for s in g_to_s[g]):
+                continue
+            nhom_test.append(g)
+            rows_test += g_rows
+            for s in g_to_s[g]:
+                s_test_taken[s] = s_test_taken.get(s, 0) + 1
+
+        if not nhom_test and len(u_groups) >= 3:
+            ung_vien = [
+                g for g in shuffled
+                if (s_min_val not in g_to_s[g] or s_count[s_min_val] > 1)
+                and (s_max_val not in g_to_s[g] or s_count[s_max_val] > 1)
+                and len(df) - len(g_to_idx[g]) >= 4
+            ]
+            if ung_vien:
+                nhom_test.append(ung_vien[0])
+
+        chi_so_test = [idx for g in nhom_test for idx in g_to_idx[g]]
+        return df.drop(index=chi_so_test), df.loc[chi_so_test]
+
+    chi_so_test = []
     for _, nhom in df.groupby(COT_DO_MAN):
         n_test = min(int(round(len(nhom) * ti_le_test)), len(nhom) - 1)
         if n_test > 0:
@@ -873,6 +981,12 @@ def dung_duong_chuan(
         canh_bao.append(f"Đã loại {df.attrs['so_dong_bi_loai']} dòng thiếu dữ liệu.")
     if _so_muc(df[COT_DO_MAN].to_numpy(float), 0.01) < 3:
         canh_bao.append("Cần ít nhất 3 mức độ mặn chuẩn; nên dùng 5–8 mức phủ hết dải cần đo.")
+    nhom_all = _lay_nhom_me_pha(df)
+    if nhom_all is None:
+        canh_bao.append(
+            "Không có cột ma_me_pha (hoặc < 2 mẻ pha đầy đủ): các lần đo lặp của cùng một dung dịch "
+            "nằm cả ở train và test nên sai số test bị đánh giá thấp."
+        )
 
     if len(df) >= 8:
         df_train, df_test = chia_train_test(df, ch.ti_le_test, ch.seed)
@@ -883,6 +997,7 @@ def dung_duong_chuan(
     S = df_train[COT_DO_MAN].to_numpy(float)
     T = df_train[COT_NHIET_DO].to_numpy(float)
     T_tc = _lay_nhiet_do_tc(df_train)
+    nhom_tr = _lay_nhom_me_pha(df_train)
     y = _lay_y_theo_don_vi(df_train, don_vi_y)
     co_T_tr, co_TT_tr, co_D_tr = _xac_dinh_co_bu_nhiet(T, T_tc)
     T_ref = float(np.round(np.mean(T), 1))
@@ -892,7 +1007,9 @@ def dung_duong_chuan(
         if bac == 2 and _so_muc(S, 0.01) < 3:
             continue
         hang = chon_so_hang(bac, co_T_tr, co_TT_tr, co_D=co_D_tr)
-        rmse_cv[bac] = rmse_kiem_dinh_cheo(S, T, y, hang, T_ref, ch.so_fold, ch.seed, T_tc=T_tc)
+        rmse_cv[bac] = rmse_kiem_dinh_cheo(
+            S, T, y, hang, T_ref, ch.so_fold, ch.seed, T_tc=T_tc, nhom=nhom_tr
+        )
 
     if bac_ep is not None:
         bac_chon, ly_do = bac_ep, f"Bậc {bac_ep} do người dùng chỉ định."
@@ -910,6 +1027,12 @@ def dung_duong_chuan(
     mh_full = tao_mo_hinh(df, bac_chon, don_vi_y=don_vi_y)
     if not mh_full.co_bu_nhiet and not mh_full.co_bu_chenh_T:
         canh_bao.append("Dữ liệu chỉ có một mức nhiệt độ: đường chuẩn KHÔNG bù nhiệt được.")
+    dai_T = float(mh_full.T_max - mh_full.T_min)
+    if ch.nhiet_do_toi_thieu_phu_C is not None and dai_T < ch.nhiet_do_toi_thieu_phu_C:
+        canh_bao.append(
+            f"Dải nhiệt độ hiệu chuẩn ({dai_T:.1f} °C) hẹp hơn ngưỡng tối thiểu cấu hình "
+            f"({ch.nhiet_do_toi_thieu_phu_C:g} °C): tránh dùng ngoài dải nhiệt độ đã đo."
+        )
 
     if len(df_test):
         bang_test = _bang_sai_so(mh_train, df_test, ch.he_so_phu_k)
