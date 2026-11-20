@@ -1,27 +1,70 @@
-"""Unit tests cho core/thresholds.py: Đánh giá ngưỡng an toàn theo đối tượng nuôi trồng."""
+"""Unit tests cho core/thresholds.py: Đánh giá ngưỡng tham chiếu và nguồn tài liệu."""
 from __future__ import annotations
 
-import pytest
+from pathlib import Path
 
 from core import thresholds as th
 
 
-def test_doc_danh_sach_loai_tu_config():
-    """Kiểm tra đọc đúng các loài từ config.yaml."""
-    ds = th.doc_danh_sach_loai()
-    assert "tom_the_chan_trang" in ds
-    assert "sau_rieng" in ds
-    assert "cua_bien" in ds
+def _ghi_yaml_thu_nghiem(tmp_path: Path) -> Path:
+    p = tmp_path / "config_thu_nghiem.yaml"
+    p.write_text(
+        """
+nguong_loai:
+  tom_thu_nghiem:
+    ten: "Tôm thử nghiệm (GIÁ TRỊ THỬ NGHIỆM, KHÔNG PHẢI NGƯỠNG THẬT)"
+    an_toan: [10.0, 25.0]
+    canh_bao_thap: [5.0, 10.0]
+    canh_bao_cao: [25.0, 35.0]
+    nguy_hiem_duoi: 5.0
+    nguy_hiem_tren: 35.0
+    nguon_tham_khao: "GIÁ TRỊ THỬ NGHIỆM, KHÔNG PHẢI NGƯỠNG THẬT"
+    giai_doan:
+      - ten: "Giai đoạn giống (GIÁ TRỊ THỬ NGHIỆM)"
+        an_toan: [15.0, 22.0]
+        canh_bao_thap: [10.0, 15.0]
+        canh_bao_cao: [22.0, 28.0]
+        nguy_hiem_duoi: 10.0
+        nguy_hiem_tren: 28.0
+        nguon_tham_khao: "GIÁ TRỊ THỬ NGHIỆM, KHÔNG PHẢI NGƯỠNG THẬT (giai đoạn)"
 
-    tôm = ds["tom_the_chan_trang"]
-    assert tôm.an_toan_min == 10.0
-    assert tôm.an_toan_max == 25.0
-    assert tôm.co_du_lieu_nguon is True
-    assert "TCVN" in tôm.nguon_tham_khao
+  cay_thu_nghiem:
+    ten: "Cây thử nghiệm (GIÁ TRỊ THỬ NGHIỆM, KHÔNG PHẢI NGƯỠNG THẬT)"
+    an_toan: [0.0, 0.5]
+    canh_bao_thap: null
+    canh_bao_cao: [0.5, 1.0]
+    nguy_hiem_duoi: null
+    nguy_hiem_tren: 1.0
+    nguon_tham_khao: "GIÁ TRỊ THỬ NGHIỆM, KHÔNG PHẢI NGƯỠNG THẬT"
+
+  chua_co_nguon:
+    ten: "Loài chưa có nguồn"
+    an_toan: null
+    canh_bao_thap: null
+    canh_bao_cao: null
+    nguy_hiem_duoi: null
+    nguy_hiem_tren: null
+    nguon_tham_khao: ""
+""".strip(),
+        encoding="utf-8",
+    )
+    return p
+
+
+def test_config_that_khong_co_nguong_thieu_nguon():
+    """Trong config.yaml thật, không được có ngưỡng khác null mà nguon_tham_khao rỗng."""
+    ds = th.doc_danh_sach_loai()
+    assert len(ds) >= 5
+    for ma, loai in ds.items():
+        if loai.co_bat_ky_nguong():
+            assert loai.co_du_lieu_nguon, f"Loài '{ma}' có ngưỡng nhưng thiếu nguồn tham khảo!"
+        for gd in loai.giai_doan:
+            if gd.co_bat_ky_nguong():
+                assert gd.co_du_lieu_nguon, f"Giai đoạn '{gd.ten_giai_doan}' của '{ma}' thiếu nguồn!"
 
 
 def test_loai_chua_co_nguon_phai_canh_bao():
-    """Loài chưa có nguồn tham khảo (cua_bien) phải trả về CHUA_CO_NGUON và không bịa kết luận."""
+    """Mọi loài trong config.yaml hiện chưa điền nguồn đều phải trả CHUA_CO_NGUON."""
     ds = th.doc_danh_sach_loai()
     cua = ds["cua_bien"]
     assert cua.co_du_lieu_nguon is False
@@ -29,36 +72,37 @@ def test_loai_chua_co_nguon_phai_canh_bao():
     kq = th.danh_gia_do_man_loai(15.0, cua)
     assert kq.trang_thai == "CHUA_CO_NGUON"
     assert "CHƯA CÓ" in kq.tieu_de
-    assert "bổ sung" in kq.nguon_tham_khao.lower() or "điền vào" in kq.loi_khuyen.lower()
+    assert th.TU_VAN_KHUYEN_NONG in kq.loi_khuyen
 
 
-def test_danh_gia_muc_an_toan_tom_the():
-    """Kiểm tra đánh giá an toàn, cảnh báo, nguy hiểm trên tôm thẻ chân trắng."""
-    ds = th.doc_danh_sach_loai()
-    tom = ds["tom_the_chan_trang"]
+def test_danh_gia_muc_an_toan_tren_yaml_thu_nghiem(tmp_path: Path):
+    """Dùng YAML tạm với GIÁ TRỊ THỬ NGHIỆM để kiểm tra logic phân mức an toàn/cảnh báo/nguy hiểm."""
+    ds = th.doc_danh_sach_loai(_ghi_yaml_thu_nghiem(tmp_path))
+    tom = ds["tom_thu_nghiem"]
 
-    # 1. An toàn: 15 ppt (nằm trong 10-25)
-    kq_at = th.danh_gia_do_man_loai(15.0, tom)
+    kq_at = th.danh_gia_do_man_loai(15.0, tom, U=0.25)
     assert kq_at.trang_thai == "AN_TOAN"
-    assert "AN TOÀN" in kq_at.tieu_de
+    assert "± 0.25" in kq_at.loi_khuyen
+    assert th.TU_VAN_KHUYEN_NONG in kq_at.loi_khuyen
 
-    # 2. Cảnh báo cao: 28 ppt (nằm trong 25-35)
     kq_cb = th.danh_gia_do_man_loai(28.0, tom)
     assert kq_cb.trang_thai == "CANH_BAO"
 
-    # 3. Nguy hiểm: 38 ppt (> 35)
     kq_ng = th.danh_gia_do_man_loai(38.0, tom)
     assert kq_ng.trang_thai == "NGUY_HIEM"
+    for cum_tu_cam in ("Đóng ngay cống", "khoáng tạt", "TUYỆT ĐỐI KHÔNG"):
+        assert cum_tu_cam not in kq_ng.loi_khuyen
+    assert th.TU_VAN_KHUYEN_NONG in kq_ng.loi_khuyen
 
 
-def test_danh_gia_sau_rieng_nhay_cam():
-    """Cây sầu riêng nhạy cảm mặn: > 1 ppt là nguy hiểm."""
-    ds = th.doc_danh_sach_loai()
-    sr = ds["sau_rieng"]
+def test_danh_gia_cay_nhay_cam_va_giai_doan(tmp_path: Path):
+    """Kiểm tra ngưỡng thử nghiệm cây nhạy cảm và trường tùy chọn giai_doan."""
+    ds = th.doc_danh_sach_loai(_ghi_yaml_thu_nghiem(tmp_path))
+    cay = ds["cay_thu_nghiem"]
+    assert th.danh_gia_do_man_loai(0.3, cay).trang_thai == "AN_TOAN"
+    assert th.danh_gia_do_man_loai(1.2, cay).trang_thai == "NGUY_HIEM"
 
-    kq_at = th.danh_gia_do_man_loai(0.3, sr)
-    assert kq_at.trang_thai == "AN_TOAN"
-
-    kq_ng = th.danh_gia_do_man_loai(1.2, sr)
-    assert kq_ng.trang_thai == "NGUY_HIEM"
-    assert "SOFRI" in kq_ng.nguon_tham_khao
+    tom = ds["tom_thu_nghiem"]
+    kq_gd = th.danh_gia_do_man_loai(11.0, tom, giai_doan="Giai đoạn giống (GIÁ TRỊ THỬ NGHIỆM)")
+    assert kq_gd.trang_thai == "CANH_BAO"
+    assert "Giai đoạn giống" in kq_gd.ten_loai

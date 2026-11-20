@@ -43,60 +43,62 @@ hieu_chuan:                      # Tham số dựng đường chuẩn (Cột m�
 
 # =====================================================================
 # NGƯỠNG AN TOÀN NƯỚC THEO ĐỐI TƯỢNG (LOÀI NUÔI TRỒNG)
-# Chỉ đưa vào ngưỡng có nguồn trích dẫn tài liệu kỹ thuật nông/thủy sản.
-# Các loài chưa xác thực nguồn bắt buộc để trống (null) để người dùng tự điền.
+# Chỉ điền khi đã đọc tài liệu và ghi đủ nguồn (tác giả, năm, số trang/DOI hoặc số hiệu văn bản)
+# Các loài có nhiều giai đoạn có thể dùng thêm trường tùy chọn `giai_doan` (danh sách mỗi
+# giai đoạn gồm: ten, an_toan, canh_bao_thap, canh_bao_cao, nguy_hiem_duoi, nguy_hiem_tren, nguon_tham_khao).
 # =====================================================================
 nguong_loai:
   tom_the_chan_trang:
     ten: "Tôm thẻ chân trắng (Litopenaeus vannamei)"
-    an_toan: [10.0, 25.0]
-    canh_bao_thap: [5.0, 10.0]
-    canh_bao_cao: [25.0, 35.0]
-    nguy_hiem_duoi: 5.0
-    nguy_hiem_tren: 35.0
-    nguon_tham_khao: "TCVN 10257:2014 & Hướng dẫn kỹ thuật nuôi tôm nước lợ - Tổng cục Thủy sản"
-
-  tom_su:
-    ten: "Tôm sú (Penaeus monodon)"
-    an_toan: [15.0, 25.0]
-    canh_bao_thap: [10.0, 15.0]
-    canh_bao_cao: [25.0, 30.0]
-    nguy_hiem_duoi: 10.0
-    nguy_hiem_tren: 30.0
-    nguon_tham_khao: "Quy chuẩn kỹ thuật quốc gia QCVN 02-19:2014/BNNPTNT"
-
-  ca_tra:
-    ten: "Cá tra (Pangasianodon hypophthalmus)"
-    an_toan: [0.0, 2.0]
-    canh_bao_thap: null
-    canh_bao_cao: [2.0, 6.0]
-    nguy_hiem_duoi: null
-    nguy_hiem_tren: 6.0
-    nguon_tham_khao: "Viện Nghiên cứu Nuôi trồng Thủy sản II - Khuyến cáo chịu mặn cá tra ĐBSCL"
-
-  lua:
-    ten: "Lúa (giai đoạn đòng - trổ bông)"
-    an_toan: [0.0, 1.0]
-    canh_bao_thap: null
-    canh_bao_cao: [1.0, 2.0]
-    nguy_hiem_duoi: null
-    nguy_hiem_tren: 2.0
-    nguon_tham_khao: "Viện Lúa Đồng bằng sông Cửu Long (CLRRI) - Ngưỡng độ mặn nước tưới lúa"
-
-  sau_rieng:
-    ten: "Cây sầu riêng (cực kỳ nhạy cảm mặn)"
-    an_toan: [0.0, 0.5]
-    canh_bao_thap: null
-    canh_bao_cao: [0.5, 1.0]
-    nguy_hiem_duoi: null
-    nguy_hiem_tren: 1.0
-    nguon_tham_khao: "Viện Cây ăn quả miền Nam (SOFRI) - Khuyến cáo bảo vệ sầu riêng mùa hạn mặn"
-
-  cua_bien:
-    ten: "Cua biển (chưa có tài liệu chuẩn)"
     an_toan: null
     canh_bao_thap: null
     canh_bao_cao: null
     nguy_hiem_duoi: null
     nguy_hiem_tren: null
-    nguon_tham_khao: "" # ĐỂ TRỐNG: Yêu cầu người dùng điền nguồn tài liệu thực nghiệm địa phương
+    nguon_tham_khao: ""
+
+  tom_su:
+    ten: "Tôm sú (Penaeus monodon)"
+    an_toan: null
+    canh_bao_thap: null
+    canh_bao_cao: null
+    nguy_hiem_duoi: null
+    nguy_hiem_tren: null
+    nguon_tham_khao: ""
+    giai_doan: []
+
+  ca_tra:
+    ten: "Cá tra (Pangasianodon hypophthalmus)"
+    an_toan: null
+    canh_bao_thap: null
+    canh_bao_cao: null
+    nguy_hiem_duoi: null
+    nguy_hiem_tren: null
+    nguon_tham_khao: ""
+
+  lua:
+    ten: "Lúa (Oryza sativa)"
+    an_toan: null
+    canh_bao_thap: null
+    canh_bao_cao: null
+    nguy_hiem_duoi: null
+    nguy_hiem_tren: null
+    nguon_tham_khao: ""
+
+  sau_rieng:
+    ten: "Cây sầu riêng (Durio zibethinus)"
+    an_toan: null
+    canh_bao_thap: null
+    canh_bao_cao: null
+    nguy_hiem_duoi: null
+    nguy_hiem_tren: null
+    nguon_tham_khao: ""
+
+  cua_bien:
+    ten: "Cua biển (Scylla spp.)"
+    an_toan: null
+    canh_bao_thap: null
+    canh_bao_cao: null
+    nguy_hiem_duoi: null
+    nguy_hiem_tren: null
+    nguon_tham_khao: ""

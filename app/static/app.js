@@ -1011,54 +1011,69 @@ async function saveMeasurementToLog() {
 /* ==========================================================================
    TAB 2: CẢNH BÁO AN TOÀN THEO LOÀI (CÓ DỰ PHÒNG OFFLINE + CHỈNH NGƯỠNG)
    ========================================================================== */
-function evalOneSpeciesLocal(sVal, info) {
+function evalOneSpeciesLocal(sVal, info, uVal = 0) {
   const nguon = (info.nguon_tham_khao || "").trim();
-  if (!info.co_du_lieu_nguon || !nguon) {
+  const tv = "Liên hệ cán bộ khuyến nông/khuyến ngư để được tư vấn.";
+  const valStr = uVal > 0 ? `${sVal.toFixed(2)} ± ${uVal.toFixed(2)} ‰` : `${sVal.toFixed(2)} ‰`;
+  const hasRange =
+    (info.an_toan_min !== null && info.an_toan_max !== null) ||
+    Boolean(info.canh_bao_thap) ||
+    Boolean(info.canh_bao_cao) ||
+    (info.nguy_hiem_duoi !== null && info.nguy_hiem_duoi !== undefined) ||
+    (info.nguy_hiem_tren !== null && info.nguy_hiem_tren !== undefined);
+  if (!info.co_du_lieu_nguon || !nguon || !hasRange) {
     return {
       ma_loai: info.ma_loai,
       ten_loai: info.ten_hien_thi,
       trang_thai: "CHUA_CO_NGUON",
       tieu_de: "CHƯA CÓ NGUỒN THAM KHẢO",
-      loi_khuyen: `Đối tượng '${info.ten_hien_thi}' chưa có ngưỡng trích dẫn từ tài liệu kỹ thuật trong config.yaml.`,
+      loi_khuyen: `Đối tượng '${info.ten_hien_thi}' chưa có ngưỡng và nguồn trích dẫn trong config.yaml. Giá trị đo: ${valStr}. ${tv}`,
       nguon_tham_khao: "Chưa có nguồn tài liệu — yêu cầu người dùng điền vào config.yaml",
     };
   }
+  const msg = (tt, khoang) =>
+    `Trạng thái: ${tt}. Khoảng tham chiếu: ${khoang}. Giá trị đo: ${valStr}. Nguồn: ${nguon}. ${tv}`;
   if (info.nguy_hiem_duoi !== null && info.nguy_hiem_duoi !== undefined && sVal < info.nguy_hiem_duoi) {
+    const k = `< ${info.nguy_hiem_duoi} ‰`;
     return {
       ma_loai: info.ma_loai, ten_loai: info.ten_hien_thi, trang_thai: "NGUY_HIEM",
-      tieu_de: `NGUY HIỂM: Độ mặn quá thấp (< ${info.nguy_hiem_duoi} ‰)`,
-      loi_khuyen: `Độ mặn ${sVal.toFixed(1)} ‰ thấp dưới ngưỡng chịu đựng tối thiểu (${info.nguy_hiem_duoi} ‰). Cần bổ sung nước mặn pha loãng có kiểm soát.`,
+      tieu_de: `NGUY HIỂM: Dưới ngưỡng tham chiếu (${k})`,
+      loi_khuyen: msg("NGUY HIỂM (dưới ngưỡng)", k),
       nguon_tham_khao: nguon,
     };
   }
   if (info.nguy_hiem_tren !== null && info.nguy_hiem_tren !== undefined && sVal > info.nguy_hiem_tren) {
+    const k = `> ${info.nguy_hiem_tren} ‰`;
     return {
       ma_loai: info.ma_loai, ten_loai: info.ten_hien_thi, trang_thai: "NGUY_HIEM",
-      tieu_de: `NGUY HIỂM: Độ mặn quá cao (> ${info.nguy_hiem_tren} ‰)`,
-      loi_khuyen: `Độ mặn ${sVal.toFixed(1)} ‰ vượt ngưỡng nguy hiểm (> ${info.nguy_hiem_tren} ‰). Không sử dụng nguồn nước này cho ${info.ten_hien_thi}!`,
+      tieu_de: `NGUY HIỂM: Vượt ngưỡng tham chiếu (${k})`,
+      loi_khuyen: msg("NGUY HIỂM (vượt ngưỡng)", k),
       nguon_tham_khao: nguon,
     };
   }
   if (Array.isArray(info.canh_bao_thap) && sVal >= info.canh_bao_thap[0] && sVal < info.canh_bao_thap[1]) {
+    const k = `${info.canh_bao_thap[0]} – ${info.canh_bao_thap[1]} ‰`;
     return {
       ma_loai: info.ma_loai, ten_loai: info.ten_hien_thi, trang_thai: "CANH_BAO",
-      tieu_de: `CẢNH BÁO THẤP (${info.canh_bao_thap[0]} – ${info.canh_bao_thap[1]} ‰)`,
-      loi_khuyen: `Độ mặn ${sVal.toFixed(1)} ‰ nằm ở dải cận dưới. Tăng cường theo dõi sức khỏe ${info.ten_hien_thi}.`,
+      tieu_de: `CẢNH BÁO THẤP (${k})`,
+      loi_khuyen: msg("CẢNH BÁO THẤP", k),
       nguon_tham_khao: nguon,
     };
   }
   if (Array.isArray(info.canh_bao_cao) && sVal > info.canh_bao_cao[0] && sVal <= info.canh_bao_cao[1]) {
+    const k = `${info.canh_bao_cao[0]} – ${info.canh_bao_cao[1]} ‰`;
     return {
       ma_loai: info.ma_loai, ten_loai: info.ten_hien_thi, trang_thai: "CANH_BAO",
-      tieu_de: `CẢNH BÁO CAO (${info.canh_bao_cao[0]} – ${info.canh_bao_cao[1]} ‰)`,
-      loi_khuyen: `Độ mặn ${sVal.toFixed(1)} ‰ đang tiệm cận giới hạn trên. Hạn chế lấy thêm nước mặn hoặc chuẩn bị cấp ngọt.`,
+      tieu_de: `CẢNH BÁO CAO (${k})`,
+      loi_khuyen: msg("CẢNH BÁO CAO", k),
       nguon_tham_khao: nguon,
     };
   }
+  const k = `${info.an_toan_min ?? 0} – ${info.an_toan_max ?? "?"} ‰`;
   return {
     ma_loai: info.ma_loai, ten_loai: info.ten_hien_thi, trang_thai: "AN_TOAN",
-    tieu_de: `AN TOÀN: Nằm trong dải tối ưu (${info.an_toan_min ?? 0} – ${info.an_toan_max ?? "?"} ‰)`,
-    loi_khuyen: `Độ mặn ${sVal.toFixed(1)} ‰ phù hợp cho ${info.ten_hien_thi}.`,
+    tieu_de: `AN TOÀN: Nằm trong khoảng tham chiếu (${k})`,
+    loi_khuyen: msg("AN TOÀN", k),
     nguon_tham_khao: nguon,
   };
 }

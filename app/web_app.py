@@ -1277,6 +1277,27 @@ def _format_species_yaml_block(nguong_loai: dict[str, dict[str, Any]]) -> str:
             lines.append(f"    {num_key}: {float(val):g}" if val is not None else f"    {num_key}: null")
         nguon = str(info.get("nguon_tham_khao") or "").strip()
         lines.append(f"    nguon_tham_khao: {json.dumps(nguon, ensure_ascii=False)}")
+        giai_doan = info.get("giai_doan")
+        if isinstance(giai_doan, list):
+            if not giai_doan:
+                lines.append("    giai_doan: []")
+            else:
+                lines.append("    giai_doan:")
+                for gd in giai_doan:
+                    if not isinstance(gd, dict):
+                        continue
+                    lines.append(f"      - ten: {json.dumps(str(gd.get('ten', 'Giai đoạn')), ensure_ascii=False)}")
+                    for rk in ("an_toan", "canh_bao_thap", "canh_bao_cao"):
+                        rv = gd.get(rk)
+                        if isinstance(rv, (list, tuple)) and len(rv) == 2:
+                            lines.append(f"        {rk}: [{float(rv[0]):g}, {float(rv[1]):g}]")
+                        else:
+                            lines.append(f"        {rk}: null")
+                    for nk in ("nguy_hiem_duoi", "nguy_hiem_tren"):
+                        nv = gd.get(nk)
+                        lines.append(f"        {nk}: {float(nv):g}" if nv is not None else f"        {nk}: null")
+                    gd_ng = str(gd.get("nguon_tham_khao") or "").strip()
+                    lines.append(f"        nguon_tham_khao: {json.dumps(gd_ng, ensure_ascii=False)}")
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
@@ -1369,14 +1390,23 @@ async def api_config_species(request: Request) -> JSONResponse:
             return _json_err("Khoảng An toàn phải nhập đủ cả cận dưới và cận trên (hoặc để trống cả hai).")
         if at_min is not None and at_max is not None and at_min > at_max:
             return _json_err("Cận dưới dải An toàn không được lớn hơn cận trên.")
+        co_nguong = any(
+            v is not None
+            for v in (at_min, at_max, cbt_min, cbt_max, cbc_min, cbc_max, nh_duoi, nh_tren)
+        )
+        if co_nguong and not nguon:
+            return _json_err(
+                "Bắt buộc nhập đầy đủ Nguồn tài liệu tham khảo (tác giả, năm, số trang/DOI hoặc số hiệu văn bản) khi khai báo ngưỡng."
+            )
 
         text = CONFIG_PATH.read_text(encoding="utf-8")
         marker = re.search(r"(?m)^nguong_loai:\s*$", text)
         prefix = text[: marker.start()] if marker else (text.rstrip() + "\n\n")
         parsed = yaml.safe_load(text) or {}
         nguong_loai = dict(parsed.get("nguong_loai") or {})
+        cu = nguong_loai.get(ma_loai) if isinstance(nguong_loai.get(ma_loai), dict) else {}
 
-        nguong_loai[ma_loai] = {
+        entry: dict[str, Any] = {
             "ten": ten,
             "an_toan": [at_min, at_max] if (at_min is not None and at_max is not None) else None,
             "canh_bao_thap": [cbt_min, cbt_max] if (cbt_min is not None and cbt_max is not None) else None,
@@ -1385,6 +1415,9 @@ async def api_config_species(request: Request) -> JSONResponse:
             "nguy_hiem_tren": nh_tren,
             "nguon_tham_khao": nguon,
         }
+        if isinstance(cu.get("giai_doan"), list):
+            entry["giai_doan"] = cu["giai_doan"]
+        nguong_loai[ma_loai] = entry
 
         new_text = prefix + _format_species_yaml_block(nguong_loai)
         CONFIG_PATH.write_text(new_text, encoding="utf-8")
