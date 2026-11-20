@@ -30,7 +30,13 @@ htmlcov/
 
 # Local databases & temp
 *.db
+*.db-wal
+*.db-shm
 *.sqlite3
 data/*.db
+data/*.db-wal
+data/*.db-shm
+outputs/*_MO_PHONG*
+*.zip
 .DS_Store
 Thumbs.db

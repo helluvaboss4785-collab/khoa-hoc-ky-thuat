@@ -43,20 +43,22 @@
 
 ### 2.1. Yêu cầu môi trường
 - Hệ điều hành: Windows, macOS hoặc Linux.
-- Python 3.10 trở lên (khuyến nghị Python 3.11 - 3.15).
+- Python 3.10 trở lên (khuyến nghị Python 3.11; môi trường kiểm thử hiện tại dùng Python 3.11 với `.venv`).
 
 ### 2.2. Cài đặt các thư viện phụ thuộc
-Mở terminal / PowerShell tại thư mục dự án và chạy lệnh:
+Mở terminal / PowerShell tại thư mục dự án, kích hoạt môi trường ảo (nếu có) và chạy lệnh:
 ```bash
 python -m pip install -r requirements.txt
 ```
+*(Khuyến nghị tạo `.venv` trước bằng `python -m venv .venv` để không làm lẫn thư viện hệ thống.)*
 
 ### 2.3. Khởi chạy giao diện Web 2.5D
 Chạy lệnh sau từ thư mục dự án:
 ```bash
 python app/web_app.py
 ```
-Trình duyệt sẽ tự động mở tại địa chỉ: `http://127.0.0.1:8000` (giao diện 2.5D mượt mà, phản hồi thanh trượt tức thì).
+Trình duyệt sẽ tự động mở tại địa chỉ: `http://127.0.0.1:8000`.
+*(Khi cần đóng gói mã nguồn nộp bài mà bỏ qua `.venv`, `.git`, `__pycache__`, `.pytest_cache`, `*.db*`, chạy: `python scripts/dong_goi.py`.)*
 
 ---
 
@@ -73,21 +75,45 @@ Trình duyệt sẽ tự động mở tại địa chỉ: `http://127.0.0.1:8000
 - **Góc chụp**: Ống kính điện thoại hướng trực diện, vuông góc với màn hứng vạch.
 
 ### 3.3. Quy trình thu thập dữ liệu hiệu chuẩn (Calibration)
-1. Pha tối thiểu 5–8 dung dịch muối chuẩn NaCl bằng cân phân tích chính xác (khai báo độ bất định của dung dịch chuẩn nếu có trong `config.yaml`) và bình định mức:
+1. Pha tối thiểu 5–8 dung dịch muối chuẩn NaCl bằng cân phân tích chính xác (tách thành các **mẻ pha riêng biệt** gắn mã `ma_me_pha` để tránh rò rỉ lặp giữa tập huấn luyện và kiểm tra; khai báo bất định của dung dịch chuẩn tại `hieu_chuan.sai_so_dung_dich_chuan_ppt` trong `config.yaml`) và bình định mức:
    - Các mức gợi ý: $0\,‰$ (nước cất), $5\,‰$, $10\,‰$, $15\,‰$, $20\,‰$, $25\,‰$, $30\,‰$, $35\,‰$.
-2. Đo lặp lại mỗi mẫu ở nhiều mức nhiệt độ phủ hết **dải nhiệt độ ao nuôi thực tế** (nên phủ tới $\ge 35\,^\circ\text{C}$ nếu có thể, không chỉ giới hạn ở $22\text{–}28\,^\circ\text{C}$), ghi rõ nhiệt độ cả **ngăn mẫu** và **ngăn tham chiếu** (hoặc đảm bảo hai ngăn cân bằng nhiệt).
-3. Lưu ý giới hạn vật lí:
-   - Công thức chiết suất Quan–Fry (nếu dùng làm tham chiếu) chỉ có hiệu lực trong khoảng $0\text{–}30\,^\circ\text{C}$, $0\text{–}35\text{ PSU}$, bước sóng $400\text{–}700\text{ nm}$.
+2. Đo lặp lại mỗi mẫu ở nhiều mức nhiệt độ phủ hết **dải nhiệt độ ao nuôi thực tế** (nên phủ tới $\ge 35\,^\circ\text{C}$ nếu có thể, không chỉ giới hạn ở $22\text{–}28\,^\circ\text{C}$), ghi rõ nhiệt độ cả **ngăn mẫu** (`nhiet_do_C`) và **ngăn tham chiếu** (`nhiet_do_tham_chieu_C`), khóa phơi sáng/lấy nét (`khoa_ae_af = 1`) và đặt thước chuẩn để quy đổi `px_per_mm` nếu dựng đường chuẩn theo `mm`.
+3. Cấu trúc đầy đủ 13 cột của file `data/mau_hieu_chuan.csv`:
+   - Bắt buộc: `do_man_chuan_ppt`, `nhiet_do_C`, `delta_y_px`, `do_duc_tuong_doi`, `ghi_chu`, `id_thiet_bi`, `id_dien_thoai`.
+   - Tùy chọn nhưng khuyến nghị ghi đầy đủ: `nhiet_do_tham_chieu_C`, `px_per_mm`, `ma_me_pha`, `ngay_do`, `nguon_du_lieu` (ghi tường minh `THUC_TE` cho phép đo thật; thiếu cột hoặc bỏ trống sẽ bị gắn nhãn `CHUA_XAC_DINH`), `khoa_ae_af`.
+4. Lưu ý giới hạn vật lí:
+   - Công thức chiết suất Quan–Fry (tùy chọn `quang_hoc.mo_hinh_chiet_suat: "quan_fry"`, hệ số cần đối chiếu lại với bài gốc Quan & Fry, *Applied Optics*, 1995) chỉ có hiệu lực trong khoảng $0\text{–}30\,^\circ\text{C}$, $0\text{–}35\text{ PSU}$, bước sóng $400\text{–}700\text{ nm}$.
    - Nước ao/nước tự nhiên chứa nhiều ion khác ($\text{Mg}^{2+}, \text{Ca}^{2+}, \text{K}^+, \text{SO}_4^{2-}, \text{HCO}_3^-\dots$) và chất hữu cơ hòa tan nên khác với dung dịch NaCl tinh khiết; kết quả đo chỉ là **độ mặn tương đương NaCl**.
-4. Nhập số liệu vào file `data/mau_hieu_chuan.csv` (ghi rõ `nguon_du_lieu = THUC_TE`) và chạy dựng đường chuẩn tại Tab 4 của ứng dụng.
+5. Nhập số liệu thật vào file CSV theo đúng định dạng trên và chạy dựng đường chuẩn tại Tab 4 của ứng dụng (mặc định đánh giá bằng kiểm định chéo theo nhóm `ma_me_pha` khi có đủ cột mẻ pha).
 
 ---
 
-## 4. CHẠY KIỂM THỬ TỰ ĐỘNG (UNIT TESTS)
+## 4. CHẠY KIỂM THỬ TỰ ĐỘNG & ĐỘ BỀN VỮNG MÔ PHỎNG
 
-Để kiểm tra toàn diện mã nguồn (quang học, tìm tâm vạch, đo vi sai, mô phỏng Monte Carlo 100 ảnh, hiệu chuẩn & bù nhiệt, ngưỡng sinh học và API web):
+### 4.1. Kiểm thử đơn vị và tích hợp (`pytest`)
+Để kiểm tra toàn diện mã nguồn (quang học + Quan–Fry, tìm tâm vạch + 3σ outlier, đo vi sai + đa khung hình, thang `px/mm`, mô phỏng Monte Carlo 100 ảnh, hiệu chuẩn GroupKFold & bù nhiệt 2 ngăn, ngưỡng sinh học theo khoảng `[S-U, S+U]` và API web):
 ```bash
 python -m pytest tests -q
 ```
-Kết quả thực tế đã chạy ở bước P0: **60 bài kiểm thử** đều đạt (`60 passed`, 0 bỏ qua). *(Số bài kiểm thử sẽ tăng thêm khi hoàn tất các mục P1–P2.)*
+Kết quả chạy thực tế sau nâng cấp T1–T11: **79 bài kiểm thử đều đạt (`79 passed`, 0 bỏ qua)**.
+
+### 4.2. Bảng độ bền vững thuật toán trên ảnh MÔ PHỎNG (`T9`)
+> **Lưu ý:** Bảng dưới đây đo **độ bền vững của thuật toán xử lí ảnh trên dữ liệu MÔ PHỎNG** (bài toán lý tưởng hóa từ `sim/synth.py`), **KHÔNG phải độ chính xác của thiết bị phần cứng thật**.
+
+Lệnh tái lập:
+```bash
+python scripts/danh_gia_do_ben_vung.py
+```
+Kết quả thực tế khi chạy tại $S = 20{,}0\,‰$, $T = 25{,}0\,^\circ\text{C}$, $N = 10$ ảnh/mức (xuất ra `outputs/danh_gia_do_ben_vung_MO_PHONG.csv`):
+
+| Hiệu ứng mô phỏng | Mức tham số | Đạt chất lượng | Sai lệch TB (px) | ĐLC (px) | Sai lệch TB (‰) | ĐLC (‰) |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: |
+| Cơ sở (không hiệu ứng phụ) | `0.0` | 10/10 | +0.0027 | 0.0070 | +0.0005 | 0.0014 |
+| Đốm laser (`speckle_cuong_do`) | `0.05` / `0.1` / `0.2` | 10/10, 0/10, 0/10 | +0.0030 / +0.0019 / +0.0058 | 0.0204 / 0.0391 / 0.0837 | +0.0006 / +0.0004 / +0.0012 | 0.0040 / 0.0077 / 0.0165 |
+| Méo ống kính (`meo_ong_kinh_k1`) | `-0.1` / `-0.05` / `0.05` / `0.1` | 10/10 | +0.5950 / +0.3415 / -0.3885 / -0.8230 | 0.0189 / 0.0071 / 0.0056 / 0.0062 | +0.1175 / +0.0674 / -0.0767 / -0.1625 | 0.0037 / 0.0014 / 0.0011 / 0.0012 |
+| Gradient nền (`gradient_nen_y`) | `20.0` / `50.0` / `90.0` | 10/10, 0/10, 0/10 | -0.0007 / -0.0059 / -185.9863 | 0.0063 / 0.0075 / 65.0207 | -0.0001 / -0.0012 / -36.7259 | 0.0012 / 0.0015 / 12.8393 |
+| Độ cong vạch (`do_cong_vach` px) | `0.5` / `1.5` / `3.0` | 10/10 | +0.0053 / +0.0115 / +0.0213 | 0.0044 / 0.0039 / 0.0048 | +0.0011 / +0.0023 / +0.0042 | 0.0009 / 0.0008 / 0.0010 |
+| Chênh sáng hai nửa (`chenh_sang_hai_nua`) | `0.2` / `0.4` / `0.6` | 10/10 | +0.0004 / +0.0033 / +0.0023 | 0.0060 / 0.0087 / 0.0094 | +0.0001 / +0.0006 / +0.0005 | 0.0012 / 0.0017 / 0.0019 |
+| Phi tuyến cảm biến (`gamma_cam_bien`) | `0.7` / `1.4` / `2.0` | 10/10 | +0.0020 / +0.0049 / +0.0045 | 0.0089 / 0.0058 / 0.0056 | +0.0004 / +0.0010 / +0.0009 | 0.0017 / 0.0011 / 0.0011 |
+| Nén mất dữ liệu (`chat_luong_jpeg`) | `90` / `70` / `50` | 10/10 | +0.0006 / -0.0010 / -0.0062 | 0.0067 / 0.0038 / 0.0098 | +0.0001 / -0.0002 / -0.0012 | 0.0013 / 0.0007 / 0.0019 |
 
