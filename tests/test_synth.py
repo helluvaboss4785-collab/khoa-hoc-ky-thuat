@@ -7,7 +7,7 @@ import pytest
 
 from core.measure import do_delta_y_tu_anh
 from core.optics import CauHinhQuangHoc
-from sim.synth import ThamSoMoPhong, sinh_anh_hai_vach_mo_phong
+from sim.synth import ThamSoMoPhong, luu_anh_mo_phong_png, sinh_anh_hai_vach_mo_phong
 
 
 CFG = CauHinhQuangHoc.tu_yaml()
@@ -165,3 +165,55 @@ def test_do_lap_lai_monte_carlo_100_anh():
 
     assert rmse < 0.05, f"RMSE {rmse:.4f} px vượt quá 0.05 px"
     assert max_err < 0.10, f"Sai số cực đại {max_err:.4f} px vượt quá 0.10 px"
+
+
+def test_cac_hieu_ung_nhieu_thuc_te_mac_dinh_tat_va_hoat_dong():
+    """T9: Tham số mô phỏng mới mặc định tắt; khi bật sẽ biến đổi ảnh hợp lệ."""
+    p_base = ThamSoMoPhong(S_ppt=15.0, T_C=25.0, seed=10)
+    assert p_base.speckle_cuong_do == 0.0
+    assert p_base.meo_ong_kinh_k1 == 0.0
+    assert p_base.gradient_nen_y == 0.0
+    assert p_base.do_cong_vach == 0.0
+    assert p_base.chenh_sang_hai_nua == 0.0
+    assert p_base.gamma_cam_bien == 1.0
+    assert p_base.chat_luong_jpeg is None
+
+    img_base = sinh_anh_hai_vach_mo_phong(p_base, cfg=CFG).anh
+    hieu_ung = [
+        ThamSoMoPhong(S_ppt=15.0, T_C=25.0, seed=10, speckle_cuong_do=0.15),
+        ThamSoMoPhong(S_ppt=15.0, T_C=25.0, seed=10, meo_ong_kinh_k1=0.08),
+        ThamSoMoPhong(S_ppt=15.0, T_C=25.0, seed=10, gradient_nen_y=40.0),
+        ThamSoMoPhong(S_ppt=15.0, T_C=25.0, seed=10, do_cong_vach=1.5),
+        ThamSoMoPhong(S_ppt=15.0, T_C=25.0, seed=10, chenh_sang_hai_nua=0.4),
+        ThamSoMoPhong(S_ppt=15.0, T_C=25.0, seed=10, gamma_cam_bien=1.6),
+        ThamSoMoPhong(S_ppt=15.0, T_C=25.0, seed=10, chat_luong_jpeg=60),
+    ]
+    for params in hieu_ung:
+        mp = sinh_anh_hai_vach_mo_phong(params, cfg=CFG)
+        assert mp.anh.shape == img_base.shape
+        assert not np.array_equal(mp.anh, img_base)
+
+
+def test_luu_anh_mo_phong_mac_dinh_watermark_va_json(tmp_path):
+    """T9: Lưu ảnh mô phỏng mặc định bật watermark và luôn ghi file .json {"simulated": true}."""
+    import json
+
+    p = ThamSoMoPhong(S_ppt=12.0, T_C=25.0, seed=3)
+    mp = sinh_anh_hai_vach_mo_phong(p, cfg=CFG, gan_watermark=False)
+    assert mp.metadata["da_gan_watermark"] is False
+
+    out_png = tmp_path / "mau_mo_phong.png"
+    luu_anh_mo_phong_png(mp, out_png)
+    assert out_png.exists()
+
+    json_path = out_png.with_suffix(".json")
+    assert json_path.exists()
+    meta = json.loads(json_path.read_text(encoding="utf-8"))
+    assert meta["simulated"] is True
+    assert meta["NGUON"] == "SIMULATED"
+    assert meta["da_gan_watermark"] is True
+
+    # Kiểm tra ảnh đã lưu thực sự có pixel watermark ở vùng góc dưới khác ảnh gốc không watermark
+    import cv2
+    img_saved = cv2.imread(str(out_png), cv2.IMREAD_GRAYSCALE)
+    assert not np.array_equal(img_saved[-30:, :220], mp.anh[-30:, :220])

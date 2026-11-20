@@ -20,6 +20,7 @@ Vật lí & Mô hình mô phỏng:
 """
 from __future__ import annotations
 
+import json
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -57,6 +58,15 @@ class ThamSoMoPhong:
     cho_phep_bao_hoa: bool = False         # Cố tình gây cháy sáng bão hòa tại 255
     seed: int | None = 42                  # Seed ngẫu nhiên để tái lập kết quả
 
+    # Hiệu ứng quang học / cảm biến nâng cao (T9 — mặc định TẮT để giữ nguyên test cơ sở)
+    speckle_cuong_do: float = 0.0          # Đốm laser nhân tính tương quan không gian (0 = tắt)
+    meo_ong_kinh_k1: float = 0.0           # Méo xuyên tâm ống kính bậc 1 k1 (0 = tắt)
+    gradient_nen_y: float = 0.0            # Gradient ánh sáng nền theo trục y (mức xám, 0 = tắt)
+    do_cong_vach: float = 0.0              # Độ cong parabol của vạch tại hai rìa ảnh (px, 0 = tắt)
+    chenh_sang_hai_nua: float = 0.0        # Độ suy giảm biên độ nửa trái vạch (0..0.95, 0 = tắt)
+    gamma_cam_bien: float = 1.0            # Đáp ứng phi tuyến cảm biến I^(1/gamma) (1.0 = tuyến tính)
+    chat_luong_jpeg: int | None = None     # Chất lượng nén JPEG (1..100; None = không nén mất dữ liệu)
+
 
 @dataclass(frozen=True)
 class AnhMoPhong:
@@ -69,6 +79,22 @@ class AnhMoPhong:
     x_ref: float                           # Cột tham chiếu trung tâm
     tham_so: ThamSoMoPhong                 # Tham số đầu vào đã dùng
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+def _ve_watermark_mo_phong(img: np.ndarray) -> np.ndarray:
+    """Đóng nhãn SIMULATED rõ ràng ở góc dưới ảnh."""
+    h = img.shape[0]
+    cv2.putText(
+        img,
+        "SIMULATED - DU LIEU MO PHONG",
+        (10, max(16, h - 12)),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.40,
+        160,
+        1,
+        cv2.LINE_AA,
+    )
+    return img
 
 
 def sinh_anh_hai_vach_mo_phong(
@@ -112,40 +138,60 @@ def sinh_anh_hai_vach_mo_phong(
     sigma_mau = fwhm_mau / (2.0 * math.sqrt(2.0 * math.log(2.0)))
     amp_mau = p.cuong_do_dinh_goc * math.exp(-1.8 * do_duc_clip)
 
-    # 3. Tạo tín hiệu lý thuyết
+    # 3. Tạo tín hiệu lý thuyết (kèm gradient nền, độ cong, chênh sáng hai nửa nếu bật)
     img_ideal = np.full((h, w), p.cuong_do_nen, dtype=float)
     y_coords = np.arange(h)[:, None]  # shape (h, 1)
+    if p.gradient_nen_y != 0.0:
+        img_ideal += float(p.gradient_nen_y) * (y_coords / max(h - 1, 1))
 
     nua_khe = p.be_day_vach_ngan_px // 2
+    nua_rong = max(w / 2.0, 1.0)
+    x_mid_tc = (x_ref - nua_khe) / 2.0
+    x_mid_m = (x_ref + nua_khe + w) / 2.0
+    he_so_giam_nua = max(0.05, 1.0 - float(np.clip(p.chenh_sang_hai_nua, 0.0, 0.95)))
 
     for col in range(w):
         dx = col - x_ref
-        mu_tc_col = y_tc_ground_truth + p.do_doc_vach * dx
-        mu_mau_col = y_mau_ground_truth + p.do_doc_vach * dx
+        cong = float(p.do_cong_vach) * ((dx / nua_rong) ** 2) if p.do_cong_vach != 0.0 else 0.0
+        mu_tc_col = y_tc_ground_truth + p.do_doc_vach * dx + cong
+        mu_mau_col = y_mau_ground_truth + p.do_doc_vach * dx + cong
 
         if p.bo_tri == "ngang":
-            # Bố trí lăng kính hai ngăn cạnh nhau theo phương ngang:
             # Ngăn tham chiếu bên trái, ngăn mẫu bên phải
             if col < (x_ref - nua_khe):
-                # Chỉ có vạch tham chiếu
-                line_tc = amp_tc * np.exp(-((y_coords - mu_tc_col) ** 2) / (2.0 * sigma_tc**2))
+                ty_le_tc = he_so_giam_nua if (p.chenh_sang_hai_nua > 0.0 and col < x_mid_tc) else 1.0
+                line_tc = (amp_tc * ty_le_tc) * np.exp(-((y_coords - mu_tc_col) ** 2) / (2.0 * sigma_tc**2))
                 img_ideal[:, col] += line_tc.squeeze()
             elif col > (x_ref + nua_khe):
-                # Chỉ có vạch mẫu
-                line_mau = amp_mau * np.exp(-((y_coords - mu_mau_col) ** 2) / (2.0 * sigma_mau**2))
+                ty_le_m = he_so_giam_nua if (p.chenh_sang_hai_nua > 0.0 and col < x_mid_m) else 1.0
+                line_mau = (amp_mau * ty_le_m) * np.exp(-((y_coords - mu_mau_col) ** 2) / (2.0 * sigma_mau**2))
                 if do_duc_clip > 0.05:
                     sigma_halo = sigma_mau * 4.0
-                    amp_halo = amp_tc * 0.25 * do_duc_clip
+                    amp_halo = amp_tc * 0.25 * do_duc_clip * ty_le_m
                     line_mau += amp_halo * np.exp(-((y_coords - mu_mau_col) ** 2) / (2.0 * sigma_halo**2))
                 img_ideal[:, col] += line_mau.squeeze()
-            else:
-                # Khe tối vách ngăn giữa hai ngăn
-                pass
         else:
-            # Bố trí vạch trên - vạch dưới
-            line_tc = amp_tc * np.exp(-((y_coords - mu_tc_col) ** 2) / (2.0 * sigma_tc**2))
-            line_mau = amp_mau * np.exp(-((y_coords - mu_mau_col) ** 2) / (2.0 * sigma_mau**2))
+            ty_le = he_so_giam_nua if (p.chenh_sang_hai_nua > 0.0 and col < x_ref) else 1.0
+            line_tc = (amp_tc * ty_le) * np.exp(-((y_coords - mu_tc_col) ** 2) / (2.0 * sigma_tc**2))
+            line_mau = (amp_mau * ty_le) * np.exp(-((y_coords - mu_mau_col) ** 2) / (2.0 * sigma_mau**2))
             img_ideal[:, col] += (line_tc + line_mau).squeeze()
+
+    # 3b. Đốm laser (speckle tương quan không gian, nhiễu nhân tính) & méo ống kính bậc k1
+    if p.speckle_cuong_do > 0.0:
+        sp_raw = rng.normal(0.0, 1.0, size=(h, w))
+        sp_corr = cv2.GaussianBlur(sp_raw, (5, 5), 1.2)
+        sp_std = max(float(np.std(sp_corr)), 1e-6)
+        img_ideal = img_ideal * np.clip(1.0 + float(p.speckle_cuong_do) * (sp_corr / sp_std), 0.0, None)
+
+    if p.meo_ong_kinh_k1 != 0.0:
+        cx = (w - 1) / 2.0
+        cy = (h - 1) / 2.0
+        scale_r = max(math.hypot(cx, cy), 1.0)
+        gx, gy = np.meshgrid(np.arange(w, dtype=np.float32), np.arange(h, dtype=np.float32))
+        r2 = ((gx - cx) / scale_r) ** 2 + ((gy - cy) / scale_r) ** 2
+        map_x = (cx + (gx - cx) * (1.0 - float(p.meo_ong_kinh_k1) * r2)).astype(np.float32)
+        map_y = (cy + (gy - cy) * (1.0 - float(p.meo_ong_kinh_k1) * r2)).astype(np.float32)
+        img_ideal = cv2.remap(img_ideal, map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
 
     # 4. Thêm nhiễu vật lí thực tế
     img_noisy = img_ideal.copy()
@@ -159,38 +205,49 @@ def sinh_anh_hai_vach_mo_phong(
         read_noise = rng.normal(0, p.sigma_nhieu_doc, size=(h, w))
         img_noisy += read_noise
 
-    # 5. Bão hòa (clipping) và lượng tử hóa
+    # 5. Bão hòa (clipping), đáp ứng phi tuyến (gamma) và lượng tử hóa
     if p.cho_phep_bao_hoa:
         img_noisy = np.clip(img_noisy * 1.6, 0, 255)
     else:
         img_noisy = np.clip(img_noisy, 0, 255)
 
-    img_uint8 = np.round(img_noisy).astype(np.uint8)
+    if p.gamma_cam_bien != 1.0 and p.gamma_cam_bien > 0.0:
+        img_noisy = 255.0 * ((np.clip(img_noisy, 0.0, 255.0) / 255.0) ** (1.0 / float(p.gamma_cam_bien)))
+
+    img_uint8 = np.round(np.clip(img_noisy, 0.0, 255.0)).astype(np.uint8)
+
+    if p.chat_luong_jpeg is not None:
+        q = int(np.clip(p.chat_luong_jpeg, 1, 100))
+        ok_jpg, buf_jpg = cv2.imencode(".jpg", img_uint8, [cv2.IMWRITE_JPEG_QUALITY, q])
+        if ok_jpg:
+            decoded = cv2.imdecode(buf_jpg, cv2.IMREAD_GRAYSCALE)
+            if decoded is not None:
+                img_uint8 = decoded
 
     # 6. Gắn watermark rõ ràng nhưng ở góc dưới ảnh để không che mất đường quang học
     if gan_watermark:
-        cv2.putText(
-            img_uint8,
-            "SIMULATED - DU LIEU MO PHONG",
-            (10, h - 12),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.40,
-            160,
-            1,
-            cv2.LINE_AA,
-        )
+        _ve_watermark_mo_phong(img_uint8)
 
     metadata = {
         "NGUON": "SIMULATED",
         "CANH_BAO": "Dữ liệu mô phỏng vật lí, KHÔNG phải số đo thực tế",
+        "da_gan_watermark": bool(gan_watermark),
         "do_man_S_ppt": p.S_ppt,
         "nhiet_do_T_C": p.T_C,
+        "nhiet_do_tham_chieu_C": p.T_tham_chieu_C,
         "delta_y_ly_thuyet_px": delta_y_snell,
         "y_tc_ly_thuyet": y_tc_ground_truth,
         "y_mau_ly_thuyet": y_mau_ground_truth,
         "x_ref": x_ref,
         "do_duc": p.do_duc,
         "drift_chung_px": p.drift_chung_px,
+        "speckle_cuong_do": p.speckle_cuong_do,
+        "meo_ong_kinh_k1": p.meo_ong_kinh_k1,
+        "gradient_nen_y": p.gradient_nen_y,
+        "do_cong_vach": p.do_cong_vach,
+        "chenh_sang_hai_nua": p.chenh_sang_hai_nua,
+        "gamma_cam_bien": p.gamma_cam_bien,
+        "chat_luong_jpeg": p.chat_luong_jpeg,
     }
 
     return AnhMoPhong(
@@ -204,11 +261,26 @@ def sinh_anh_hai_vach_mo_phong(
     )
 
 
-def luu_anh_mo_phong_png(anh_mp: AnhMoPhong, duong_dan: str | Path) -> None:
-    """Lưu ảnh mô phỏng ra đĩa với nhãn cảnh báo rõ ràng."""
+def luu_anh_mo_phong_png(
+    anh_mp: AnhMoPhong,
+    duong_dan: str | Path,
+    gan_watermark: bool = True,
+) -> Path:
+    """Lưu ảnh mô phỏng ra đĩa: mặc định bật watermark và luôn ghi file .json cạnh ảnh."""
     p_path = Path(duong_dan)
     p_path.parent.mkdir(parents=True, exist_ok=True)
-    cv2.imwrite(str(p_path), anh_mp.anh)
+    img_out = anh_mp.anh.copy()
+    da_wm = bool(anh_mp.metadata.get("da_gan_watermark", False))
+    if gan_watermark and not da_wm:
+        _ve_watermark_mo_phong(img_out)
+        da_wm = True
+    cv2.imwrite(str(p_path), img_out)
+    meta_out = {"simulated": True, **anh_mp.metadata, "da_gan_watermark": da_wm}
+    p_path.with_suffix(".json").write_text(
+        json.dumps(meta_out, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return p_path
 
 
 def sinh_du_lieu_hieu_chuan_mo_phong(
