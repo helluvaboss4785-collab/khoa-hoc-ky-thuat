@@ -677,7 +677,7 @@ def dung_duong_chuan(
 
 
 # ---------------------------------------------------------------------------
-# Đồ thị (dùng matplotlib.figure.Figure để chạy được cả trong Streamlit lẫn pytest)
+# Đồ thị (dùng matplotlib.figure.Figure để chạy được cả trong web backend lẫn pytest)
 # ---------------------------------------------------------------------------
 def ve_duong_chuan(bc: BaoCaoHieuChuan):  # -> matplotlib.figure.Figure
     """Đồ thị Δy theo S: điểm đo (train/test) và đường chuẩn tại từng mức nhiệt độ."""

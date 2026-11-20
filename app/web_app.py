@@ -1,4 +1,4 @@
-"""Ứng dụng Web 2.5D độc lập (không dùng Streamlit): Hệ thống đo độ mặn khúc xạ laser hai ngăn vi sai.
+"""Ứng dụng Web 2.5D: Hệ thống đo độ mặn khúc xạ laser hai ngăn vi sai.
 
 Cung cấp máy chủ ASGI (Starlette + Uvicorn) phục vụ giao diện HTML5/CSS3/JS 2.5D
 và kết nối trực tiếp tới các mô-đun khoa học `core/` và `sim/`.
@@ -27,10 +27,13 @@ import pandas as pd
 import uvicorn
 import yaml
 from starlette.applications import Starlette
+from starlette.middleware import Middleware
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 THU_MUC_GOC = Path(__file__).resolve().parents[1]
 if str(THU_MUC_GOC) not in sys.path:
@@ -98,8 +101,67 @@ def _json_err(message: str, status_code: int = 400) -> JSONResponse:
     return JSONResponse({"error": message}, status_code=status_code)
 
 
+_CONFIG_CACHE: dict[str, Any] = {
+    "sig": None,
+    "optics": None,
+    "species": None,
+    "calib": None,
+    "species_serialized": None,
+}
+
+
+def _config_file_sig() -> tuple[int, int] | None:
+    try:
+        st = CONFIG_PATH.stat()
+        return (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return None
+
+
+def invalidate_config_cache() -> None:
+    _CONFIG_CACHE["sig"] = None
+    _CONFIG_CACHE["optics"] = None
+    _CONFIG_CACHE["species"] = None
+    _CONFIG_CACHE["calib"] = None
+    _CONFIG_CACHE["species_serialized"] = None
+
+
+def _ensure_config_cache() -> None:
+    sig = _config_file_sig()
+    if sig is not None and _CONFIG_CACHE["sig"] == sig and _CONFIG_CACHE["optics"] is not None:
+        return
+    cfg_opt = op.CauHinhQuangHoc.tu_yaml(CONFIG_PATH)
+    ds_loai = th.doc_danh_sach_loai(CONFIG_PATH)
+    cfg_cal = cal.CauHinhHieuChuan.tu_yaml(CONFIG_PATH)
+    _CONFIG_CACHE["sig"] = sig
+    _CONFIG_CACHE["optics"] = cfg_opt
+    _CONFIG_CACHE["species"] = ds_loai
+    _CONFIG_CACHE["calib"] = cfg_cal
+    _CONFIG_CACHE["species_serialized"] = None
+
+
 def load_config() -> op.CauHinhQuangHoc:
-    return op.CauHinhQuangHoc.tu_yaml(CONFIG_PATH)
+    _ensure_config_cache()
+    return _CONFIG_CACHE["optics"]
+
+
+def load_species_map() -> dict[str, th.ThongTinLoai]:
+    _ensure_config_cache()
+    return _CONFIG_CACHE["species"]
+
+
+def load_calib_config() -> cal.CauHinhHieuChuan:
+    _ensure_config_cache()
+    return _CONFIG_CACHE["calib"]
+
+
+def load_serialized_species() -> list[dict[str, Any]]:
+    _ensure_config_cache()
+    cached = _CONFIG_CACHE["species_serialized"]
+    if cached is None:
+        cached = [_serialize_species(v) for v in _CONFIG_CACHE["species"].values()]
+        _CONFIG_CACHE["species_serialized"] = cached
+    return cached
 
 
 def load_initial_model() -> cal.MoHinhHieuChuan:
@@ -108,7 +170,7 @@ def load_initial_model() -> cal.MoHinhHieuChuan:
     if HE_SO_MP_PATH.exists():
         return cal.MoHinhHieuChuan.doc_json(HE_SO_MP_PATH)
     df_mp = sinh_du_lieu_hieu_chuan_mo_phong(cfg=load_config(), seed=0)
-    bc = cal.dung_duong_chuan(df_mp, cal.CauHinhHieuChuan.tu_yaml(CONFIG_PATH))
+    bc = cal.dung_duong_chuan(df_mp, load_calib_config())
     OUTPUTS_DIR.mkdir(exist_ok=True)
     bc.mo_hinh.luu_json(HE_SO_MP_PATH)
     return bc.mo_hinh
@@ -204,9 +266,17 @@ def _serialize_model(mh: cal.MoHinhHieuChuan) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Cơ sở dữ liệu SQLite Nhật kí đo
 # ---------------------------------------------------------------------------
-def khoi_tao_db() -> None:
+_DB_INIT_PATH: Path | None = None
+
+
+def khoi_tao_db(force: bool = False) -> None:
+    global _DB_INIT_PATH
+    if not force and _DB_INIT_PATH == DB_PATH and DB_PATH.exists():
+        return
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS nhat_ki (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -227,6 +297,26 @@ def khoi_tao_db() -> None:
         cols = {row[1] for row in conn.execute("PRAGMA table_info(nhat_ki)").fetchall()}
         if "ho_so" not in cols:
             conn.execute("ALTER TABLE nhat_ki ADD COLUMN ho_so TEXT DEFAULT 'mac_dinh'")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_nhat_ki_ho_so ON nhat_ki(ho_so)")
+    _DB_INIT_PATH = DB_PATH
+
+
+def _tom_tat_nhat_ki_nhanh(ho_so: str) -> tuple[int, list[str]]:
+    """Đếm số bản ghi và lấy danh sách vị trí theo hồ sơ trực tiếp bằng SQL (không tải Pandas)."""
+    khoi_tao_db()
+    hs = _clean_ho_so(ho_so)
+    with sqlite3.connect(DB_PATH) as conn:
+        row_cnt = conn.execute(
+            "SELECT COUNT(*) FROM nhat_ki WHERE COALESCE(NULLIF(TRIM(ho_so), ''), 'mac_dinh') = ?",
+            (hs,),
+        ).fetchone()
+        loc_rows = conn.execute(
+            "SELECT DISTINCT vi_tri FROM nhat_ki "
+            "WHERE COALESCE(NULLIF(TRIM(ho_so), ''), 'mac_dinh') = ? "
+            "AND vi_tri IS NOT NULL AND TRIM(vi_tri) != '' ORDER BY vi_tri",
+            (hs,),
+        ).fetchall()
+    return int(row_cnt[0] if row_cnt else 0), [str(r[0]) for r in loc_rows]
 
 
 def luu_nhat_ki(
@@ -328,30 +418,44 @@ def xoa_nhat_ki_theo_id(row_id: int, ho_so: str | None = None) -> int:
 
 
 def nap_nhat_ki_mau_mo_phong(mh: cal.MoHinhHieuChuan, ho_so: str = "mac_dinh") -> int:
+    khoi_tao_db()
     rng = np.random.default_rng(2026)
     now = datetime.now()
+    hs = _clean_ho_so(ho_so)
     cac_muc_s = [12.5, 13.2, 14.8, 16.0, 17.5, 19.2, 21.0, 23.5, 20.4, 18.0]
+    rows_to_insert = []
     for idx, s_val in enumerate(cac_muc_s):
         tg = (now - timedelta(hours=(len(cac_muc_s) - idx) * 6)).strftime("%Y-%m-%d %H:%M:%S")
         t_val = float(np.round(25.0 + rng.normal(0, 1.2), 1))
         dy_val = float(mh.du_doan_delta_y(s_val, t_val)[0]) + float(rng.normal(0, 0.06))
         u_val = float(np.round(0.18 + rng.uniform(0, 0.08), 2))
         duc_val = float(np.round(rng.uniform(0.05, 0.35), 2))
-        luu_nhat_ki(
-            vi_tri="Ao nuôi tôm số 1 (Mẫu thử)",
-            loai_nuoi="Tôm thẻ chân trắng (Litopenaeus vannamei)",
-            delta_y_px=round(dy_val, 2),
-            do_man_ppt=round(s_val, 2),
-            bat_dinh_U_ppt=u_val,
-            nhiet_do_C=t_val,
-            do_duc=duc_val,
-            chat_luong_hop_le=True,
-            nguon_du_lieu="MÔ PHỎNG",
-            ghi_chu=f"Quan trắc định kì lần {idx + 1} (Dữ liệu mô phỏng)",
-            thoi_gian_tuy_chinh=tg,
-            ho_so=ho_so,
+        rows_to_insert.append((
+            tg,
+            "Ao nuôi tôm số 1 (Mẫu thử)",
+            "Tôm thẻ chân trắng (Litopenaeus vannamei)",
+            round(dy_val, 2),
+            round(s_val, 2),
+            u_val,
+            t_val,
+            duc_val,
+            1,
+            "MÔ PHỎNG",
+            f"Quan trắc định kì lần {idx + 1} (Dữ liệu mô phỏng)",
+            hs,
+        ))
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.executemany(
+            """
+            INSERT INTO nhat_ki (
+                thoi_gian, vi_tri, loai_nuoi, delta_y_px, do_man_ppt,
+                bat_dinh_U_ppt, nhiet_do_C, do_duc, chat_luong_hop_le,
+                nguon_du_lieu, ghi_chu, ho_so
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            rows_to_insert,
         )
-    return len(cac_muc_s)
+    return len(rows_to_insert)
 
 
 # ---------------------------------------------------------------------------
@@ -452,10 +556,27 @@ def _decode_base64_image(b64_str: str) -> np.ndarray:
     return img
 
 
-def _encode_png_b64(img_bgr: np.ndarray) -> str:
-    ok, buf = cv2.imencode(".png", img_bgr)
+def _encode_preview_b64(img_bgr: np.ndarray, max_width: int = 960) -> str:
+    """Mã hóa ảnh đánh dấu để hiển thị gọn nhẹ trên web/di động (WebP ~25x nhỏ hơn PNG).
+
+    Chỉ thu gọn chiều ngang cho bản xem trước khi ảnh gốc quá lớn (> max_width);
+    không ảnh hưởng tới ảnh gốc dùng để đo tâm vạch Δy.
+    """
+    h, w = img_bgr.shape[:2]
+    preview = img_bgr
+    if w > max_width:
+        scale = max_width / float(w)
+        preview = cv2.resize(
+            img_bgr,
+            (max_width, max(1, int(round(h * scale)))),
+            interpolation=cv2.INTER_AREA,
+        )
+    ok, buf = cv2.imencode(".webp", preview, [cv2.IMWRITE_WEBP_QUALITY, 86])
+    if ok:
+        return "data:image/webp;base64," + base64.b64encode(buf.tobytes()).decode("ascii")
+    ok, buf = cv2.imencode(".png", preview, [cv2.IMWRITE_PNG_COMPRESSION, 6])
     if not ok:
-        raise ValueError("Không mã hóa được ảnh kết quả sang PNG.")
+        raise ValueError("Không mã hóa được ảnh kết quả.")
     return "data:image/png;base64," + base64.b64encode(buf.tobytes()).decode("ascii")
 
 
@@ -469,25 +590,31 @@ def _extract_profile_data(anh_bgr: np.ndarray, kq: KetQuaDoDeltaY) -> dict[str, 
     if kq.vach_mau.danh_sach_x:
         col_m = int(np.clip(round(float(np.median(kq.vach_mau.danh_sach_x))), 0, w - 1))
 
+    # Nếu ảnh chụp điện thoại rất cao (>800px), lấy mẫu đều cho đồ thị mặt cắt để JSON nhỏ gọn
+    stride_y = max(1, h // 600) if h > 800 else 1
+    y_coords = list(range(0, h, stride_y))
+    prof_tc = anh_xam[::stride_y, col_tc].tolist()
+    prof_mau = anh_xam[::stride_y, col_m].tolist()
+
     return {
         "height": h,
         "width": w,
         "col_tc": col_tc,
         "col_mau": col_m,
-        "y_coords": list(range(h)),
-        "prof_tc": anh_xam[:, col_tc].astype(float).tolist(),
-        "prof_mau": anh_xam[:, col_m].astype(float).tolist(),
-        "y_tam_tc": kq.vach_tham_chieu.y_tam,
-        "y_tam_mau": kq.vach_mau.y_tam,
-        "x_ref": kq.x_ref,
-        "x_tc": kq.vach_tham_chieu.danh_sach_x,
-        "y_tc": kq.vach_tham_chieu.danh_sach_y,
-        "x_mau": kq.vach_mau.danh_sach_x,
-        "y_mau": kq.vach_mau.danh_sach_y,
-        "do_doc_tc": kq.vach_tham_chieu.do_doc_a,
-        "he_so_b_tc": kq.vach_tham_chieu.he_so_b,
-        "do_doc_mau": kq.vach_mau.do_doc_a,
-        "he_so_b_mau": kq.vach_mau.he_so_b,
+        "y_coords": y_coords,
+        "prof_tc": prof_tc,
+        "prof_mau": prof_mau,
+        "y_tam_tc": round(float(kq.vach_tham_chieu.y_tam), 4),
+        "y_tam_mau": round(float(kq.vach_mau.y_tam), 4),
+        "x_ref": round(float(kq.x_ref), 2),
+        "x_tc": [round(float(v), 1) for v in kq.vach_tham_chieu.danh_sach_x],
+        "y_tc": [round(float(v), 2) for v in kq.vach_tham_chieu.danh_sach_y],
+        "x_mau": [round(float(v), 1) for v in kq.vach_mau.danh_sach_x],
+        "y_mau": [round(float(v), 2) for v in kq.vach_mau.danh_sach_y],
+        "do_doc_tc": float(kq.vach_tham_chieu.do_doc_a),
+        "he_so_b_tc": float(kq.vach_tham_chieu.he_so_b),
+        "do_doc_mau": float(kq.vach_mau.do_doc_a),
+        "he_so_b_mau": float(kq.vach_mau.he_so_b),
     }
 
 
@@ -534,8 +661,7 @@ async def api_bootstrap(request: Request) -> JSONResponse:
     ho_so = _req_ho_so(request)
     cfg = load_config()
     mh: cal.MoHinhHieuChuan = get_model_for_profile(ho_so)
-    ds_loai = th.doc_danh_sach_loai(CONFIG_PATH)
-    df_log = doc_lich_su_df(ho_so=ho_so)
+    so_ban_ghi, all_locations = _tom_tat_nhat_ki_nhanh(ho_so)
     try:
         sens_default = op.pixel_moi_phan_nghin(15.0, cfg.T_tham_chieu_C, cfg)
     except Exception:
@@ -544,6 +670,7 @@ async def api_bootstrap(request: Request) -> JSONResponse:
     return _json_ok({
         "ho_so_hien_tai": ho_so,
         "all_profiles": lay_danh_sach_ho_so(),
+        "all_locations": all_locations,
         "mo_hinh": _serialize_model(mh),
         "quang_hoc": {
             "A_do": cfg.A_do,
@@ -557,8 +684,8 @@ async def api_bootstrap(request: Request) -> JSONResponse:
             "lambda_nm": 650,
             "do_nhay_mac_dinh": sens_default,
         },
-        "danh_sach_loai": [_serialize_species(v) for v in ds_loai.values()],
-        "so_ban_ghi_nhat_ki": len(df_log),
+        "danh_sach_loai": load_serialized_species(),
+        "so_ban_ghi_nhat_ki": so_ban_ghi,
         "han_che_nacl": cal.HAN_CHE_NACL,
         "nhan_chua_hieu_chuan": cal.NHAN_CHUA_HIEU_CHUAN,
     })
@@ -627,12 +754,13 @@ async def api_measure(request: Request) -> JSONResponse:
             if isinstance(rmau, (list, tuple)) and len(rmau) == 4:
                 roi_mau_tuple = tuple(int(v) for v in rmau)
 
+        buoc_cot = max(2, int(anh_input.shape[1] // 250)) if anh_input.shape[1] > 600 else 2
         kq_do = do_delta_y_tu_anh(
             anh_input,
             roi_tham_chieu=roi_tc_tuple,
             roi_mau=roi_mau_tuple,
             phuong_phap=phuong_phap,
-            buoc_nhay_cot=2,
+            buoc_nhay_cot=buoc_cot,
             tao_anh_ve=True,
         )
 
@@ -664,14 +792,14 @@ async def api_measure(request: Request) -> JSONResponse:
             except Exception as ex_man:
                 error_man = str(ex_man)
 
-        ds_loai = th.doc_danh_sach_loai(CONFIG_PATH)
-        ma_loai = str(body.get("ma_loai", next(iter(ds_loai.keys()), "")))
+        ds_loai = load_species_map()
+        ma_loai = str(body.get("ma_loai") or "").strip() or next(iter(ds_loai.keys()), "")
         danh_gia_loai = None
         if kq_man_dict is not None and ma_loai in ds_loai:
             danh_gia_loai = _evaluate_species_detail(kq_man_dict["S_ppt"], ds_loai[ma_loai])
 
         cq = kq_do.chat_luong
-        anh_b64 = _encode_png_b64(kq_do.anh_danh_dau if kq_do.anh_danh_dau is not None else anh_input)
+        anh_b64 = _encode_preview_b64(kq_do.anh_danh_dau if kq_do.anh_danh_dau is not None else anh_input)
         h_img, w_img = anh_input.shape[:2]
 
         return _json_ok({
@@ -722,18 +850,20 @@ async def api_species_eval(request: Request) -> JSONResponse:
     try:
         body = await request.json()
         s_ppt = float(body.get("S_ppt", 15.0))
-        ds_loai = th.doc_danh_sach_loai(CONFIG_PATH)
+        ds_loai = load_species_map()
         if not ds_loai:
             return _json_err("Không tìm thấy danh mục loài trong config.yaml.", 404)
-        ma_loai = str(body.get("ma_loai", next(iter(ds_loai.keys()))))
+        ma_loai = str(body.get("ma_loai") or "").strip() or next(iter(ds_loai.keys()))
         if ma_loai not in ds_loai:
             return _json_err(f"Không tìm thấy loài '{ma_loai}'.", 404)
 
         chi_tiet = _evaluate_species_detail(s_ppt, ds_loai[ma_loai])
+        bang_nguong = load_serialized_species()
+        ser_by_code = {item["ma_loai"]: item for item in bang_nguong}
         ma_tran = []
         for k, loai_obj in ds_loai.items():
             dg_k = th.danh_gia_do_man_loai(s_ppt, loai_obj)
-            ser = _serialize_species(loai_obj)
+            ser = ser_by_code[k]
             ma_tran.append({
                 "ma_loai": k,
                 "ten_loai": loai_obj.ten_hien_thi,
@@ -747,7 +877,7 @@ async def api_species_eval(request: Request) -> JSONResponse:
             "S_ppt": s_ppt,
             "chi_tiet": chi_tiet,
             "ma_tran": ma_tran,
-            "bang_nguong": [_serialize_species(v) for v in ds_loai.values()],
+            "bang_nguong": bang_nguong,
         })
     except Exception as exc:
         return _json_err(f"Lỗi đánh giá loài: {exc}")
@@ -759,7 +889,13 @@ async def api_logs_list(request: Request) -> JSONResponse:
     nguon = request.query_params.get("nguon")
     vi_tri = request.query_params.get("vi_tri")
     df_all = doc_lich_su_df(ho_so=ho_so)
-    df = doc_lich_su_df(loai=loai, nguon=nguon, vi_tri=vi_tri, ho_so=ho_so)
+    df = df_all
+    if loai and loai != "ALL":
+        df = df[df["loai_nuoi"] == loai]
+    if nguon and nguon != "ALL":
+        df = df[df["nguon_du_lieu"] == nguon]
+    if vi_tri and vi_tri != "ALL":
+        df = df[df["vi_tri"] == vi_tri]
 
     summary = {
         "tong_so": len(df),
@@ -876,7 +1012,7 @@ async def api_calibrate(request: Request) -> JSONResponse:
         else:
             return _json_err(f"Chế độ hiệu chuẩn '{mode}' không hợp lệ.")
 
-        bc = cal.dung_duong_chuan(df_cal, cal.CauHinhHieuChuan.tu_yaml(CONFIG_PATH), bac_ep=bac_ep)
+        bc = cal.dung_duong_chuan(df_cal, load_calib_config(), bac_ep=bac_ep)
         mh_new = bc.mo_hinh
         saved_file = None
         if activate:
@@ -884,15 +1020,16 @@ async def api_calibrate(request: Request) -> JSONResponse:
             saved_file = luu_path.name
 
         # Chuẩn bị dữ liệu vẽ đồ thị đường chuẩn đa nhiệt độ & phần dư
-        s_grid = np.linspace(mh_new.S_min, mh_new.S_max, 120)
+        s_grid = np.linspace(mh_new.S_min, mh_new.S_max, 100)
+        s_grid_list = np.round(s_grid, 4).tolist()
         tat_ca_T = pd.concat([bc.df_train, bc.df_test])[cal.COT_NHIET_DO].to_numpy(float)
         muc_T = sorted(np.unique(np.round(tat_ca_T * 2) / 2))
         t_levels = [float(t) for t in (muc_T if mh_new.co_bu_nhiet else [mh_new.T_ref])[:6]]
         curves = [
             {
                 "T_C": t_val,
-                "S": s_grid.tolist(),
-                "delta_y": mh_new.du_doan_delta_y(s_grid, t_val).tolist(),
+                "S": s_grid_list,
+                "delta_y": np.round(mh_new.du_doan_delta_y(s_grid, t_val), 4).tolist(),
             }
             for t_val in t_levels
         ]
@@ -1003,7 +1140,7 @@ async def api_optics_sim(request: Request) -> JSONResponse:
         do_nhay_a = []
         for a_val in cac_goc_a:
             try:
-                do_nhay_a.append(op.pixel_moi_phan_nghin(s_eval, t_eval, cfg_sim, A_do=float(a_val), D_m=d_sim))
+                do_nhay_a.append(round(op.pixel_moi_phan_nghin(s_eval, t_eval, cfg_sim, A_do=float(a_val), D_m=d_sim), 4))
             except op.PhanXaToanPhanError:
                 do_nhay_a.append(None)
 
@@ -1012,8 +1149,8 @@ async def api_optics_sim(request: Request) -> JSONResponse:
         dy_30: list[float] = []
         response_tir = False
         try:
-            dy_20 = [op.delta_y_vi_sai_px(float(sv), 20.0, 20.0, cfg_sim) for sv in cac_muc_s]
-            dy_30 = [op.delta_y_vi_sai_px(float(sv), 30.0, 30.0, cfg_sim) for sv in cac_muc_s]
+            dy_20 = [round(op.delta_y_vi_sai_px(float(sv), 20.0, 20.0, cfg_sim), 3) for sv in cac_muc_s]
+            dy_30 = [round(op.delta_y_vi_sai_px(float(sv), 30.0, 30.0, cfg_sim), 3) for sv in cac_muc_s]
         except op.PhanXaToanPhanError:
             response_tir = True
 
@@ -1033,9 +1170,9 @@ async def api_optics_sim(request: Request) -> JSONResponse:
             "sens_px": sens_px,
             "ngan_sach": ngan_sach,
             "curves": {
-                "angles": cac_goc_a.tolist(),
+                "angles": np.round(cac_goc_a, 3).tolist(),
                 "sensitivities": do_nhay_a,
-                "s_grid": cac_muc_s.tolist(),
+                "s_grid": np.round(cac_muc_s, 3).tolist(),
                 "dy_20": dy_20,
                 "dy_30": dy_30,
                 "response_tir": response_tir,
@@ -1176,11 +1313,13 @@ async def api_config_optics(request: Request) -> JSONResponse:
         new_text = _replace_yaml_scalar_line(new_text, "nhiet_do_tham_chieu_C", t_ref)
 
         CONFIG_PATH.write_text(new_text, encoding="utf-8")
+        invalidate_config_cache()
         try:
             cfg = load_config()
             sens_default = op.pixel_moi_phan_nghin(15.0, cfg.T_tham_chieu_C, cfg)
         except Exception:
             CONFIG_PATH.write_text(text, encoding="utf-8")
+            invalidate_config_cache()
             raise
 
         return _json_ok({
@@ -1247,20 +1386,59 @@ async def api_config_species(request: Request) -> JSONResponse:
 
         new_text = prefix + _format_species_yaml_block(nguong_loai)
         CONFIG_PATH.write_text(new_text, encoding="utf-8")
+        invalidate_config_cache()
         try:
             load_config()
-            ds_loai = th.doc_danh_sach_loai(CONFIG_PATH)
+            ds_loai_ser = load_serialized_species()
         except Exception:
             CONFIG_PATH.write_text(text, encoding="utf-8")
+            invalidate_config_cache()
             raise
 
         return _json_ok({
             "ok": True,
             "ma_loai": ma_loai,
-            "danh_sach_loai": [_serialize_species(v) for v in ds_loai.values()],
+            "danh_sach_loai": ds_loai_ser,
         })
     except Exception as exc:
         return _json_err(f"Lỗi khi lưu ngưỡng loài: {exc}")
+
+
+class CacheHeaderMiddleware:
+    """ASGI middleware nhẹ thêm Cache-Control chuẩn cho tài nguyên tĩnh và API."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path = scope.get("path", "")
+        if path.startswith("/static/") or path in ("/favicon.ico", "/manifest.json"):
+            cache_val = b"public, max-age=300, stale-while-revalidate=86400"
+        elif path in ("/", "/sw.js"):
+            cache_val = b"no-cache"
+        elif path.startswith("/api/"):
+            cache_val = b"no-store"
+        else:
+            cache_val = None
+
+        if cache_val is None:
+            await self.app(scope, receive, send)
+            return
+
+        async def send_with_cache(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers") or [])
+                has_cc = any(k.lower() == b"cache-control" for k, _ in headers)
+                if not has_cc:
+                    headers.append((b"cache-control", cache_val))
+                message = {**message, "headers": headers}
+            await send(message)
+
+        await self.app(scope, receive, send_with_cache)
 
 
 routes = [
@@ -1286,7 +1464,12 @@ routes = [
     Mount("/static", app=StaticFiles(directory=str(STATIC_DIR)), name="static"),
 ]
 
-app = Starlette(routes=routes)
+middleware = [
+    Middleware(CacheHeaderMiddleware),
+    Middleware(GZipMiddleware, minimum_size=512, compresslevel=6),
+]
+
+app = Starlette(routes=routes, middleware=middleware)
 
 
 def main() -> None:

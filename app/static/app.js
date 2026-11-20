@@ -29,6 +29,8 @@ const STATE = {
   logLast: null,
   speciesLast: null,
   debounces: {},
+  aborts: {},
+  measureSeq: 0,
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -62,16 +64,33 @@ function debounce(key, fn, delay = 90) {
   STATE.debounces[key] = setTimeout(fn, delay);
 }
 
-async function apiGet(url) {
+function isAbortError(err) {
+  return Boolean(err && err.name === "AbortError");
+}
+
+function _nextAbortSignal(abortKey) {
+  if (!abortKey) return undefined;
+  if (STATE.aborts[abortKey]) {
+    try { STATE.aborts[abortKey].abort(); } catch (_) {}
+  }
+  const ctrl = new AbortController();
+  STATE.aborts[abortKey] = ctrl;
+  return ctrl.signal;
+}
+
+async function apiGet(url, abortKey = null) {
+  const signal = _nextAbortSignal(abortKey);
   const res = await fetch(url, {
     headers: { "X-Ho-So": encodeURIComponent(STATE.hoSo || "mac_dinh") },
+    signal,
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
 }
 
-async function apiPost(url, payload) {
+async function apiPost(url, payload, abortKey = null) {
+  const signal = _nextAbortSignal(abortKey);
   const res = await fetch(url, {
     method: "POST",
     headers: {
@@ -79,6 +98,7 @@ async function apiPost(url, payload) {
       "X-Ho-So": encodeURIComponent(STATE.hoSo || "mac_dinh"),
     },
     body: JSON.stringify(payload),
+    signal,
   });
   const data = await res.json();
   if (!res.ok) {
@@ -147,19 +167,30 @@ function drawXYChart(canvas, tooltipEl, opts) {
   ctx.fillRect(0, 0, width, height);
 
   const series = opts.series || [];
-  const allX = [];
-  const allY = [];
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  let hasData = false;
   for (const s of series) {
-    for (const pt of s.points || []) {
+    const pts = s.points || [];
+    for (let i = 0; i < pts.length; i++) {
+      const pt = pts[i];
       if (Number.isFinite(pt.x) && Number.isFinite(pt.y)) {
-        allX.push(pt.x);
-        allY.push(pt.y);
+        hasData = true;
+        if (pt.x < minX) minX = pt.x;
+        if (pt.x > maxX) maxX = pt.x;
+        if (pt.y < minY) minY = pt.y;
+        if (pt.y > maxY) maxY = pt.y;
       }
-      if (Number.isFinite(pt.yLo)) allY.push(pt.yLo);
-      if (Number.isFinite(pt.yHi)) allY.push(pt.yHi);
+      if (Number.isFinite(pt.yLo)) {
+        if (pt.yLo < minY) minY = pt.yLo;
+        if (pt.yLo > maxY) maxY = pt.yLo;
+      }
+      if (Number.isFinite(pt.yHi)) {
+        if (pt.yHi < minY) minY = pt.yHi;
+        if (pt.yHi > maxY) maxY = pt.yHi;
+      }
     }
   }
-  if (!allX.length || !allY.length) {
+  if (!hasData) {
     ctx.fillStyle = "#64748b";
     ctx.font = "600 13px sans-serif";
     ctx.textAlign = "center";
@@ -167,10 +198,10 @@ function drawXYChart(canvas, tooltipEl, opts) {
     return;
   }
 
-  let xMin = opts.xMin !== undefined ? opts.xMin : Math.min(...allX);
-  let xMax = opts.xMax !== undefined ? opts.xMax : Math.max(...allX);
-  let yMin = opts.yMin !== undefined ? opts.yMin : Math.min(...allY);
-  let yMax = opts.yMax !== undefined ? opts.yMax : Math.max(...allY);
+  let xMin = opts.xMin !== undefined ? opts.xMin : minX;
+  let xMax = opts.xMax !== undefined ? opts.xMax : maxX;
+  let yMin = opts.yMin !== undefined ? opts.yMin : minY;
+  let yMax = opts.yMax !== undefined ? opts.yMax : maxY;
 
   if (xMin === xMax) { xMin -= 1; xMax += 1; }
   if (yMin === yMax) { yMin -= 1; yMax += 1; }
@@ -369,31 +400,49 @@ function drawXYChart(canvas, tooltipEl, opts) {
     }
   }
 
-  // Gắn tooltip tương tác
+  // Gắn tooltip tương tác (gom theo requestAnimationFrame để không gây giật khi rê chuột)
   if (tooltipEl) {
+    let hoverRaf = 0;
+    let lastEv = null;
     canvas.onmousemove = (ev) => {
-      const rect = canvas.getBoundingClientRect();
-      const mx = ev.clientX - rect.left;
-      const my = ev.clientY - rect.top;
-      let best = null;
-      let bestDist = 18 * 18;
-      for (const t of hoverTargets) {
-        const d2 = (t.px - mx) ** 2 + (t.py - my) ** 2;
-        if (d2 < bestDist) {
-          bestDist = d2;
-          best = t;
+      lastEv = ev;
+      if (hoverRaf) return;
+      hoverRaf = requestAnimationFrame(() => {
+        hoverRaf = 0;
+        if (!lastEv) return;
+        const rect = canvas.getBoundingClientRect();
+        const mx = lastEv.clientX - rect.left;
+        const my = lastEv.clientY - rect.top;
+        let best = null;
+        let bestDist = 18 * 18;
+        for (let i = 0; i < hoverTargets.length; i++) {
+          const t = hoverTargets[i];
+          const dx = t.px - mx;
+          const dy = t.py - my;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < bestDist) {
+            bestDist = d2;
+            best = t;
+          }
         }
-      }
-      if (best) {
-        tooltipEl.style.display = "block";
-        tooltipEl.style.left = `${Math.min(mx + 12, width - 150)}px`;
-        tooltipEl.style.top = `${Math.max(my - 32, 6)}px`;
-        tooltipEl.textContent = `${best.label ? best.label + ": " : ""}(${best.x.toFixed(2)}, ${best.y.toFixed(2)})`;
-      } else {
-        tooltipEl.style.display = "none";
-      }
+        if (best) {
+          tooltipEl.style.display = "block";
+          tooltipEl.style.left = `${Math.min(mx + 12, width - 150)}px`;
+          tooltipEl.style.top = `${Math.max(my - 32, 6)}px`;
+          tooltipEl.textContent = `${best.label ? best.label + ": " : ""}(${best.x.toFixed(2)}, ${best.y.toFixed(2)})`;
+        } else {
+          tooltipEl.style.display = "none";
+        }
+      });
     };
-    canvas.onmouseleave = () => { tooltipEl.style.display = "none"; };
+    canvas.onmouseleave = () => {
+      lastEv = null;
+      if (hoverRaf) {
+        cancelAnimationFrame(hoverRaf);
+        hoverRaf = 0;
+      }
+      tooltipEl.style.display = "none";
+    };
   }
 }
 
@@ -531,6 +580,7 @@ async function loadBootstrap() {
     const data = await apiGet(`/api/bootstrap?ho_so=${encodeURIComponent(STATE.hoSo || "mac_dinh")}`);
     STATE.bootstrap = data;
     populateProfileSelect(data.all_profiles);
+    if (Array.isArray(data.all_locations)) refreshLocationSuggestions(data.all_locations);
     updateModelBadges(data.mo_hinh, data.quang_hoc, data.so_ban_ghi_nhat_ki);
     populateSpeciesDropdowns(data.danh_sach_loai);
     renderSpeciesFullTable(data.danh_sach_loai);
@@ -554,14 +604,14 @@ function updateModelBadges(mh, qh, logCount) {
     sbBox.className = "sb-card-25d status-sim";
     $("#sb-calib-body").innerHTML =
       `<b>CHƯA HIỆU CHUẨN (MÔ PHỎNG)</b><br>Bậc ${mh.bac} | R² = ${fmt(mh.R2, 5)}<br>` +
-      `Dải S: ${mh.S_min}–${mh.S_max} ‰ | T: ${mh.T_min}–${mh.T_max} °C`;
+      `Dải S: ${fmt(mh.S_min, 0)}–${fmt(mh.S_max, 0)} ‰ | T: ${fmt(mh.T_min, 1)}–${fmt(mh.T_max, 1)} °C`;
   } else {
     badge.className = "pill-25d pill-green";
     badge.textContent = "✅ ĐÃ HIỆU CHUẨN ĐO THẬT";
     sbBox.className = "sb-card-25d status-real";
     $("#sb-calib-body").innerHTML =
       `<b>ĐÃ HIỆU CHUẨN ĐO THẬT</b><br>Bậc ${mh.bac} | R² = ${fmt(mh.R2, 5)} | ${mh.so_diem} mẫu<br>` +
-      `Dải S: ${mh.S_min}–${mh.S_max} ‰`;
+      `Dải S: ${fmt(mh.S_min, 0)}–${fmt(mh.S_max, 0)} ‰`;
   }
   if (qh) {
     $("#badge-prism").textContent = `📐 Lăng kính A = ${Number(qh.A_do).toFixed(1)}°`;
@@ -718,15 +768,18 @@ async function runMeasure(opts) {
     }
     return;
   }
+  const seq = ++STATE.measureSeq;
   const btn = $("#btn-run-measure");
-  const oldLabel = btn.textContent;
+  const oldLabel = btn.dataset.origLabel || btn.textContent;
+  btn.dataset.origLabel = oldLabel;
   const showBusy = STATE.imgMode !== "sim";
   if (showBusy) {
     btn.disabled = true;
     btn.textContent = "⏳ Đang phân tích ảnh...";
   }
   try {
-    const data = await apiPost("/api/measure", getTab1Payload());
+    const data = await apiPost("/api/measure", getTab1Payload(), "measure");
+    if (seq !== STATE.measureSeq) return;
     STATE.lastMeasure = data;
     STATE.savedCurrentLog = false;
     $("#t1-annotated-img").classList.remove("is-raw-error");
@@ -734,13 +787,14 @@ async function runMeasure(opts) {
     renderMeasureResults(data);
     updateCoachBar();
   } catch (err) {
+    if (isAbortError(err) || seq !== STATE.measureSeq) return;
     if (STATE.imgMode !== "sim") {
       showMeasureError(err.message);
     } else {
       toast(`Lỗi đo ảnh: ${err.message}`);
     }
   } finally {
-    if (showBusy) {
+    if (showBusy && seq === STATE.measureSeq) {
       btn.disabled = false;
       btn.textContent = oldLabel;
     }
@@ -1083,9 +1137,10 @@ async function evaluateSpeciesTab2() {
   $("#t2-s-chip").textContent = `${fmt(sVal, 1)} ‰`;
   try {
     if (!navigator.onLine) throw Object.assign(new Error("offline"), { offline: true });
-    const data = await apiPost("/api/species-eval", { S_ppt: sVal, ma_loai: maLoai });
+    const data = await apiPost("/api/species-eval", { S_ppt: sVal, ma_loai: maLoai }, "species");
     renderSpeciesTab2Data(data, sVal);
   } catch (err) {
+    if (isAbortError(err)) return;
     const localData = buildLocalSpeciesEval(sVal, maLoai);
     if (localData) {
       renderSpeciesTab2Data(localData, sVal);
@@ -1204,16 +1259,6 @@ function refreshLocationSuggestions(locations) {
   dl.innerHTML = (locations || []).map((v) => `<option value="${esc(v)}"></option>`).join("");
 }
 
-async function refreshLocationSuggestionsFromServer() {
-  try {
-    const data = await apiGet("/api/logs");
-    refreshLocationSuggestions(data.all_locations);
-    if (data.summary) $("#hero-log-count").textContent = String(data.summary.tong_tat_ca ?? data.rows.length);
-  } catch (_) {
-    /* không chặn giao diện nếu lỗi */
-  }
-}
-
 function logsQueryString() {
   const hoSo = STATE.hoSo || "mac_dinh";
   const loai = $("#t3-filter-species").value || "ALL";
@@ -1229,7 +1274,7 @@ function salinityChip(r) {
 async function loadLogs(_retry = false) {
   const qs = logsQueryString();
   try {
-    const data = await apiGet(`/api/logs${qs}`);
+    const data = await apiGet(`/api/logs${qs}`, "logs");
 
     // Cập nhật danh sách bộ lọc; nếu giá trị đang lọc không còn tồn tại (vd: vừa xóa dòng cuối) thì tự bỏ lọc
     const ok1 = fillSelectKeepValue($("#t3-filter-species"), "Tất cả đối tượng", data.all_species);
@@ -1293,6 +1338,7 @@ async function loadLogs(_retry = false) {
 
     drawLogsChart(data);
   } catch (err) {
+    if (isAbortError(err)) return;
     toast(`Lỗi tải nhật kí: ${err.message}`);
   }
 }
@@ -1541,7 +1587,7 @@ async function runOpticsSim() {
       sai_so_goc_A_do: Number($("#t5-err-a").value || 0.05),
       troi_laser_px: Number($("#t5-err-troi").value || 5.0),
       he_so_triet_chung: Number($("#t5-err-triet").value || 0.01),
-    });
+    }, "optics");
     STATE.opticsLast = data;
     renderOpticsSvg(data);
 
@@ -1579,6 +1625,7 @@ async function runOpticsSim() {
 
     drawOpticsCharts(data);
   } catch (err) {
+    if (isAbortError(err)) return;
     toast(`Lỗi mô phỏng quang học: ${err.message}`);
   }
 }
@@ -1796,7 +1843,8 @@ function snapCameraAndMeasure() {
   c.width = video.videoWidth;
   c.height = video.videoHeight;
   c.getContext("2d").drawImage(video, 0, 0);
-  STATE.cameraImageB64 = c.toDataURL("image/png");
+  // JPEG chất lượng cao (0.94): giữ nguyên độ phân giải pixel nhưng giảm ~10-15x dung lượng tải lên trên di động
+  STATE.cameraImageB64 = c.toDataURL("image/jpeg", 0.94);
   $("#cam-status").textContent = `📸 Đã chụp ảnh ${c.width}×${c.height} px — đang phân tích...`;
   runMeasure();
 }
@@ -1909,7 +1957,7 @@ function bindEvents() {
         updateCoachBar();
       }
     } else if (STATE.lastMeasure) {
-      requestAnimationFrame(() => renderMeasureResults(STATE.lastMeasure));
+      requestAnimationFrame(() => drawTab1Charts(STATE.lastMeasure));
     }
   };
   window._setUiMode = setUiMode;
@@ -1939,7 +1987,7 @@ function bindEvents() {
   if (advDrawer) {
     advDrawer.addEventListener("toggle", () => {
       if (advDrawer.open && STATE.lastMeasure) {
-        requestAnimationFrame(() => renderMeasureResults(STATE.lastMeasure));
+        requestAnimationFrame(() => drawTab1Charts(STATE.lastMeasure));
       }
     });
   }
@@ -1981,10 +2029,28 @@ function bindEvents() {
     $("#val-sim-drift").textContent = `${d >= 0 ? "+" : ""}${d.toFixed(1)} px`;
     if ($("#meas-live").checked) debounce("t1", runMeasure, 80);
   });
-  ["sim-saturate", "sim-layout", "meas-temp", "meas-method", "t1-species-select", "roi-manual-enable"].forEach((id) => {
+  ["sim-saturate", "sim-layout", "meas-temp", "meas-method", "roi-manual-enable"].forEach((id) => {
     $(`#${id}`).addEventListener("change", () => {
       if ($("#meas-live").checked) runMeasure({ silent: true });
     });
+  });
+  $("#t1-species-select").addEventListener("change", () => {
+    const km = STATE.lastMeasure && STATE.lastMeasure.mo_hinh_man;
+    const list = STATE.bootstrap && STATE.bootstrap.danh_sach_loai;
+    if (km && Array.isArray(list) && list.length) {
+      const maLoai = $("#t1-species-select").value;
+      const info = list.find((s) => s.ma_loai === maLoai);
+      if (info) {
+        const dg = evalOneSpeciesLocal(Number(km.S_ppt), info);
+        STATE.lastMeasure.danh_gia_loai = dg;
+        const cls = dg.trang_thai === "AN_TOAN" ? "ok" : dg.trang_thai === "CANH_BAO" ? "warn" : dg.trang_thai === "NGUY_HIEM" ? "danger" : "info";
+        const vBox = $("#t1-species-verdict");
+        vBox.className = `banner-25d ${cls}`;
+        vBox.innerHTML = `<div class="banner-icon">🔎</div><div><b>${esc(dg.tieu_de)}</b><br>${esc(dg.loi_khuyen)}</div>`;
+        return;
+      }
+    }
+    if ($("#meas-live").checked) runMeasure({ silent: true });
   });
 
   $("#file-laser-img").addEventListener("change", (ev) => {
@@ -2139,13 +2205,15 @@ function bindEvents() {
   });
 
   window.addEventListener("resize", () => {
-    const activeTab = $(".tab-pane.active")?.id;
-    if (activeTab === "tab-1" && STATE.lastMeasure) drawTab1Charts(STATE.lastMeasure);
-    if (activeTab === "tab-3" && STATE.logLast) drawLogsChart(STATE.logLast);
-    if (activeTab === "tab-4" && STATE.calibLast) drawCalibrationCharts(STATE.calibLast);
-    if (activeTab === "tab-5" && STATE.opticsLast) drawOpticsCharts(STATE.opticsLast);
-    if (activeTab === "tab-6" && STATE.baLast) drawBaCharts(STATE.baLast);
-  });
+    debounce("win_resize", () => {
+      const activeTab = $(".tab-pane.active")?.id;
+      if (activeTab === "tab-1" && STATE.lastMeasure) drawTab1Charts(STATE.lastMeasure);
+      if (activeTab === "tab-3" && STATE.logLast) drawLogsChart(STATE.logLast);
+      if (activeTab === "tab-4" && STATE.calibLast) drawCalibrationCharts(STATE.calibLast);
+      if (activeTab === "tab-5" && STATE.opticsLast) drawOpticsCharts(STATE.opticsLast);
+      if (activeTab === "tab-6" && STATE.baLast) drawBaCharts(STATE.baLast);
+    }, 100);
+  }, { passive: true });
 }
 
 function initLiveTour() {
@@ -2354,6 +2422,8 @@ function initLiveTour() {
       clearInterval(tour.timerId);
       tour.timerId = null;
     }
+    window.removeEventListener("scroll", positionElements, true);
+    window.removeEventListener("resize", positionElements);
     ring.classList.remove("open");
     card.classList.remove("open");
     if (typeof window._setUiMode === "function") {
@@ -2446,6 +2516,8 @@ function initLiveTour() {
     tour.savedUiMode = document.body.classList.contains("ui-simple") ? "simple" : "pro";
     tour.active = true;
     tour.paused = false;
+    window.addEventListener("scroll", positionElements, { passive: true, capture: true });
+    window.addEventListener("resize", positionElements, { passive: true });
     goToStep(0);
   };
 
@@ -2512,8 +2584,6 @@ function initLiveTour() {
   $("#t5-btn-save-config")?.addEventListener("click", () => completeCurrentStep(16));
   $("#t6-btn-sample")?.addEventListener("click", () => completeCurrentStep(17));
 
-  window.addEventListener("scroll", positionElements, true);
-  window.addEventListener("resize", positionElements);
   window.addEventListener("keydown", (ev) => {
     if (!tour.active) return;
     if (ev.key === "Escape") {
@@ -2563,18 +2633,17 @@ function initCustomSelects() {
     }
   };
 
-  const syncSelect = (inst) => {
-    const { select, labelEl, menu } = inst;
-    const options = Array.from(select.options || []);
-    const selectedOpt = options[select.selectedIndex] || options[0];
-    labelEl.textContent = selectedOpt ? selectedOpt.textContent : "";
-
-    menu.innerHTML = "";
-    options.forEach((opt) => {
+  const renderMenu = (inst) => {
+    const { select, menu } = inst;
+    const options = select.options;
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < options.length; i++) {
+      const opt = options[i];
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "cselect-option";
       btn.setAttribute("role", "option");
+      btn.dataset.optIndex = String(i);
       const isSelected = opt.value === select.value;
       if (isSelected) btn.classList.add("is-selected");
       btn.setAttribute("aria-selected", isSelected ? "true" : "false");
@@ -2588,22 +2657,20 @@ function initCustomSelects() {
 
       btn.appendChild(textSpan);
       btn.appendChild(checkSpan);
+      frag.appendChild(btn);
+    }
+    menu.replaceChildren(frag);
+    inst.dirty = false;
+  };
 
-      btn.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        if (opt.disabled) return;
-        const changed = select.value !== opt.value;
-        select.value = opt.value;
-        syncSelect(inst);
-        closeAll();
-        inst.trigger.focus();
-        if (changed) {
-          select.dispatchEvent(new Event("change", { bubbles: true }));
-        }
-      });
-
-      menu.appendChild(btn);
-    });
+  const syncSelect = (inst) => {
+    const { select, labelEl } = inst;
+    const selectedOpt = select.options[select.selectedIndex] || select.options[0];
+    labelEl.textContent = selectedOpt ? selectedOpt.textContent : "";
+    inst.dirty = true;
+    if (openInstance === inst) {
+      renderMenu(inst);
+    }
   };
 
   // Dong bo tu dong khi code JS gan select.value = "..."
@@ -2659,16 +2726,32 @@ function initCustomSelects() {
     menu.setAttribute("role", "listbox");
     document.body.appendChild(menu);
 
-    const inst = { select, wrap, trigger, labelEl, menu };
+    const inst = { select, wrap, trigger, labelEl, menu, dirty: true };
     select.__cselectSync = () => syncSelect(inst);
     instances.push(inst);
+
+    menu.addEventListener("click", (ev) => {
+      const btn = ev.target.closest(".cselect-option");
+      if (!btn || btn.disabled) return;
+      ev.stopPropagation();
+      const opt = select.options[Number(btn.dataset.optIndex)];
+      if (!opt || opt.disabled) return;
+      const changed = select.value !== opt.value;
+      select.value = opt.value;
+      syncSelect(inst);
+      closeAll();
+      inst.trigger.focus();
+      if (changed) {
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    });
 
     trigger.addEventListener("click", (ev) => {
       ev.stopPropagation();
       const willOpen = openInstance !== inst;
       closeAll();
       if (willOpen) {
-        syncSelect(inst);
+        if (inst.dirty) renderMenu(inst);
         wrap.classList.add("is-open");
         menu.classList.add("is-open");
         trigger.setAttribute("aria-expanded", "true");
@@ -2700,7 +2783,7 @@ function initCustomSelects() {
     select.addEventListener("change", () => syncSelect(inst));
 
     const obs = new MutationObserver(() => syncSelect(inst));
-    obs.observe(select, { childList: true, subtree: true, characterData: true, attributes: true });
+    obs.observe(select, { childList: true, subtree: true, characterData: true });
 
     syncSelect(inst);
   });
@@ -2713,12 +2796,12 @@ function initCustomSelects() {
   });
   window.addEventListener("resize", () => {
     if (openInstance) positionMenu(openInstance);
-  });
+  }, { passive: true });
   window.addEventListener("scroll", (ev) => {
     if (openInstance && ev.target !== openInstance.menu) {
       closeAll();
     }
-  }, true);
+  }, { passive: true, capture: true });
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -2730,10 +2813,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   updateNetworkPill();
   updateOfflineQueueBadge();
   initLiveTour();
-  await loadBootstrap();
-  refreshLocationSuggestionsFromServer();
-  await flushOfflineQueue(true);
-  await runMeasure();
+  await Promise.all([loadBootstrap(), runMeasure()]);
+  flushOfflineQueue(true);
   let tourDone = false;
   try {
     tourDone = localStorage.getItem("salinity_tour_done") === "1";

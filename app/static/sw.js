@@ -1,5 +1,5 @@
 /* Service Worker hỗ trợ chế độ Offline (PWA) cho Web App Đo Độ Mặn Vi Sai */
-const CACHE_STATIC = "salinity-static-v1";
+const CACHE_STATIC = "salinity-static-v3";
 const CACHE_DATA = "salinity-data-v1";
 
 const PRECACHE_URLS = [
@@ -77,16 +77,34 @@ self.addEventListener("fetch", (event) => {
   // Không cache các API GET khác
   if (url.pathname.startsWith("/api/")) return;
 
-  // Tài nguyên tĩnh & HTML: Network-first kèm fallback về Cache để luôn có bản mới khi online
+  // Trang HTML gốc: Network-first kèm fallback về Cache để luôn cập nhật bản mới khi online
+  if (url.pathname === "/" || url.pathname === "/index.html") {
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res && res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE_STATIC).then((c) => c.put(req, copy));
+          }
+          return res;
+        })
+        .catch(() => caches.match(req))
+    );
+    return;
+  }
+
+  // Tài nguyên tĩnh (/static/*, manifest, favicon): Stale-While-Revalidate (mở tức thì + tự cập nhật nền)
   event.respondWith(
-    fetch(req)
-      .then((res) => {
-        if (res && res.ok) {
-          const copy = res.clone();
-          caches.open(CACHE_STATIC).then((c) => c.put(req, copy));
-        }
-        return res;
+    caches.open(CACHE_STATIC).then((cache) =>
+      cache.match(req).then((cached) => {
+        const netPromise = fetch(req)
+          .then((res) => {
+            if (res && res.ok) cache.put(req, res.clone());
+            return res;
+          })
+          .catch(() => cached);
+        return cached || netPromise;
       })
-      .catch(() => caches.match(req))
+    )
   );
 });
