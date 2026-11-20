@@ -266,3 +266,68 @@ def test_snr_tinh_ca_hai_vung_lay_gia_tri_thap_hon():
     assert kq.chat_luong.qua_mo is True
     assert kq.chat_luong.hop_le is False
 
+
+def test_loai_ngoai_lai_3_sigma_chan_trong_so_va_dem_centroid():
+    """T8: Loại cột ngoại lai 3σ lặp, giới hạn tỉ số trọng số và đếm cột dùng centroid."""
+    h, w = 80, 60
+    anh_roi = np.full((h, w), 12.0, dtype=float)
+    y_coords = np.arange(h, dtype=float)
+    slope = 0.02
+    mu_center = 40.0
+    for x in range(w):
+        mu_x = mu_center + slope * (x - w / 2.0)
+        # Cố ý tạo 2 cột ngoại lai bị dịch hẳn 12 px so với đường chuẩn
+        if x in (10, 45):
+            mu_x += 12.0
+        # Cột 25..27 làm thành hai đỉnh đối xứng quanh mu_x (R² Gauss đơn < 0.80 -> rơi về centroid dự phòng)
+        if x in (25, 26, 27):
+            anh_roi[:, x] += 180.0 * np.exp(-((y_coords - (mu_x - 3.5)) ** 2) / 2.0)
+            anh_roi[:, x] += 180.0 * np.exp(-((y_coords - (mu_x + 3.5)) ** 2) / 2.0)
+        else:
+            anh_roi[:, x] += 180.0 * np.exp(-((y_coords - mu_x) ** 2) / (2.0 * 2.0**2))
+
+    anh_u8 = np.clip(anh_roi, 0, 255).astype(np.uint8)
+    kq = uoc_luong_duong_vach(
+        anh_u8,
+        x_offset=0,
+        y_offset=0,
+        x_ref=w / 2.0,
+        phuong_phap="gauss",
+        ty_le_trong_so_toi_da=50.0,
+    )
+    assert abs(kq.y_tam - mu_center) < 0.1
+    assert kq.so_cot_bi_loai_ngoai_lai >= 2
+    assert kq.so_cot_dung_centroid >= 1
+
+
+def test_da_khung_hinh_ghi_khung_loi_troi_va_dao_dong_sang():
+    """T8: Không nuốt lỗi khung, tổng hợp chất lượng xấu nhất, bắt trôi theo thời gian và dao động sáng."""
+    # 1. Chuỗi có 1 khung mờ, 1 khung cháy sáng, 3 khung tốt -> báo 3/5 và chat_luong xấu nhất
+    k_tot_1, _ = tao_anh_hai_vach_ly_thuyet(h=220, w=150, y_tc=55.0, y_mau=135.0, seed=1)
+    k_tot_2, _ = tao_anh_hai_vach_ly_thuyet(h=220, w=150, y_tc=55.0, y_mau=135.1, seed=2)
+    k_tot_3, _ = tao_anh_hai_vach_ly_thuyet(h=220, w=150, y_tc=55.0, y_mau=134.9, seed=3)
+    k_den = np.zeros((100, 100), dtype=np.uint8)
+    k_chay = k_tot_1.copy()
+    k_chay[53:57, 10:140] = 255
+    res = do_delta_y_da_khung_hinh([k_tot_1, k_den, k_chay, k_tot_2, k_tot_3])
+    assert res.so_khung_hop_le == 3
+    assert res.tong_so_khung == 5
+    assert len(res.khung_loi) == 2
+    assert res.chat_luong_chung.hop_le is False
+    assert res.chat_luong_chung.bao_hoa is True
+
+    # 2. Chuỗi có trôi đơn điệu theo thời gian (1.2 px mỗi khung) -> bật cảnh báo trôi
+    frames_troi = [
+        tao_anh_hai_vach_ly_thuyet(h=220, w=150, y_tc=55.0, y_mau=130.0 + 1.2 * i, seed=20 + i)[0]
+        for i in range(5)
+    ]
+    res_troi = do_delta_y_da_khung_hinh(frames_troi)
+    assert res_troi.canh_bao_troi_theo_thoi_gian is True
+    assert res_troi.do_doc_troi_px_moi_khung == pytest.approx(1.2, abs=0.1)
+
+    # 3. Chuỗi có dao động mức sáng đỉnh lớn giữa các khung -> bật cảnh báo phơi sáng
+    f_sang1, _ = tao_anh_hai_vach_ly_thuyet(h=220, w=150, y_tc=55.0, y_mau=135.0, amp_tc=210.0, amp_mau=210.0, seed=30)
+    f_sang2, _ = tao_anh_hai_vach_ly_thuyet(h=220, w=150, y_tc=55.0, y_mau=135.0, amp_tc=90.0, amp_mau=90.0, seed=31)
+    res_sang = do_delta_y_da_khung_hinh([f_sang1, f_sang2, f_sang1])
+    assert res_sang.canh_bao_dao_dong_phoi_sang is True
+

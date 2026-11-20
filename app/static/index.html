@@ -189,6 +189,7 @@
               <!-- Ô chọn file dùng chung (đặt ngoài các khối ẩn/hiện để nhãn bấm luôn hoạt động) -->
               <input type="file" id="file-laser-img" accept="image/png,image/jpeg,image/webp" style="display:none;" />
               <input type="file" id="file-laser-capture" accept="image/*" capture="environment" style="display:none;" />
+              <input type="file" id="file-laser-multi" accept="image/*,video/mp4,video/webm,video/quicktime" multiple style="display:none;" />
 
               <!-- Chế độ Tải ảnh -->
               <div id="t1-mode-upload" style="display:none;">
@@ -205,6 +206,11 @@
                   </label>
                 </div>
                 <div class="upload-file-name" id="upload-img-name">Chưa chọn ảnh</div>
+                <div style="margin-top:6px;">
+                  <label for="file-laser-multi" class="btn-25d btn-teal-25d btn-sm" style="cursor:pointer; display:inline-flex;">
+                    🎞️ Đo đa khung (nhiều ảnh / video ngắn)
+                  </label>
+                </div>
                 <div id="upload-preview-box" class="upload-preview-box" style="display:none;">
                   <img id="upload-preview-img" alt="Ảnh xem trước vừa chọn" decoding="async" />
                   <div class="upload-preview-actions">
@@ -224,6 +230,7 @@
                 <div class="camera-btn-row">
                   <button type="button" id="btn-cam-start" class="btn-25d btn-navy-25d btn-sm">📷 Bật Camera</button>
                   <button type="button" id="btn-cam-snap" class="btn-25d btn-primary-25d btn-sm" disabled>📸 Chụp &amp; Đo</button>
+                  <button type="button" id="btn-cam-burst" class="btn-25d btn-teal-25d btn-sm" disabled>🎞️ Chuỗi 5 khung</button>
                   <button type="button" id="btn-cam-stop" class="btn-25d btn-sm" disabled>⏹️ Tắt Camera</button>
                 </div>
                 <div id="cam-status" class="cam-status">
@@ -378,6 +385,7 @@
                 <div class="banner-icon">🔎</div>
                 <div>Kết quả đánh giá an toàn sẽ hiển thị tại đây.</div>
               </div>
+              <div id="t1-multi-summary"></div>
               <div id="t1-warnings-box"></div>
             </div>
 

@@ -211,3 +211,46 @@ def test_cong_chat_luong_va_phan_loai_loi_api_measure() -> None:
     )
     assert resp_novach.status_code == 422
     assert json.loads(resp_novach.body.decode("utf-8"))["loai_loi"] == "KHONG_TIM_THAY_VACH"
+
+
+def test_api_measure_multi_voi_khung_hong() -> None:
+    import base64
+    import cv2
+    import numpy as np
+    from core.optics import CauHinhQuangHoc
+    from sim.synth import ThamSoMoPhong, sinh_anh_hai_vach_mo_phong
+
+    cfg = CauHinhQuangHoc.tu_yaml()
+    imgs_b64 = []
+    for i in range(3):
+        obj = sinh_anh_hai_vach_mo_phong(
+            ThamSoMoPhong(S_ppt=15.0, T_C=25.0, T_tham_chieu_C=25.0, seed=50 + i),
+            cfg,
+            gan_watermark=False,
+        )
+        ok, buf = cv2.imencode(".png", obj.anh)
+        assert ok
+        imgs_b64.append("data:image/png;base64," + base64.b64encode(buf.tobytes()).decode("ascii"))
+
+    # Thêm 1 ảnh đen không có vạch làm khung lỗi
+    ok_b, buf_b = cv2.imencode(".png", np.zeros((80, 120, 3), dtype=np.uint8))
+    assert ok_b
+    imgs_b64.append("data:image/png;base64," + base64.b64encode(buf_b.tobytes()).decode("ascii"))
+
+    resp = _run_coro(
+        web_app.api_measure_multi(
+            _make_request(
+                "POST",
+                "/api/measure-multi",
+                {"mode": "upload", "images_base64": imgs_b64, "nhiet_do_do": 25.0, "nhiet_do_tham_chieu": 25.0},
+            )
+        )
+    )
+    assert resp.status_code == 200
+    d = json.loads(resp.body.decode("utf-8"))
+    assert d["da_khung_hinh"] is True
+    assert d["so_khung_hop_le"] == 3
+    assert d["tong_so_khung"] == 4
+    assert len(d["khung_loi"]) == 1
+    assert d["khung_loi"][0]["khung"] == 3
+    assert d["delta_y_px"] > 0

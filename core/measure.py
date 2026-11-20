@@ -78,7 +78,13 @@ class KetQuaDoDaKhungHinh:
     tong_so_khung: int                   # Tổng số khung hình đã phân tích
     danh_sach_delta_y: list[float]       # Chuỗi giá trị Δy từng khung
     chi_so_do_duc_tb: float              # Trung bình chỉ số độ đục
-    chat_luong_chung: ChatLuongAnh       # Đánh giá chất lượng chung
+    chat_luong_chung: ChatLuongAnh       # Đánh giá chất lượng chung (xấu nhất trên các khung)
+    khung_loi: list[tuple[int, str]] = field(default_factory=list)
+    do_doc_troi_px_moi_khung: float = 0.0
+    sai_so_do_doc_troi: float = 0.0
+    canh_bao_troi_theo_thoi_gian: bool = False
+    canh_bao_dao_dong_phoi_sang: bool = False
+    canh_bao_da_khung: list[str] = field(default_factory=list)
 
 
 def chuyen_anh_xam(anh: np.ndarray) -> np.ndarray:
@@ -537,50 +543,134 @@ def do_delta_y_da_khung_hinh(
     roi_tham_chieu: tuple[int, int, int, int] | None = None,
     roi_mau: tuple[int, int, int, int] | None = None,
     phuong_phap: Literal["gauss", "centroid"] = "gauss",
+    nguong_bao_hoa: int = 250,
+    ti_le_bao_hoa_toi_da: float = 0.02,
+    snr_toi_thieu: float = 10.0,
 ) -> KetQuaDoDaKhungHinh:
     """Xử lí chuỗi nhiều khung hình (video / multi-shot), lấy trung vị và độ phân tán.
 
-    Giảm sai số ngẫu nhiên do nhiễu sensor hoặc rung động cơ học tạm thời.
+    - Ghi rõ khung lỗi kèm lí do (không nuốt ngoại lệ thầm lặng).
+    - Chỉ tính khung hợp lệ khi `chat_luong.hop_le` đạt chuẩn; tổng hợp chất lượng xấu nhất.
+    - Kiểm tra trôi tuyến tính theo thời gian (dấu hiệu chưa cân bằng nhiệt) và dao động phơi sáng.
     """
     if not danh_sach_anh:
         raise ValueError("Danh sách khung hình trống")
 
     ds_delta_y: list[float] = []
     ds_do_duc: list[float] = []
-    ds_chat_luong: list[ChatLuongAnh] = []
+    ds_chi_so_khung: list[int] = []
+    ds_dinh_tc: list[float] = []
+    ds_dinh_m: list[float] = []
+    ds_cq_tat_ca: list[ChatLuongAnh] = []
+    khung_loi: list[tuple[int, str]] = []
 
-    for img in danh_sach_anh:
+    for idx, img in enumerate(danh_sach_anh):
         try:
             kq = do_delta_y_tu_anh(
                 img,
                 roi_tham_chieu=roi_tham_chieu,
                 roi_mau=roi_mau,
                 phuong_phap=phuong_phap,
+                nguong_bao_hoa=nguong_bao_hoa,
+                ti_le_bao_hoa_toi_da=ti_le_bao_hoa_toi_da,
+                snr_toi_thieu=snr_toi_thieu,
                 tao_anh_ve=False,
             )
-            ds_delta_y.append(kq.delta_y_px)
-            ds_do_duc.append(kq.chi_so_do_duc_tuong_doi)
-            ds_chat_luong.append(kq.chat_luong)
-        except Exception:
+        except (AnhKhongHopLeError, KhongTimThayVachError, ValueError) as exc:
+            khung_loi.append((idx, str(exc)))
             continue
+
+        ds_cq_tat_ca.append(kq.chat_luong)
+        if (not kq.chat_luong.hop_le) or (not math.isfinite(kq.delta_y_px)):
+            ly_do = "; ".join(kq.chat_luong.canh_bao) or "Chất lượng ảnh không đạt"
+            khung_loi.append((idx, ly_do))
+            continue
+
+        ds_chi_so_khung.append(idx)
+        ds_delta_y.append(kq.delta_y_px)
+        ds_do_duc.append(kq.chi_so_do_duc_tuong_doi)
+        ds_dinh_tc.append(kq.vach_tham_chieu.cuong_do_dinh_tb)
+        ds_dinh_m.append(kq.vach_mau.cuong_do_dinh_tb)
 
     tong_khung = len(danh_sach_anh)
     so_hop_le = len(ds_delta_y)
 
     if so_hop_le == 0:
-        raise ValueError("Tất cả các khung hình đều bị lỗi hoặc không đo được")
+        chi_tiet = "; ".join(f"Khung {i + 1}: {m}" for i, m in khung_loi[:3])
+        raise KhongTimThayVachError(
+            f"Tất cả {tong_khung} khung hình đều lỗi hoặc không đạt chất lượng ({chi_tiet})."
+        )
 
     arr_dy = np.array(ds_delta_y, dtype=float)
     trung_vi = float(np.median(arr_dy))
-
-    # Tính MAD (Median Absolute Deviation) để ước lượng độ phân tán bền vững (robust sigma)
-    # sigma ~ 1.4826 * MAD
     mad = float(np.median(np.abs(arr_dy - trung_vi)))
     robust_sigma = 1.4826 * mad
     sai_so_thong_ke = float(robust_sigma / math.sqrt(so_hop_le))
 
-    # Lấy chất lượng của khung hình gần nhất hoặc tổng hợp
-    chat_luong_tb = ds_chat_luong[-1]
+    canh_bao_da_khung: list[str] = []
+    if khung_loi:
+        canh_bao_da_khung.append(
+            f"Đã loại {len(khung_loi)}/{tong_khung} khung không đạt: "
+            + "; ".join(f"#{i + 1} ({msg})" for i, msg in khung_loi[:3])
+        )
+
+    # Kiểm tra trôi tuyến tính theo thời gian (chỉ số khung)
+    do_doc_troi = 0.0
+    se_doc_troi = 0.0
+    co_troi_thoi_gian = False
+    if so_hop_le >= 4:
+        t_arr = np.asarray(ds_chi_so_khung, dtype=float)
+        t_c = t_arr - float(np.mean(t_arr))
+        denom = float(np.dot(t_c, t_c))
+        if denom > 0.0:
+            do_doc_troi = float(np.dot(t_c, arr_dy - float(np.mean(arr_dy))) / denom)
+            res_t = arr_dy - (float(np.mean(arr_dy)) + do_doc_troi * t_c)
+            s_t = math.sqrt(float(np.dot(res_t, res_t)) / max(len(t_arr) - 2, 1))
+            se_doc_troi = float(s_t / math.sqrt(denom))
+            tong_troi = abs(do_doc_troi * float(t_arr[-1] - t_arr[0]))
+            if abs(do_doc_troi) > 2.5 * max(se_doc_troi, 1e-6) and tong_troi > max(0.15, 2.0 * robust_sigma):
+                co_troi_thoi_gian = True
+                canh_bao_da_khung.append(
+                    f"Phát hiện Δy trôi theo thời gian ({do_doc_troi:+.3f} ± {se_doc_troi:.3f} px/khung, "
+                    f"dịch tổng {tong_troi:.2f} px): dấu hiệu hai ngăn chưa cân bằng nhiệt."
+                )
+
+    # Kiểm tra dao động độ sáng đỉnh (phơi sáng không ổn định / chưa khóa AE)
+    co_dao_dong_sang = False
+    if so_hop_le >= 2:
+        def _ti_le_dao_dong(vals: list[float]) -> float:
+            med = max(float(np.median(vals)), 1.0)
+            return float(max(vals) - min(vals)) / med
+
+        bien_thien_sang = max(_ti_le_dao_dong(ds_dinh_tc), _ti_le_dao_dong(ds_dinh_m))
+        if bien_thien_sang > 0.15:
+            co_dao_dong_sang = True
+            canh_bao_da_khung.append(
+                f"Mức sáng đỉnh dao động {bien_thien_sang * 100:.1f}% giữa các khung: "
+                "cần khóa phơi sáng (AE lock) trước khi chụp."
+            )
+
+    # Tổng hợp chất lượng theo mức XẤU NHẤT trong toàn bộ chuỗi
+    canh_bao_gop: list[str] = []
+    for cq_item in ds_cq_tat_ca:
+        for w_msg in cq_item.canh_bao:
+            if w_msg not in canh_bao_gop:
+                canh_bao_gop.append(w_msg)
+    for w_dk in canh_bao_da_khung:
+        if w_dk not in canh_bao_gop:
+            canh_bao_gop.append(w_dk)
+
+    chat_luong_chung = ChatLuongAnh(
+        hop_le=all(c.hop_le for c in ds_cq_tat_ca) and (not khung_loi),
+        bao_hoa=any(c.bao_hoa for c in ds_cq_tat_ca),
+        ti_le_bao_hoa=max(c.ti_le_bao_hoa for c in ds_cq_tat_ca),
+        qua_mo=any(c.qua_mo for c in ds_cq_tat_ca),
+        snr=min(c.snr for c in ds_cq_tat_ca),
+        nhoe=any(c.nhoe for c in ds_cq_tat_ca),
+        fwhm_mau=max(c.fwhm_mau for c in ds_cq_tat_ca),
+        fwhm_tc=max(c.fwhm_tc for c in ds_cq_tat_ca),
+        canh_bao=canh_bao_gop,
+    )
 
     return KetQuaDoDaKhungHinh(
         delta_y_trung_vi_px=trung_vi,
@@ -589,5 +679,11 @@ def do_delta_y_da_khung_hinh(
         tong_so_khung=tong_khung,
         danh_sach_delta_y=ds_delta_y,
         chi_so_do_duc_tb=float(np.mean(ds_do_duc)),
-        chat_luong_chung=chat_luong_tb,
+        chat_luong_chung=chat_luong_chung,
+        khung_loi=khung_loi,
+        do_doc_troi_px_moi_khung=do_doc_troi,
+        sai_so_do_doc_troi=se_doc_troi,
+        canh_bao_troi_theo_thoi_gian=co_troi_thoi_gian,
+        canh_bao_dao_dong_phoi_sang=co_dao_dong_sang,
+        canh_bao_da_khung=canh_bao_da_khung,
     )

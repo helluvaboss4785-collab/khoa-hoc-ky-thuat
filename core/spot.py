@@ -58,6 +58,8 @@ class KetQuaUocLuongVach:
     phuong_phap: str              # "gauss" hoặc "centroid"
     danh_sach_x: list[float] = field(default_factory=list)
     danh_sach_y: list[float] = field(default_factory=list)
+    so_cot_bi_loai_ngoai_lai: int = 0
+    so_cot_dung_centroid: int = 0
 
 
 def ham_gauss_1d(y: np.ndarray, bg: float, A: float, mu: float, sigma: float) -> np.ndarray:
@@ -285,6 +287,7 @@ def uoc_luong_duong_vach(
     phuong_phap: Literal["gauss", "centroid"] = "gauss",
     r2_toi_thieu: float = 0.80,
     buoc_nhay_cot: int = 1,
+    ty_le_trong_so_toi_da: float = 100.0,
 ) -> KetQuaUocLuongVach:
     """Ước lượng vị trí vạch laser từ một vùng ảnh chữ nhật (ROI).
 
@@ -328,24 +331,28 @@ def uoc_luong_duong_vach(
     fwhms: list[float] = []
     amplitudes: list[float] = []
     r2s: list[float] = []
+    is_centroid_flags: list[bool] = []
 
     so_cot_tong = 0
 
     for col in range(0, w, buoc_nhay_cot):
         so_cot_tong += 1
         cuong_do_cot = anh_roi[:, col]
+        dung_centroid = False
 
         if phuong_phap == "gauss":
             kq = uoc_luong_tam_gauss_cot(
                 y_coords, cuong_do_cot, r2_toi_thieu=r2_toi_thieu
             )
-            # Nếu Gauss thất bại thử lại bằng centroid
+            # Nếu Gauss thất bại thử lại bằng centroid và đánh dấu dùng centroid dự phòng
             if not kq.hop_le:
                 kq_cent = uoc_luong_tam_centroid_cot(y_coords, cuong_do_cot)
                 if kq_cent.hop_le:
                     kq = kq_cent
+                    dung_centroid = True
         else:
             kq = uoc_luong_tam_centroid_cot(y_coords, cuong_do_cot)
+            dung_centroid = kq.hop_le
 
         if kq.hop_le and np.isfinite(kq.mu) and np.isfinite(kq.sai_so_mu):
             xs.append(float(x_offset + col))
@@ -356,6 +363,7 @@ def uoc_luong_duong_vach(
             fwhms.append(kq.fwhm)
             amplitudes.append(kq.bien_do_A)
             r2s.append(kq.r2)
+            is_centroid_flags.append(dung_centroid)
 
     so_cot_hop_le = len(xs)
     if so_cot_hop_le < 3:
@@ -367,9 +375,48 @@ def uoc_luong_duong_vach(
     arr_x = np.array(xs, dtype=float)
     arr_y = np.array(ys, dtype=float)
     arr_w = np.array(weights, dtype=float)
+    arr_fwhm = np.array(fwhms, dtype=float)
+    arr_amp = np.array(amplitudes, dtype=float)
+    arr_r2 = np.array(r2s, dtype=float)
+    arr_is_cent = np.array(is_centroid_flags, dtype=bool)
+
+    # Chặn trọng số cực đoan để vài cột nhiễu thấp giả tạo không chi phối toàn đường khớp
+    if ty_le_trong_so_toi_da >= 1.0 and len(arr_w) > 0:
+        w_med = float(np.median(arr_w))
+        if w_med > 0.0 and math.isfinite(w_med):
+            r_w = math.sqrt(float(ty_le_trong_so_toi_da))
+            arr_w = np.clip(arr_w, w_med / r_w, w_med * r_w)
+
+    # Loại ngoại lai theo phần dư (cắt 3σ bền vững theo MAD lặp tối đa 3 vòng)
+    so_cot_ban_dau = len(arr_x)
+    mask_inlier = np.ones(so_cot_ban_dau, dtype=bool)
+    for _ in range(3):
+        x_in = arr_x[mask_inlier]
+        y_in = arr_y[mask_inlier]
+        w_in = arr_w[mask_inlier]
+        if len(x_in) < 4:
+            break
+        coeffs_tmp = np.polyfit(x_in, y_in, deg=1, w=np.sqrt(w_in))
+        phan_du = arr_y - (coeffs_tmp[0] * arr_x + coeffs_tmp[1])
+        res_in = phan_du[mask_inlier]
+        med_res = float(np.median(res_in))
+        mad_res = float(np.median(np.abs(res_in - med_res)))
+        sigma_r = max(1.4826 * mad_res, 0.05)
+        new_mask = mask_inlier & (np.abs(phan_du - med_res) <= 3.0 * sigma_r)
+        if int(np.count_nonzero(new_mask)) < 3 or np.array_equal(new_mask, mask_inlier):
+            break
+        mask_inlier = new_mask
+
+    so_cot_bi_loai = so_cot_ban_dau - int(np.count_nonzero(mask_inlier))
+    arr_x = arr_x[mask_inlier]
+    arr_y = arr_y[mask_inlier]
+    arr_w = arr_w[mask_inlier]
+    arr_fwhm = arr_fwhm[mask_inlier]
+    arr_amp = arr_amp[mask_inlier]
+    arr_r2 = arr_r2[mask_inlier]
+    so_cot_dung_centroid = int(np.count_nonzero(arr_is_cent[mask_inlier]))
 
     # Khớp đường thẳng có trọng số y = a*x + b
-    # Bằng cách giải hệ ma trận Design: [x, 1]
     deg = 1
     poly_coeffs, cov = np.polyfit(arr_x, arr_y, deg=deg, w=np.sqrt(arr_w), cov=True)
     a, b = float(poly_coeffs[0]), float(poly_coeffs[1])
@@ -388,13 +435,15 @@ def uoc_luong_duong_vach(
         sai_so_y=sai_so_y,
         do_doc_a=a,
         he_so_b=b,
-        fwhm_trung_binh=float(np.mean(fwhms)),
-        cuong_do_dinh_tb=float(np.mean(amplitudes)),
-        r2_trung_binh=float(np.mean(r2s)),
-        so_cot_hop_le=so_cot_hop_le,
+        fwhm_trung_binh=float(np.mean(arr_fwhm)),
+        cuong_do_dinh_tb=float(np.mean(arr_amp)),
+        r2_trung_binh=float(np.mean(arr_r2)),
+        so_cot_hop_le=len(arr_x),
         so_cot_tong=so_cot_tong,
         phuong_phap=phuong_phap,
-        danh_sach_x=xs,
-        danh_sach_y=ys,
+        danh_sach_x=arr_x.tolist(),
+        danh_sach_y=arr_y.tolist(),
+        so_cot_bi_loai_ngoai_lai=so_cot_bi_loai,
+        so_cot_dung_centroid=so_cot_dung_centroid,
     )
 

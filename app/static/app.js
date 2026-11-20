@@ -928,6 +928,19 @@ function renderMeasureResults(d) {
     .map((w) => `<div class="banner-25d ${w.cls}"><div class="banner-icon">${w.icon}</div><div>${esc(w.text)}</div></div>`)
     .join("");
 
+  // Tóm tắt đo đa khung (nếu có)
+  const mBox = $("#t1-multi-summary");
+  if (mBox) {
+    if (d.da_khung_hinh) {
+      const loiStr = (d.khung_loi && d.khung_loi.length)
+        ? ` | Khung loại: ${d.khung_loi.map((e) => `#${e.khung + 1}`).join(", ")}`
+        : "";
+      mBox.innerHTML = `<div class="banner-25d info"><div class="banner-icon">🎞️</div><div><b>ĐO ĐA KHUNG (${d.so_khung_hop_le}/${d.tong_so_khung} khung hợp lệ):</b> Trung vị Δy = ${fmt(d.delta_y_px, 3)} ± ${fmt(d.sai_so_delta_y_px, 3)} px | Trôi: ${fmt(d.do_doc_troi_px_moi_khung || 0, 3)} px/khung${esc(loiStr)}</div></div>`;
+    } else {
+      mBox.innerHTML = "";
+    }
+  }
+
   // Ảnh đánh dấu
   if (d.anh_danh_dau_b64) {
     $("#t1-annotated-img").src = d.anh_danh_dau_b64;
@@ -940,7 +953,7 @@ function renderMeasureResults(d) {
     <tr><td>Độ rộng FWHM (px)</td><td>${fmt(tc.fwhm_trung_binh, 2)}</td><td>${fmt(vm.fwhm_trung_binh, 2)}</td></tr>
     <tr><td>Biên độ đỉnh TB (0–255)</td><td>${fmt(tc.cuong_do_dinh_tb, 1)}</td><td>${fmt(vm.cuong_do_dinh_tb, 1)}</td></tr>
     <tr><td>Hệ số xác định R² Gauss</td><td>${fmt(tc.r2_trung_binh, 4)}</td><td>${fmt(vm.r2_trung_binh, 4)}</td></tr>
-    <tr><td>Số cột hợp lệ</td><td>${tc.so_cot_hop_le} / ${tc.so_cot_tong}</td><td>${vm.so_cot_hop_le} / ${vm.so_cot_tong}</td></tr>
+    <tr><td>Số cột hợp lệ</td><td>${tc.so_cot_hop_le} / ${tc.so_cot_tong} (loại ${tc.so_cot_bi_loai_ngoai_lai || 0}, cent ${tc.so_cot_dung_centroid || 0})</td><td>${vm.so_cot_hop_le} / ${vm.so_cot_tong} (loại ${vm.so_cot_bi_loai_ngoai_lai || 0}, cent ${vm.so_cot_dung_centroid || 0})</td></tr>
   `;
 
   drawTab1Charts(d);
@@ -1937,6 +1950,7 @@ function cameraSupported() {
 function setCameraUi(isOn) {
   $("#btn-cam-start").disabled = isOn || !cameraSupported();
   $("#btn-cam-snap").disabled = !isOn;
+  if ($("#btn-cam-burst")) $("#btn-cam-burst").disabled = !isOn;
   $("#btn-cam-stop").disabled = !isOn;
   $("#camera-live-dot").style.display = isOn ? "block" : "none";
   $("#camera-placeholder").style.display = isOn ? "none" : "flex";
@@ -2005,6 +2019,116 @@ function snapCameraAndMeasure() {
   STATE.cameraImageB64 = c.toDataURL("image/jpeg", 0.94);
   $("#cam-status").textContent = `📸 Đã chụp ảnh ${c.width}×${c.height} px — đang phân tích...`;
   runMeasure();
+}
+
+async function runMeasureMulti(imagesB64, label) {
+  if (!Array.isArray(imagesB64) || imagesB64.length < 2) {
+    toast("Cần ít nhất 2 khung ảnh để đo đa khung.");
+    return;
+  }
+  const basePayload = getTab1Payload();
+  delete basePayload.image_base64;
+  basePayload.mode = "upload";
+  basePayload.images_base64 = imagesB64;
+  const seq = ++STATE.measureSeq;
+  toast(`🎞️ Đang phân tích chuỗi ${imagesB64.length} khung (${label})...`);
+  try {
+    const data = await apiPost("/api/measure-multi", basePayload, "measure");
+    if (seq !== STATE.measureSeq) return;
+    STATE.lastMeasure = data;
+    STATE.savedCurrentLog = false;
+    $("#t1-annotated-img").classList.remove("is-raw-error");
+    $("#t1-img-caption").textContent = DEFAULT_IMG_CAPTION;
+    renderMeasureResults(data);
+    updateCoachBar();
+  } catch (err) {
+    if (isAbortError(err) || seq !== STATE.measureSeq) return;
+    showMeasureError(err.message);
+  }
+}
+
+async function snapBurstAndMeasure(nFrames = 5) {
+  const video = $("#camera-video");
+  if (!STATE.cameraStream || !video.videoWidth) {
+    toast("Hãy bật Camera và chờ hình hiện lên trước khi chụp chuỗi!");
+    return;
+  }
+  const frames = [];
+  const c = document.createElement("canvas");
+  c.width = video.videoWidth;
+  c.height = video.videoHeight;
+  const ctx = c.getContext("2d");
+  for (let i = 0; i < nFrames; i++) {
+    ctx.drawImage(video, 0, 0);
+    frames.push(c.toDataURL("image/jpeg", 0.92));
+    if (i < nFrames - 1) await new Promise((r) => setTimeout(r, 120));
+  }
+  STATE.cameraImageB64 = frames[0];
+  $("#cam-status").textContent = `🎞️ Đã chụp chuỗi ${frames.length} khung (${c.width}×${c.height} px) — đang xử lí...`;
+  await runMeasureMulti(frames, "Camera burst");
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(new Error("Không đọc được file."));
+    r.readAsDataURL(file);
+  });
+}
+
+async function extractVideoFrames(file, maxFrames = 6) {
+  const url = URL.createObjectURL(file);
+  const v = document.createElement("video");
+  v.muted = true;
+  v.playsInline = true;
+  v.src = url;
+  try {
+    await new Promise((res, rej) => {
+      v.onloadedmetadata = () => res();
+      v.onerror = () => rej(new Error("Không mở được file video."));
+    });
+    const dur = Math.min(Math.max(Number(v.duration) || 1.0, 0.2), 10.0);
+    const c = document.createElement("canvas");
+    c.width = v.videoWidth || 640;
+    c.height = v.videoHeight || 480;
+    const ctx = c.getContext("2d");
+    const frames = [];
+    for (let i = 0; i < maxFrames; i++) {
+      v.currentTime = (dur * (i + 0.5)) / maxFrames;
+      await new Promise((res) => { v.onseeked = () => res(); });
+      ctx.drawImage(v, 0, 0);
+      frames.push(c.toDataURL("image/jpeg", 0.92));
+    }
+    return frames;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function handleMultiLaserFiles(fileList) {
+  const files = Array.from(fileList || []);
+  if (!files.length) return;
+  try {
+    let frames = [];
+    if (files.length === 1 && files[0].type.startsWith("video/")) {
+      frames = await extractVideoFrames(files[0], 6);
+    } else {
+      const imgFiles = files.filter((f) => f.type.startsWith("image/")).slice(0, 12);
+      if (imgFiles.length < 2) {
+        toast("Hãy chọn ít nhất 2 ảnh hoặc 1 đoạn video ngắn.");
+        return;
+      }
+      frames = await Promise.all(imgFiles.map(readFileAsDataUrl));
+    }
+    STATE.uploadImageB64 = frames[0];
+    $("#upload-img-name").textContent = `Chuỗi đa khung: ${frames.length} khung ảnh`;
+    $("#upload-preview-img").src = frames[0];
+    $("#upload-preview-box").style.display = "block";
+    await runMeasureMulti(frames, `${frames.length} khung`);
+  } catch (err) {
+    toast(`Lỗi đọc đa khung: ${err.message}`);
+  }
 }
 
 const MAX_UPLOAD_MB = 15;
@@ -2285,6 +2409,10 @@ function bindEvents() {
     handleLaserFile(ev.target.files?.[0], "Ảnh vừa chụp");
     ev.target.value = "";
   });
+  $("#file-laser-multi")?.addEventListener("change", (ev) => {
+    handleMultiLaserFiles(ev.target.files);
+    ev.target.value = "";
+  });
   $("#btn-upload-clear").addEventListener("click", () => {
     resetUploadPreview();
     toast("Đã bỏ ảnh. Hãy chọn hoặc chụp ảnh khác.");
@@ -2307,6 +2435,7 @@ function bindEvents() {
 
   $("#btn-cam-start").addEventListener("click", startCamera);
   $("#btn-cam-snap").addEventListener("click", snapCameraAndMeasure);
+  $("#btn-cam-burst")?.addEventListener("click", () => snapBurstAndMeasure(5));
   $("#btn-cam-stop").addEventListener("click", () => stopCamera(true));
   window.addEventListener("pagehide", () => stopCamera(false));
   document.addEventListener("visibilitychange", () => {

@@ -48,6 +48,7 @@ from core.measure import (
     KetQuaDoDeltaY,
     KhongTimThayVachError,
     chuyen_anh_xam,
+    do_delta_y_da_khung_hinh,
     do_delta_y_tu_anh,
 )
 from sim.synth import (
@@ -699,6 +700,8 @@ def _serialize_line_fit(vach: Any) -> dict[str, Any]:
         "so_cot_hop_le": vach.so_cot_hop_le,
         "so_cot_tong": vach.so_cot_tong,
         "phuong_phap": vach.phuong_phap,
+        "so_cot_bi_loai_ngoai_lai": getattr(vach, "so_cot_bi_loai_ngoai_lai", 0),
+        "so_cot_dung_centroid": getattr(vach, "so_cot_dung_centroid", 0),
     }
 
 
@@ -1094,6 +1097,444 @@ async def api_measure(request: Request) -> JSONResponse:
             f"Tham số đo không hợp lệ: {exc}",
             exc,
         )
+
+
+def _parse_measure_common(
+    body: dict[str, Any], mh: cal.MoHinhHieuChuan
+) -> tuple[bool, float, float | None, bool, float | None, float, dict[str, Any] | None, str, bool, tuple | None, tuple | None]:
+    """Đọc và kiểm tra đầu vào chung cho /api/measure và /api/measure-multi."""
+    khong_do_nhiet_do = bool(body.get("khong_do_nhiet_do", False))
+    raw_t = body.get("nhiet_do_do")
+    if not khong_do_nhiet_do:
+        if raw_t is None or (isinstance(raw_t, str) and not raw_t.strip()):
+            raise ValueError("Vui lòng nhập nhiệt độ mẫu nước (°C) hoặc chọn 'Không đo nhiệt độ'.")
+        try:
+            nhiet_do_do = float(raw_t)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Nhiệt độ mẫu nước không hợp lệ.") from exc
+        if not math.isfinite(nhiet_do_do):
+            raise ValueError("Nhiệt độ mẫu nước không hợp lệ.")
+    else:
+        nhiet_do_do = float(mh.T_ref)
+
+    raw_t_ref = body.get("nhiet_do_tham_chieu")
+    if raw_t_ref is None or (isinstance(raw_t_ref, str) and not raw_t_ref.strip()):
+        nhiet_do_tham_chieu = None
+    else:
+        try:
+            nhiet_do_tham_chieu = float(raw_t_ref)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Nhiệt độ ngăn tham chiếu không hợp lệ.") from exc
+        if not math.isfinite(nhiet_do_tham_chieu):
+            raise ValueError("Nhiệt độ ngăn tham chiếu không hợp lệ.")
+
+    khoa_ae_af = bool(body.get("khoa_ae_af", False))
+    thang_anh_dict: dict[str, Any] | None = None
+    px_per_mm_val: float | None = None
+    u_px_per_mm_val = 0.0
+
+    d1 = body.get("diem_thang_1")
+    d2 = body.get("diem_thang_2")
+    kc_mm = body.get("khoang_cach_thang_mm")
+    if (
+        isinstance(d1, (list, tuple)) and len(d1) == 2
+        and isinstance(d2, (list, tuple)) and len(d2) == 2
+        and kc_mm is not None and kc_mm != ""
+    ):
+        kq_thang = thang.tinh_thang_tu_hai_diem(
+            (float(d1[0]), float(d1[1])),
+            (float(d2[0]), float(d2[1])),
+            float(kc_mm),
+        )
+        px_per_mm_val = kq_thang.px_per_mm
+        u_px_per_mm_val = kq_thang.u_px_per_mm
+        thang_anh_dict = {
+            "khoang_cach_px": kq_thang.khoang_cach_px,
+            "khoang_cach_mm": kq_thang.khoang_cach_mm,
+            "px_per_mm": kq_thang.px_per_mm,
+            "u_px_per_mm": kq_thang.u_px_per_mm,
+            "mm_per_px": kq_thang.mm_per_px,
+        }
+    elif body.get("px_per_mm") not in (None, ""):
+        px_per_mm_val = float(body["px_per_mm"])
+        if not math.isfinite(px_per_mm_val) or px_per_mm_val <= 0:
+            raise ValueError("Giá trị thang px_per_mm phải lớn hơn 0.")
+        thang_anh_dict = {
+            "px_per_mm": px_per_mm_val,
+            "u_px_per_mm": 0.0,
+            "mm_per_px": 1.0 / px_per_mm_val,
+        }
+
+    phuong_phap = "centroid" if body.get("phuong_phap") == "centroid" else "gauss"
+    dung_roi_thu_cong = bool(body.get("dung_roi_thu_cong", False))
+    roi_tc_tuple = None
+    roi_mau_tuple = None
+    if dung_roi_thu_cong:
+        rtc = body.get("roi_tc")
+        rmau = body.get("roi_mau")
+        if isinstance(rtc, (list, tuple)) and len(rtc) == 4:
+            roi_tc_tuple = tuple(int(v) for v in rtc)
+        if isinstance(rmau, (list, tuple)) and len(rmau) == 4:
+            roi_mau_tuple = tuple(int(v) for v in rmau)
+
+    return (
+        khong_do_nhiet_do,
+        nhiet_do_do,
+        nhiet_do_tham_chieu,
+        khoa_ae_af,
+        px_per_mm_val,
+        u_px_per_mm_val,
+        thang_anh_dict,
+        phuong_phap,
+        dung_roi_thu_cong,
+        roi_tc_tuple,
+        roi_mau_tuple,
+    )
+
+
+def _solve_and_gate_measurement(
+    mh: cal.MoHinhHieuChuan,
+    delta_y_px: float,
+    sigma_delta_y_px: float,
+    nhiet_do_do: float,
+    nhiet_do_tham_chieu: float | None,
+    khong_do_nhiet_do: bool,
+    px_per_mm_val: float | None,
+    u_px_per_mm_val: float,
+    chat_luong_hop_le: bool,
+    la_anh_mo_phong: bool,
+    ma_loai_req: str,
+) -> tuple[dict[str, Any] | None, str | None, str | None, bool, list[str], dict[str, Any] | None]:
+    """Giải ngược độ mặn từ Δy và áp dụng cổng chất lượng + phân loại loài theo [S-U, S+U]."""
+    cfg_cal = load_calib_config()
+    kq_man_dict = None
+    error_man = None
+    loai_loi_man = None
+    if math.isfinite(delta_y_px):
+        try:
+            kq_man = cal.uoc_luong_do_man(
+                mh=mh,
+                delta_y_px=delta_y_px,
+                T_C=nhiet_do_do,
+                sigma_delta_y_px=sigma_delta_y_px,
+                sigma_T_C=cfg_cal.sai_so_nhiet_ke_C,
+                k=cfg_cal.he_so_phu_k,
+                nguong_lech_T_khong_bu_C=cfg_cal.nguong_lech_T_khong_bu_C,
+                T_tham_chieu_C=nhiet_do_tham_chieu,
+                sigma_T_tham_chieu_C=cfg_cal.sai_so_nhiet_ke_C if nhiet_do_tham_chieu is not None else 0.0,
+                nguong_lech_T_hai_ngan_C=cfg_cal.nguong_lech_T_hai_ngan_C,
+                px_per_mm=px_per_mm_val,
+                u_px_per_mm=u_px_per_mm_val,
+                sigma_dung_dich_chuan_ppt=cfg_cal.sai_so_dung_dich_chuan_ppt,
+            )
+            canh_bao_man = list(kq_man.canh_bao)
+            if khong_do_nhiet_do:
+                canh_bao_man.insert(
+                    0,
+                    "CHƯA ĐO NHIỆT ĐỘ: không thực hiện bù nhiệt thực tế và KHÔNG đưa ra kết luận phân loại loài.",
+                )
+            kq_man_dict = {
+                "S_ppt": kq_man.S_ppt,
+                "u_S_ppt": kq_man.u_S_ppt,
+                "U_S_ppt": kq_man.U_S_ppt,
+                "k": kq_man.k,
+                "thanh_phan_bat_dinh": kq_man.thanh_phan_bat_dinh,
+                "ngoai_dai_S": kq_man.ngoai_dai_S,
+                "ngoai_dai_T": kq_man.ngoai_dai_T,
+                "la_mo_phong": kq_man.la_mo_phong,
+                "nguon_du_lieu": kq_man.nguon_du_lieu,
+                "da_xac_nhan_thuc_te": kq_man.da_xac_nhan_thuc_te,
+                "nhan": kq_man.nhan,
+                "canh_bao": canh_bao_man,
+                "han_che": kq_man.han_che,
+            }
+        except cal.LoiMoHinhHieuChuanError as ex_man:
+            error_man = str(ex_man)
+            loai_loi_man = "LOI_MO_HINH_GIAI_NGUOC"
+        except (ValueError, TypeError) as ex_man:
+            error_man = str(ex_man)
+            loai_loi_man = "DAU_VAO_KHONG_HOP_LE"
+
+    ly_do_khong_danh_gia: list[str] = []
+    if khong_do_nhiet_do:
+        ly_do_khong_danh_gia.append("Chưa đo nhiệt độ mẫu")
+    if not chat_luong_hop_le:
+        ly_do_khong_danh_gia.append("Ảnh không đạt chuẩn chất lượng (bão hòa / quá mờ / nhòe / thiếu cột)")
+    if kq_man_dict is None:
+        ly_do_khong_danh_gia.append(error_man or "Không giải ngược được độ mặn")
+    else:
+        if kq_man_dict["ngoai_dai_S"]:
+            ly_do_khong_danh_gia.append("Độ mặn ước lượng nằm ngoài dải hiệu chuẩn")
+        if kq_man_dict["ngoai_dai_T"]:
+            ly_do_khong_danh_gia.append("Nhiệt độ nằm ngoài dải hiệu chuẩn")
+        if mh.la_mo_phong or la_anh_mo_phong:
+            ly_do_khong_danh_gia.append("Đang dùng ảnh hoặc đường chuẩn MÔ PHỎNG (chưa phải đo thật)")
+        elif not mh.da_xac_nhan_thuc_te:
+            ly_do_khong_danh_gia.append("Đường chuẩn CHƯA XÁC NHẬN NGUỒN DỮ LIỆU thực tế")
+
+    khong_danh_gia_duoc = bool(ly_do_khong_danh_gia)
+    ds_loai = load_species_map()
+    ma_loai = ma_loai_req or next(iter(ds_loai.keys()), "")
+    danh_gia_loai = None
+    if ma_loai in ds_loai:
+        if khong_do_nhiet_do:
+            danh_gia_loai = None
+        elif khong_danh_gia_duoc:
+            kq_kdg = th.tao_ket_qua_khong_danh_gia_duoc(
+                ds_loai[ma_loai],
+                kq_man_dict["S_ppt"] if kq_man_dict else None,
+                kq_man_dict["U_S_ppt"] if kq_man_dict else 0.0,
+                ly_do_khong_danh_gia,
+            )
+            danh_gia_loai = {
+                "ma_loai": kq_kdg.ma_loai,
+                "ten_loai": kq_kdg.ten_loai,
+                "trang_thai": kq_kdg.trang_thai,
+                "mau_sac": kq_kdg.mau_sac,
+                "tieu_de": kq_kdg.tieu_de,
+                "loi_khuyen": kq_kdg.loi_khuyen,
+                "nguon_tham_khao": kq_kdg.nguon_tham_khao,
+                "pho": None,
+                "info": _serialize_species(ds_loai[ma_loai]),
+            }
+        else:
+            danh_gia_loai = _evaluate_species_detail(
+                kq_man_dict["S_ppt"],
+                ds_loai[ma_loai],
+                U=kq_man_dict["U_S_ppt"],
+            )
+
+    return kq_man_dict, error_man, loai_loi_man, khong_danh_gia_duoc, ly_do_khong_danh_gia, danh_gia_loai
+
+
+async def api_measure_multi(request: Request) -> JSONResponse:
+    """Đo độ lệch Δy từ chuỗi nhiều khung hình (nhiều ảnh chụp hoặc video tách khung)."""
+    try:
+        body = await request.json()
+    except Exception:
+        return _json_err("Dữ liệu JSON gửi lên không hợp lệ.")
+
+    mode = str(body.get("mode", "upload"))
+    ho_so = _req_ho_so(request, body)
+    cfg = load_config()
+    mh: cal.MoHinhHieuChuan = get_model_for_profile(ho_so)
+    la_anh_mo_phong = mode == "sim"
+    chan_li_mp: dict[str, Any] | None = None
+
+    try:
+        (
+            khong_do_nhiet_do,
+            nhiet_do_do,
+            nhiet_do_tham_chieu,
+            khoa_ae_af,
+            px_per_mm_val,
+            u_px_per_mm_val,
+            thang_anh_dict,
+            phuong_phap,
+            _dung_roi,
+            roi_tc_tuple,
+            roi_mau_tuple,
+        ) = _parse_measure_common(body, mh)
+
+        frames_ok: list[np.ndarray] = []
+        raw_idx_map: list[int] = []
+        pre_errors: list[tuple[int, str]] = []
+        exif_info: dict[str, Any] = {}
+
+        if mode == "sim":
+            so_khung = max(2, min(20, int(body.get("so_khung", 5))))
+            s_mp = float(body.get("S_ppt", 16.5))
+            t_mp = float(body.get("T_C", nhiet_do_do))
+            t_tc_mp = float(body.get("T_tham_chieu_C", nhiet_do_tham_chieu if nhiet_do_tham_chieu is not None else t_mp))
+            do_duc = float(body.get("do_duc", 0.15))
+            drift_px = float(body.get("drift_px", 4.0))
+            bo_tri = "doc" if body.get("bo_tri") == "doc" else "ngang"
+            cho_phep_bao_hoa = bool(body.get("cho_phep_bao_hoa", False))
+            seed = int(body.get("seed", 42))
+            for i in range(so_khung):
+                p_synth = ThamSoMoPhong(
+                    S_ppt=s_mp,
+                    T_C=t_mp,
+                    T_tham_chieu_C=t_tc_mp,
+                    drift_chung_px=drift_px + ((i - so_khung / 2.0) * 0.5),
+                    do_duc=do_duc,
+                    bo_tri=bo_tri,
+                    cho_phep_bao_hoa=cho_phep_bao_hoa,
+                    seed=seed + i,
+                )
+                anh_obj = sinh_anh_hai_vach_mo_phong(p_synth, cfg, gan_watermark=False)
+                frames_ok.append(cv2.cvtColor(anh_obj.anh, cv2.COLOR_GRAY2BGR))
+                raw_idx_map.append(i)
+                if i == 0:
+                    chan_li_mp = {
+                        "S_chan_li": s_mp,
+                        "T_chan_li": t_mp,
+                        "T_tc_chan_li": t_tc_mp,
+                        "delta_y_snell": anh_obj.delta_y_ly_thuyet_px,
+                        "drift_px": drift_px,
+                    }
+            tong_so_gui = so_khung
+        else:
+            raw_imgs = body.get("images_base64")
+            if not isinstance(raw_imgs, list) or len(raw_imgs) < 2:
+                return _json_err_typed(
+                    400,
+                    "DAU_VAO_KHONG_HOP_LE",
+                    "Đo đa khung hình cần gửi danh sách images_base64 gồm ít nhất 2 ảnh.",
+                )
+            tong_so_gui = len(raw_imgs)
+            for idx, b64_item in enumerate(raw_imgs):
+                if not isinstance(b64_item, str) or not b64_item.strip():
+                    pre_errors.append((idx, "Dữ liệu ảnh trống"))
+                    continue
+                try:
+                    img_bgr, raw_bytes = _decode_base64_image_bytes(b64_item)
+                    if not exif_info and raw_bytes:
+                        exif_info = thang.doc_exif_phoi_sang(raw_bytes)
+                    frames_ok.append(img_bgr)
+                    raw_idx_map.append(idx)
+                except AnhKhongHopLeError as exc_dec:
+                    pre_errors.append((idx, str(exc_dec)))
+
+            if not frames_ok:
+                raise AnhKhongHopLeError("Không giải mã được khung ảnh hợp lệ nào trong chuỗi.")
+
+        img_cfg = load_image_config()
+        kq_da = do_delta_y_da_khung_hinh(
+            frames_ok,
+            roi_tham_chieu=roi_tc_tuple,
+            roi_mau=roi_mau_tuple,
+            phuong_phap=phuong_phap,
+            nguong_bao_hoa=int(img_cfg.get("nguong_bao_hoa", 250)),
+            ti_le_bao_hoa_toi_da=float(img_cfg.get("ti_le_bao_hoa_toi_da", 0.02)),
+            snr_toi_thieu=float(img_cfg.get("snr_toi_thieu", 10.0)),
+        )
+
+        # Hợp nhất danh sách khung lỗi (cả khung lỗi lúc giải mã + khung lỗi lúc đo vạch)
+        khung_loi_day_du: list[dict[str, Any]] = [
+            {"khung": i, "ly_do": msg} for i, msg in pre_errors
+        ]
+        for sub_idx, msg in kq_da.khung_loi:
+            khung_loi_day_du.append({"khung": raw_idx_map[sub_idx], "ly_do": msg})
+        khung_loi_day_du.sort(key=lambda r: r["khung"])
+
+        # Lấy 1 khung hợp lệ để dựng ảnh đánh dấu & profile
+        anh_rep = frames_ok[0]
+        kq_rep = do_delta_y_tu_anh(
+            anh_rep,
+            roi_tham_chieu=roi_tc_tuple,
+            roi_mau=roi_mau_tuple,
+            phuong_phap=phuong_phap,
+            nguong_bao_hoa=int(img_cfg.get("nguong_bao_hoa", 250)),
+            ti_le_bao_hoa_toi_da=float(img_cfg.get("ti_le_bao_hoa_toi_da", 0.02)),
+            snr_toi_thieu=float(img_cfg.get("snr_toi_thieu", 10.0)),
+            tao_anh_ve=True,
+        )
+        sigma_dy_use = max(kq_da.sai_so_thong_ke_px, kq_rep.sai_so_delta_y_px if kq_da.sai_so_thong_ke_px <= 0 else 0.0)
+        cq_chung = kq_da.chat_luong_chung
+        tong_hop_le_cuoi = cq_chung.hop_le and (not pre_errors)
+
+        (
+            kq_man_dict,
+            error_man,
+            loai_loi_man,
+            khong_danh_gia_duoc,
+            ly_do_khong_danh_gia,
+            danh_gia_loai,
+        ) = _solve_and_gate_measurement(
+            mh=mh,
+            delta_y_px=kq_da.delta_y_trung_vi_px,
+            sigma_delta_y_px=sigma_dy_use,
+            nhiet_do_do=nhiet_do_do,
+            nhiet_do_tham_chieu=nhiet_do_tham_chieu,
+            khong_do_nhiet_do=khong_do_nhiet_do,
+            px_per_mm_val=px_per_mm_val,
+            u_px_per_mm_val=u_px_per_mm_val,
+            chat_luong_hop_le=tong_hop_le_cuoi,
+            la_anh_mo_phong=la_anh_mo_phong,
+            ma_loai_req=str(body.get("ma_loai") or "").strip(),
+        )
+
+        canh_bao_anh = list(cq_chung.canh_bao)
+        if pre_errors:
+            canh_bao_anh.append(f"Có {len(pre_errors)}/{tong_so_gui} khung ảnh không giải mã được.")
+        if mode != "sim" and not khoa_ae_af:
+            canh_bao_anh.append(
+                "Chưa khóa phơi sáng và lấy nét (AE/AF lock): độ sáng/độ nét vạch có thể thay đổi giữa các lần chụp."
+            )
+
+        delta_y_mm_val = None
+        sai_so_delta_y_mm_val = None
+        if px_per_mm_val is not None:
+            delta_y_mm_val, sai_so_delta_y_mm_val = thang.quy_doi_delta_y_sang_mm(
+                kq_da.delta_y_trung_vi_px, px_per_mm_val, sigma_dy_use, u_px_per_mm_val
+            )
+
+        anh_b64 = _encode_preview_b64(kq_rep.anh_danh_dau if kq_rep.anh_danh_dau is not None else anh_rep)
+        h_img, w_img = anh_rep.shape[:2]
+
+        return _json_ok({
+            "da_khung_hinh": True,
+            "la_anh_mo_phong": la_anh_mo_phong,
+            "khong_do_nhiet_do": khong_do_nhiet_do,
+            "nhiet_do_do": None if khong_do_nhiet_do else nhiet_do_do,
+            "nhiet_do_tham_chieu": nhiet_do_tham_chieu,
+            "khoa_ae_af": khoa_ae_af,
+            "exif": exif_info,
+            "thang_anh": thang_anh_dict,
+            "delta_y_mm": delta_y_mm_val,
+            "sai_so_delta_y_mm": sai_so_delta_y_mm_val,
+            "anh_width": w_img,
+            "anh_height": h_img,
+            "delta_y_px": kq_da.delta_y_trung_vi_px,
+            "sai_so_delta_y_px": sigma_dy_use,
+            "x_ref": kq_rep.x_ref,
+            "chi_so_do_duc_tuong_doi": kq_da.chi_so_do_duc_tb,
+            "so_khung_hop_le": kq_da.so_khung_hop_le,
+            "tong_so_khung": tong_so_gui,
+            "danh_sach_delta_y": kq_da.danh_sach_delta_y,
+            "khung_loi": khung_loi_day_du,
+            "do_doc_troi_px_moi_khung": kq_da.do_doc_troi_px_moi_khung,
+            "sai_so_do_doc_troi": kq_da.sai_so_do_doc_troi,
+            "canh_bao_troi_theo_thoi_gian": kq_da.canh_bao_troi_theo_thoi_gian,
+            "canh_bao_dao_dong_phoi_sang": kq_da.canh_bao_dao_dong_phoi_sang,
+            "canh_bao_da_khung": kq_da.canh_bao_da_khung,
+            "chat_luong": {
+                "hop_le": tong_hop_le_cuoi,
+                "bao_hoa": cq_chung.bao_hoa,
+                "ti_le_bao_hoa": cq_chung.ti_le_bao_hoa,
+                "qua_mo": cq_chung.qua_mo,
+                "snr": cq_chung.snr,
+                "nhoe": cq_chung.nhoe,
+                "fwhm_mau": cq_chung.fwhm_mau,
+                "fwhm_tc": cq_chung.fwhm_tc,
+                "canh_bao": canh_bao_anh,
+            },
+            "vach_tham_chieu": _serialize_line_fit(kq_rep.vach_tham_chieu),
+            "vach_mau": _serialize_line_fit(kq_rep.vach_mau),
+            "mo_hinh_man": kq_man_dict,
+            "error_man": error_man,
+            "loai_loi_man": loai_loi_man,
+            "khong_danh_gia_duoc": khong_danh_gia_duoc,
+            "trang_thai_danh_gia": (
+                "KHONG_DANH_GIA_DUOC"
+                if khong_danh_gia_duoc
+                else (danh_gia_loai["trang_thai"] if danh_gia_loai else None)
+            ),
+            "ly_do_khong_danh_gia": ly_do_khong_danh_gia,
+            "chan_li_mp": chan_li_mp,
+            "anh_danh_dau_b64": anh_b64,
+            "profile": _extract_profile_data(anh_rep, kq_rep),
+            "danh_gia_loai": danh_gia_loai,
+        })
+    except AnhKhongHopLeError as exc:
+        return _json_err_typed(400, "ANH_KHONG_HOP_LE", f"Chuỗi ảnh tải lên không hợp lệ: {exc}", exc)
+    except KhongTimThayVachError as exc:
+        return _json_err_typed(422, "KHONG_TIM_THAY_VACH", str(exc), exc)
+    except cal.LoiMoHinhHieuChuanError as exc:
+        return _json_err_typed(422, "LOI_MO_HINH_GIAI_NGUOC", f"Lỗi giải ngược độ mặn: {exc}", exc)
+    except (ValueError, TypeError) as exc:
+        return _json_err_typed(400, "DAU_VAO_KHONG_HOP_LE", f"Tham số đo đa khung không hợp lệ: {exc}", exc)
 
 
 async def api_species_eval(request: Request) -> JSONResponse:
@@ -1747,6 +2188,7 @@ routes = [
     Route("/sw.js", endpoint=service_worker_js, methods=["GET"]),
     Route("/api/bootstrap", endpoint=api_bootstrap, methods=["GET"]),
     Route("/api/measure", endpoint=api_measure, methods=["POST"]),
+    Route("/api/measure-multi", endpoint=api_measure_multi, methods=["POST"]),
     Route("/api/species-eval", endpoint=api_species_eval, methods=["POST"]),
     Route("/api/logs", endpoint=api_logs_list, methods=["GET"]),
     Route("/api/logs/add", endpoint=api_logs_add, methods=["POST"]),
