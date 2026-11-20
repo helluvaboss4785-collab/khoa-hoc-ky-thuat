@@ -798,6 +798,7 @@ code, pre, .mono {
 .banner-25d.ok { background: #ecfdf5; border-color: #6ee7b7; color: #065f46; box-shadow: 0 3px 0 #6ee7b7; }
 .banner-25d.warn { background: #fffbeb; border-color: #fcd34d; color: #92400e; box-shadow: 0 3px 0 #fcd34d; }
 .banner-25d.danger { background: #fef2f2; border-color: #fca5a5; color: #991b1b; box-shadow: 0 3px 0 #fca5a5; }
+.banner-25d.neutral { background: #f1f5f9; border-color: #94a3b8; color: #334155; box-shadow: 0 3px 0 #94a3b8; }
 .banner-icon { font-size: 1.08rem; flex-shrink: 0; margin-top: 1px; }
 
 /* ---------- Ảnh & Canvas Khung Quang Học 2.5D ---------- */

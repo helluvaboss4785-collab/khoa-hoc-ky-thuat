@@ -31,6 +31,14 @@ from core.spot import (
 )
 
 
+class AnhKhongHopLeError(ValueError):
+    """Ảnh đầu vào rỗng, sai định dạng hoặc không giải mã được."""
+
+
+class KhongTimThayVachError(ValueError):
+    """Không tự động tìm thấy đủ 2 vạch laser rõ ràng trên ảnh."""
+
+
 @dataclass(frozen=True)
 class ChatLuongAnh:
     """Đánh giá chất lượng quang học của ảnh chụp vạch laser."""
@@ -75,13 +83,48 @@ class KetQuaDoDaKhungHinh:
 
 def chuyen_anh_xam(anh: np.ndarray) -> np.ndarray:
     """Chuyển ảnh sang mức xám 8-bit chuẩn."""
+    if anh is None or not hasattr(anh, "ndim") or anh.size == 0:
+        raise AnhKhongHopLeError("Ảnh đầu vào rỗng hoặc không hợp lệ.")
     if anh.ndim == 2:
         return anh.astype(np.uint8) if anh.dtype != np.uint8 else anh
     if anh.ndim == 3:
         if anh.shape[2] == 4:  # RGBA
             return cv2.cvtColor(anh, cv2.COLOR_RGBA2GRAY)
         return cv2.cvtColor(anh, cv2.COLOR_BGR2GRAY)
-    raise ValueError(f"Định dạng ảnh không hợp lệ: shape={anh.shape}")
+    raise AnhKhongHopLeError(f"Định dạng ảnh không hợp lệ: shape={anh.shape}")
+
+
+def _danh_gia_vung_don(
+    vung: np.ndarray,
+    nguong_bao_hoa: int,
+) -> tuple[float, float, float, float, float]:
+    """Tính các chỉ số chất lượng bất biến theo chiều cao ROI cho một vùng đơn.
+
+    - Bão hòa tính theo tỉ lệ CỘT có đỉnh >= ngưỡng bão hòa trên các cột có tín hiệu,
+      giúp kết quả không bị pha loãng khi người dùng kéo ROI cao hơn.
+    - SNR và độ tương phản lấy theo trung vị đỉnh cột so với nền để bất biến diện tích ROI.
+    """
+    if vung.size == 0 or vung.shape[0] < 1 or vung.shape[1] < 1:
+        raise AnhKhongHopLeError("Vùng ROI rỗng, không thể đánh giá chất lượng.")
+
+    nen = float(np.percentile(vung, 10))
+    col_max = np.max(vung, axis=0)
+    cot_co_tin_hieu = col_max >= (nen + 15.0)
+
+    if np.any(cot_co_tin_hieu):
+        ti_le_bh = float(np.mean(col_max[cot_co_tin_hieu] >= nguong_bao_hoa))
+        dinh = float(np.median(col_max[cot_co_tin_hieu]))
+    else:
+        ti_le_bh = float(np.mean(col_max >= nguong_bao_hoa))
+        dinh = float(np.max(col_max))
+
+    nen_mask = vung <= (nen + 5.0)
+    std_nen = float(np.std(vung[nen_mask])) if np.any(nen_mask) else 1.0
+    std_nen = max(std_nen, 0.5)
+
+    tuong_phan = dinh - nen
+    snr = tuong_phan / std_nen
+    return ti_le_bh, snr, tuong_phan, nen, dinh
 
 
 def kiem_tra_chat_luong_vung(
@@ -90,11 +133,11 @@ def kiem_tra_chat_luong_vung(
     roi_mau: tuple[int, int, int, int],
     nguong_bao_hoa: int = 250,
     ti_le_bao_hoa_toi_da: float = 0.02,
-    snr_toi_thieu: float = 3.0,
+    snr_toi_thieu: float = 10.0,
     fwhm_toi_thieu: float = 1.2,
     fwhm_toi_da: float = 65.0,
 ) -> tuple[ChatLuongAnh, float, float]:
-    """Kiểm tra và chấm điểm chất lượng ảnh chụp 2 vạch."""
+    """Kiểm tra chất lượng cho CẢ HAI vùng (tham chiếu và mẫu)."""
     canh_bao: list[str] = []
 
     y1_tc, y2_tc, x1_tc, x2_tc = roi_tc
@@ -103,36 +146,30 @@ def kiem_tra_chat_luong_vung(
     vung_tc = anh_xam[y1_tc:y2_tc, x1_tc:x2_tc]
     vung_m = anh_xam[y1_m:y2_m, x1_m:x2_m]
 
-    # 1. Kiểm tra bão hòa sáng (clipping)
-    px_bao_hoa_tc = np.count_nonzero(vung_tc >= nguong_bao_hoa)
-    px_bao_hoa_m = np.count_nonzero(vung_m >= nguong_bao_hoa)
-    tong_px = vung_tc.size + vung_m.size
-    ti_le_bh = float(px_bao_hoa_tc + px_bao_hoa_m) / max(tong_px, 1)
+    ti_le_bh_tc, snr_tc, contrast_tc, nen_tc, dinh_tc = _danh_gia_vung_don(vung_tc, nguong_bao_hoa)
+    ti_le_bh_m, snr_m, contrast_m, _, _ = _danh_gia_vung_don(vung_m, nguong_bao_hoa)
 
+    # 1. Bão hòa sáng theo cột: lấy giá trị xấu nhất giữa hai vùng
+    ti_le_bh = max(ti_le_bh_tc, ti_le_bh_m)
     co_bao_hoa = ti_le_bh > ti_le_bao_hoa_toi_da
     if co_bao_hoa:
         canh_bao.append(
-            f"Vạch sáng bị bão hòa (cháy sáng {ti_le_bh*100:.1f}% pixel > {nguong_bao_hoa}). "
+            f"Vạch sáng bị bão hòa ({ti_le_bh*100:.1f}% cột có đỉnh ≥ {nguong_bao_hoa}). "
             "Cần giảm phơi sáng máy ảnh hoặc giảm công suất laser để tránh bẹt đỉnh."
         )
 
-    # 2. Kiểm tra tín hiệu / nhiễu (SNR)
-    nen_tc = float(np.percentile(vung_tc, 10))
-    dinh_tc = float(np.percentile(vung_tc, 99))
-    std_nen = float(np.std(vung_tc[vung_tc <= nen_tc + 5])) if np.any(vung_tc <= nen_tc + 5) else 1.0
-    std_nen = max(std_nen, 0.5)
-
-    snr_uoc_luong = (dinh_tc - nen_tc) / std_nen
-    co_qua_mo = bool(snr_uoc_luong < snr_toi_thieu or (dinh_tc - nen_tc) < 15.0)
+    # 2. Tín hiệu / nhiễu (SNR): tính cho cả hai vùng và lấy giá trị thấp hơn
+    snr_uoc_luong = min(snr_tc, snr_m)
+    contrast_min = min(contrast_tc, contrast_m)
+    co_qua_mo = bool(snr_uoc_luong < snr_toi_thieu or contrast_min < 15.0)
     if co_qua_mo:
         canh_bao.append(
-            f"Vạch sáng quá mờ (SNR={snr_uoc_luong:.1f} < {snr_toi_thieu} hoặc tương phản yếu). "
+            f"Vạch sáng quá mờ (SNR tối thiểu giữa 2 vùng = {snr_uoc_luong:.1f} < {snr_toi_thieu} hoặc tương phản yếu). "
             "Cần che bớt ánh sáng môi trường hoặc tăng sáng laser."
         )
 
     hop_le = not (co_bao_hoa or co_qua_mo)
 
-    # FWHM sẽ được cập nhật sau khi khớp
     chat_luong = ChatLuongAnh(
         hop_le=hop_le,
         bao_hoa=co_bao_hoa,
@@ -263,7 +300,7 @@ def tu_dong_tim_roi_hai_vach(
         roi_phai = (y_min, y_max, max(0, x_mid + 10), min(w, x + cw))
         return roi_trai, roi_phai
 
-    raise ValueError(
+    raise KhongTimThayVachError(
         "Không tự động tìm thấy vạch sáng rõ ràng. "
         "Hãy kéo chọn thủ công 2 vùng ROI vạch tham chiếu và vạch mẫu trên giao diện."
     )
@@ -329,7 +366,7 @@ def do_delta_y_tu_anh(
     buoc_nhay_cot: int = 2,
     nguong_bao_hoa: int = 250,
     ti_le_bao_hoa_toi_da: float = 0.02,
-    snr_toi_thieu: float = 3.0,
+    snr_toi_thieu: float = 10.0,
     tao_anh_ve: bool = True,
 ) -> KetQuaDoDeltaY:
     """Đo độ lệch vi sai Δy và chỉ số độ đục từ một ảnh chụp.

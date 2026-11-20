@@ -226,3 +226,43 @@ def test_do_vi_sai_triet_tieu_rung_dong_laser_va_may_anh():
     assert sai_so < 0.1, f"Đo vi sai không triệt tiêu được rung động: sai số {sai_so:.4f} px"
     assert ket_qua_da_khung.so_khung_hop_le == 5
 
+
+def test_co_bao_hoa_bat_bien_theo_chieu_cao_roi():
+    """T6: Cờ bão hòa tính theo cột phải cho cùng kết luận với ROI cao ±15, ±40, ±120 px."""
+    anh, _ = tao_anh_hai_vach_ly_thuyet(
+        h=320, w=140, y_tc=150.0, y_mau=200.0, amp_tc=260.0, amp_mau=260.0, bg=10.0, noise_std=0.5
+    )
+    # Làm bão hòa lõi vạch mẫu tại y=200 để kiểm tra không phụ thuộc diện tích ROI
+    anh[198:203, 10:130] = 255
+
+    roi_tc = (135, 165, 10, 130)
+    ket_luan = []
+    for half_h in (15, 40, 120):
+        y1 = max(0, 200 - half_h)
+        y2 = min(320, 200 + half_h)
+        kq = do_delta_y_tu_anh(anh, roi_tham_chieu=roi_tc, roi_mau=(y1, y2, 10, 130), tao_anh_ve=False)
+        assert kq.chat_luong.bao_hoa is True
+        assert kq.chat_luong.hop_le is False
+        ket_luan.append(kq.chat_luong.ti_le_bao_hoa)
+
+    assert ket_luan[0] == pytest.approx(ket_luan[1], abs=1e-6)
+    assert ket_luan[1] == pytest.approx(ket_luan[2], abs=1e-6)
+
+
+def test_snr_tinh_ca_hai_vung_lay_gia_tri_thap_hon():
+    """T6: Vạch tham chiếu rõ nhưng vạch mẫu quá mờ vẫn phải báo quá mờ và hop_le=False."""
+    anh, _ = tao_anh_hai_vach_ly_thuyet(
+        h=200, w=140, y_tc=50.0, y_mau=130.0, amp_tc=190.0, amp_mau=10.0, bg=15.0, noise_std=2.0
+    )
+    kq = do_delta_y_tu_anh(
+        anh,
+        roi_tham_chieu=(30, 70, 10, 130),
+        roi_mau=(110, 150, 10, 130),
+        phuong_phap="centroid",
+        snr_toi_thieu=10.0,
+        tao_anh_ve=False,
+    )
+    assert kq.chat_luong.snr < 10.0
+    assert kq.chat_luong.qua_mo is True
+    assert kq.chat_luong.hop_le is False
+

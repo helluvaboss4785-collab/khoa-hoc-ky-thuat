@@ -162,4 +162,52 @@ def test_api_measure_bat_buoc_nhiet_do_va_khong_do_nhiet_do() -> None:
     d_no_t = json.loads(resp_no_t.body.decode("utf-8"))
     assert d_no_t["khong_do_nhiet_do"] is True
     assert d_no_t["danh_gia_loai"] is None
+    assert d_no_t["khong_danh_gia_duoc"] is True
     assert any("CHƯA ĐO NHIỆT ĐỘ" in w for w in d_no_t["mo_hinh_man"]["canh_bao"])
+
+
+def test_cong_chat_luong_va_phan_loai_loi_api_measure() -> None:
+    import base64
+    import cv2
+    import numpy as np
+
+    # 1. Đo ảnh mô phỏng -> khong_danh_gia_duoc=True, KHONG gán màu an toàn/cảnh báo
+    resp_sim = _run_coro(
+        web_app.api_measure(
+            _make_request("POST", "/api/measure", {"mode": "sim", "S_ppt": 15.0, "nhiet_do_do": 25.0})
+        )
+    )
+    assert resp_sim.status_code == 200
+    d_sim = json.loads(resp_sim.body.decode("utf-8"))
+    assert d_sim["khong_danh_gia_duoc"] is True
+    assert d_sim["danh_gia_loai"]["trang_thai"] == "KHONG_DANH_GIA_DUOC"
+
+    # 2. Ảnh base64 hỏng -> 400 ANH_KHONG_HOP_LE
+    resp_bad = _run_coro(
+        web_app.api_measure(
+            _make_request(
+                "POST",
+                "/api/measure",
+                {"mode": "upload", "image_base64": "data:image/png;base64,NOT_A_VALID_IMG", "nhiet_do_do": 25.0},
+            )
+        )
+    )
+    assert resp_bad.status_code == 400
+    assert json.loads(resp_bad.body.decode("utf-8"))["loai_loi"] == "ANH_KHONG_HOP_LE"
+
+    # 3. Ảnh đen hoàn toàn không có vạch -> 422 KHONG_TIM_THAY_VACH
+    black = np.zeros((80, 120, 3), dtype=np.uint8)
+    ok, buf = cv2.imencode(".png", black)
+    assert ok
+    b64_black = "data:image/png;base64," + base64.b64encode(buf.tobytes()).decode("ascii")
+    resp_novach = _run_coro(
+        web_app.api_measure(
+            _make_request(
+                "POST",
+                "/api/measure",
+                {"mode": "upload", "image_base64": b64_black, "nhiet_do_do": 25.0},
+            )
+        )
+    )
+    assert resp_novach.status_code == 422
+    assert json.loads(resp_novach.body.decode("utf-8"))["loai_loi"] == "KHONG_TIM_THAY_VACH"

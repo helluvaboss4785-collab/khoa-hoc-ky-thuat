@@ -89,8 +89,15 @@ class KetQuaDanhGiaLoai:
 
     ma_loai: str
     ten_loai: str
-    trang_thai: Literal["AN_TOAN", "CANH_BAO", "NGUY_HIEM", "CHUA_CO_NGUON"]
-    mau_sac: str                  # mã màu hiển thị giao diện ("#28a745", "#ffc107", "#dc3545", "#6c757d")
+    trang_thai: Literal[
+        "AN_TOAN",
+        "CANH_BAO",
+        "NGUY_HIEM",
+        "SAT_RANH_GIOI",
+        "CHUA_CO_NGUON",
+        "KHONG_DANH_GIA_DUOC",
+    ]
+    mau_sac: str                  # mã màu hiển thị giao diện ("#28a745", "#ffc107", "#dc3545", "#64748b", "#6c757d")
     tieu_de: str                  # thông điệp ngắn gọn
     loi_khuyen: str               # tóm tắt trạng thái, khoảng tham chiếu, giá trị đo, nguồn & hướng dẫn liên hệ
     nguon_tham_khao: str          # tài liệu tham khảo để học sinh bảo vệ luận điểm
@@ -190,13 +197,66 @@ def _thong_diep_khach_quan(
     )
 
 
+def _phan_vung_diem(val: float, muc_tieu: Any) -> str:
+    """Xác định phân vùng cho một giá trị độ mặn đơn lẻ."""
+    if muc_tieu.nguy_hiem_duoi is not None and val < muc_tieu.nguy_hiem_duoi:
+        return "NGUY_HIEM_DUOI"
+    if muc_tieu.nguy_hiem_tren is not None and val > muc_tieu.nguy_hiem_tren:
+        return "NGUY_HIEM_TREN"
+    if muc_tieu.canh_bao_thap and muc_tieu.canh_bao_thap[0] <= val < muc_tieu.canh_bao_thap[1]:
+        return "CANH_BAO_THAP"
+    if muc_tieu.canh_bao_cao and muc_tieu.canh_bao_cao[0] < val <= muc_tieu.canh_bao_cao[1]:
+        return "CANH_BAO_CAO"
+    if muc_tieu.an_toan_min is not None and muc_tieu.an_toan_max is not None:
+        if muc_tieu.an_toan_min <= val <= muc_tieu.an_toan_max:
+            return "AN_TOAN"
+    return "CHUA_XAC_DINH"
+
+
+def _cac_ranh_gioi(muc_tieu: Any) -> list[float]:
+    moc: list[float] = []
+    for v in (muc_tieu.nguy_hiem_duoi, muc_tieu.nguy_hiem_tren, muc_tieu.an_toan_min, muc_tieu.an_toan_max):
+        if v is not None:
+            moc.append(float(v))
+    if muc_tieu.canh_bao_thap:
+        moc.extend([float(muc_tieu.canh_bao_thap[0]), float(muc_tieu.canh_bao_thap[1])])
+    if muc_tieu.canh_bao_cao:
+        moc.extend([float(muc_tieu.canh_bao_cao[0]), float(muc_tieu.canh_bao_cao[1])])
+    return moc
+
+
+def tao_ket_qua_khong_danh_gia_duoc(
+    loai: ThongTinLoai,
+    S_ppt: float | None,
+    U: float,
+    ly_do: list[str],
+    giai_doan: str | None = None,
+) -> KetQuaDanhGiaLoai:
+    """Trả kết quả trung tính KHONG_DANH_GIA_DUOC khi dữ liệu/ảnh/mô hình chưa đủ tin cậy."""
+    muc_tieu, ten_day_du = _chon_muc_tieu(loai, giai_doan)
+    val_str = _dinh_dang_gia_tri_do(S_ppt, U) if S_ppt is not None else "Không xác định"
+    ly_do_str = "; ".join(ly_do) if ly_do else "Chưa đủ điều kiện tin cậy."
+    return KetQuaDanhGiaLoai(
+        ma_loai=loai.ma_loai,
+        ten_loai=ten_day_du,
+        trang_thai="KHONG_DANH_GIA_DUOC",
+        mau_sac="#64748b",
+        tieu_de="KHÔNG ĐÁNH GIÁ ĐƯỢC",
+        loi_khuyen=(
+            f"Không phân loại an toàn cho '{ten_day_du}' do: {ly_do_str}. "
+            f"Giá trị ước lượng tham khảo: {val_str}. {TU_VAN_KHUYEN_NONG}"
+        ),
+        nguon_tham_khao=muc_tieu.nguon_tham_khao or "Chưa có nguồn tài liệu",
+    )
+
+
 def danh_gia_do_man_loai(
     S_ppt: float,
     loai: ThongTinLoai,
     U: float = 0.0,
     giai_doan: str | None = None,
 ) -> KetQuaDanhGiaLoai:
-    """Đối chiếu giá trị độ mặn với ngưỡng tham chiếu của một loài (hoặc giai đoạn cụ thể)."""
+    """Đối chiếu khoảng bất định [S - U, S + U] với ngưỡng tham chiếu của loài."""
     muc_tieu, ten_day_du = _chon_muc_tieu(loai, giai_doan)
     if not muc_tieu.co_du_lieu_nguon or not muc_tieu.co_bat_ky_nguong():
         return KetQuaDanhGiaLoai(
@@ -214,9 +274,39 @@ def danh_gia_do_man_loai(
         )
 
     nguon = muc_tieu.nguon_tham_khao
+    u_val = max(float(U), 0.0)
+    S_lo = max(0.0, S_ppt - u_val) if S_ppt >= 0.0 else (S_ppt - u_val)
+    S_hi = S_ppt + u_val
 
-    # 1. Kiểm tra mức NGUY HIỂM
-    if muc_tieu.nguy_hiem_duoi is not None and S_ppt < muc_tieu.nguy_hiem_duoi:
+    if u_val > 0.0:
+        v_lo = _phan_vung_diem(S_lo, muc_tieu)
+        v_giua = _phan_vung_diem(S_ppt, muc_tieu)
+        v_hi = _phan_vung_diem(S_hi, muc_tieu)
+        bat_cheo = (
+            (v_lo != v_hi)
+            or (v_lo != v_giua)
+            or any(S_lo < moc < S_hi for moc in _cac_ranh_gioi(muc_tieu))
+        )
+        if bat_cheo:
+            khoang_gt = f"[{S_lo:.2f} – {S_hi:.2f} ‰]"
+            return KetQuaDanhGiaLoai(
+                ma_loai=loai.ma_loai,
+                ten_loai=ten_day_du,
+                trang_thai="SAT_RANH_GIOI",
+                mau_sac="#64748b",
+                tieu_de=f"SÁT RANH GIỚI: Khoảng {khoang_gt} bắt chéo ngưỡng",
+                loi_khuyen=_thong_diep_khach_quan(
+                    f"SÁT RANH GIỚI (khoảng {khoang_gt})",
+                    f"{v_lo} → {v_hi}",
+                    S_ppt,
+                    u_val,
+                    nguon,
+                ),
+                nguon_tham_khao=nguon,
+            )
+
+    # 1. Kiểm tra mức NGUY HIỂM (cả khoảng [S - U, S + U] nằm trong vùng)
+    if muc_tieu.nguy_hiem_duoi is not None and S_hi < muc_tieu.nguy_hiem_duoi:
         khoang = f"< {muc_tieu.nguy_hiem_duoi:g} ‰"
         return KetQuaDanhGiaLoai(
             ma_loai=loai.ma_loai,
@@ -228,7 +318,7 @@ def danh_gia_do_man_loai(
             nguon_tham_khao=nguon,
         )
 
-    if muc_tieu.nguy_hiem_tren is not None and S_ppt > muc_tieu.nguy_hiem_tren:
+    if muc_tieu.nguy_hiem_tren is not None and S_lo > muc_tieu.nguy_hiem_tren:
         khoang = f"> {muc_tieu.nguy_hiem_tren:g} ‰"
         return KetQuaDanhGiaLoai(
             ma_loai=loai.ma_loai,
@@ -241,7 +331,7 @@ def danh_gia_do_man_loai(
         )
 
     # 2. Kiểm tra mức CẢNH BÁO
-    if muc_tieu.canh_bao_thap and muc_tieu.canh_bao_thap[0] <= S_ppt < muc_tieu.canh_bao_thap[1]:
+    if muc_tieu.canh_bao_thap and muc_tieu.canh_bao_thap[0] <= S_lo and S_hi < muc_tieu.canh_bao_thap[1]:
         khoang = f"{muc_tieu.canh_bao_thap[0]:g} – {muc_tieu.canh_bao_thap[1]:g} ‰"
         return KetQuaDanhGiaLoai(
             ma_loai=loai.ma_loai,
@@ -253,7 +343,7 @@ def danh_gia_do_man_loai(
             nguon_tham_khao=nguon,
         )
 
-    if muc_tieu.canh_bao_cao and muc_tieu.canh_bao_cao[0] < S_ppt <= muc_tieu.canh_bao_cao[1]:
+    if muc_tieu.canh_bao_cao and muc_tieu.canh_bao_cao[0] < S_lo and S_hi <= muc_tieu.canh_bao_cao[1]:
         khoang = f"{muc_tieu.canh_bao_cao[0]:g} – {muc_tieu.canh_bao_cao[1]:g} ‰"
         return KetQuaDanhGiaLoai(
             ma_loai=loai.ma_loai,
@@ -265,9 +355,9 @@ def danh_gia_do_man_loai(
             nguon_tham_khao=nguon,
         )
 
-    # 3. Kiểm tra mức AN TOÀN
+    # 3. Kiểm tra mức AN TOÀN (chỉ khi toàn bộ [S - U, S + U] nằm trong an_toan)
     if muc_tieu.an_toan_min is not None and muc_tieu.an_toan_max is not None:
-        if muc_tieu.an_toan_min <= S_ppt <= muc_tieu.an_toan_max:
+        if muc_tieu.an_toan_min <= S_lo and S_hi <= muc_tieu.an_toan_max:
             khoang = f"{muc_tieu.an_toan_min:g} – {muc_tieu.an_toan_max:g} ‰"
             return KetQuaDanhGiaLoai(
                 ma_loai=loai.ma_loai,
@@ -278,6 +368,25 @@ def danh_gia_do_man_loai(
                 loi_khuyen=_thong_diep_khach_quan("AN TOÀN", khoang, S_ppt, U, nguon),
                 nguon_tham_khao=nguon,
             )
+
+    # Trường hợp U == 0 nằm đúng tại biên không khớp nghiêm ngặt các nhánh trên
+    v_pt = _phan_vung_diem(S_ppt, muc_tieu)
+    if v_pt == "NGUY_HIEM_DUOI":
+        khoang = f"< {muc_tieu.nguy_hiem_duoi:g} ‰"
+        return KetQuaDanhGiaLoai(
+            ma_loai=loai.ma_loai, ten_loai=ten_day_du, trang_thai="NGUY_HIEM", mau_sac="#dc3545",
+            tieu_de=f"NGUY HIỂM: Dưới ngưỡng tham chiếu ({khoang})",
+            loi_khuyen=_thong_diep_khach_quan("NGUY HIỂM (dưới ngưỡng)", khoang, S_ppt, U, nguon),
+            nguon_tham_khao=nguon,
+        )
+    if v_pt == "NGUY_HIEM_TREN":
+        khoang = f"> {muc_tieu.nguy_hiem_tren:g} ‰"
+        return KetQuaDanhGiaLoai(
+            ma_loai=loai.ma_loai, ten_loai=ten_day_du, trang_thai="NGUY_HIEM", mau_sac="#dc3545",
+            tieu_de=f"NGUY HIỂM: Vượt ngưỡng tham chiếu ({khoang})",
+            loi_khuyen=_thong_diep_khach_quan("NGUY HIỂM (vượt ngưỡng)", khoang, S_ppt, U, nguon),
+            nguon_tham_khao=nguon,
+        )
 
     return KetQuaDanhGiaLoai(
         ma_loai=loai.ma_loai,

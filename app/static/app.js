@@ -894,19 +894,25 @@ function renderMeasureResults(d) {
   $("#kpi-qual-snr").textContent = `SNR = ${fmt(cq.snr, 1)}`;
   $("#kpi-qual-sub").textContent = `Bão hòa (≥250): ${fmt(cq.ti_le_bao_hoa * 100, 2)}% pixel`;
 
-  // Đánh giá theo loài
+  // Đánh giá theo loài (qua cổng chất lượng T6)
   const dg = d.danh_gia_loai;
   const vBox = $("#t1-species-verdict");
+  const statusToBannerCls = (st) =>
+    st === "AN_TOAN" ? "ok"
+      : st === "CANH_BAO" ? "warn"
+      : st === "NGUY_HIEM" ? "danger"
+      : (st === "SAT_RANH_GIOI" || st === "KHONG_DANH_GIA_DUOC" || st === "CHUA_CO_NGUON") ? "neutral"
+      : "info";
   if (d.khong_do_nhiet_do) {
     vBox.className = "banner-25d danger";
     vBox.innerHTML = `<div class="banner-icon">🌡️</div><div><b>CHƯA ĐO NHIỆT ĐỘ — KHÔNG PHÂN LOẠI LOÀI</b><br>Chênh nhiệt độ giữa hai ngăn gây sai lệch lớn. Hãy nhập nhiệt độ mẫu (và ngăn tham chiếu nếu có) để đánh giá an toàn.</div>`;
   } else if (dg) {
-    const cls = dg.trang_thai === "AN_TOAN" ? "ok" : dg.trang_thai === "CANH_BAO" ? "warn" : dg.trang_thai === "NGUY_HIEM" ? "danger" : "info";
-    vBox.className = `banner-25d ${cls}`;
-    vBox.innerHTML = `<div class="banner-icon">🔎</div><div><b>${esc(dg.tieu_de)}</b><br>${esc(dg.loi_khuyen)}</div>`;
+    const icon = dg.trang_thai === "KHONG_DANH_GIA_DUOC" ? "⛔" : dg.trang_thai === "SAT_RANH_GIOI" ? "⚖️" : "🔎";
+    vBox.className = `banner-25d ${statusToBannerCls(dg.trang_thai)}`;
+    vBox.innerHTML = `<div class="banner-icon">${icon}</div><div><b>${esc(dg.tieu_de)}</b><br>${esc(dg.loi_khuyen)}</div>`;
   } else {
-    vBox.className = "banner-25d warn";
-    vBox.innerHTML = `<div class="banner-icon">⚠️</div><div>Chưa có ước lượng độ mặn hợp lệ để đối chiếu loài.</div>`;
+    vBox.className = "banner-25d neutral";
+    vBox.innerHTML = `<div class="banner-icon">⛔</div><div><b>KHÔNG ĐÁNH GIÁ ĐƯỢC</b><br>Chưa có ước lượng độ mặn hợp lệ để đối chiếu loài.</div>`;
   }
 
   // Cảnh báo chất lượng & mô hình
@@ -1074,10 +1080,20 @@ async function saveMeasurementToLog() {
 /* ==========================================================================
    TAB 2: CẢNH BÁO AN TOÀN THEO LOÀI (CÓ DỰ PHÒNG OFFLINE + CHỈNH NGƯỠNG)
    ========================================================================== */
+function _zoneForPoint(val, info) {
+  if (info.nguy_hiem_duoi !== null && info.nguy_hiem_duoi !== undefined && val < info.nguy_hiem_duoi) return "NGUY_HIEM_DUOI";
+  if (info.nguy_hiem_tren !== null && info.nguy_hiem_tren !== undefined && val > info.nguy_hiem_tren) return "NGUY_HIEM_TREN";
+  if (Array.isArray(info.canh_bao_thap) && val >= info.canh_bao_thap[0] && val < info.canh_bao_thap[1]) return "CANH_BAO_THAP";
+  if (Array.isArray(info.canh_bao_cao) && val > info.canh_bao_cao[0] && val <= info.canh_bao_cao[1]) return "CANH_BAO_CAO";
+  if (info.an_toan_min !== null && info.an_toan_max !== null && val >= info.an_toan_min && val <= info.an_toan_max) return "AN_TOAN";
+  return "CHUA_XAC_DINH";
+}
+
 function evalOneSpeciesLocal(sVal, info, uVal = 0) {
   const nguon = (info.nguon_tham_khao || "").trim();
   const tv = "Liên hệ cán bộ khuyến nông/khuyến ngư để được tư vấn.";
-  const valStr = uVal > 0 ? `${sVal.toFixed(2)} ± ${uVal.toFixed(2)} ‰` : `${sVal.toFixed(2)} ‰`;
+  const uAbs = Math.max(0, Number(uVal) || 0);
+  const valStr = uAbs > 0 ? `${sVal.toFixed(2)} ± ${uAbs.toFixed(2)} ‰` : `${sVal.toFixed(2)} ‰`;
   const hasRange =
     (info.an_toan_min !== null && info.an_toan_max !== null) ||
     Boolean(info.canh_bao_thap) ||
@@ -1096,7 +1112,32 @@ function evalOneSpeciesLocal(sVal, info, uVal = 0) {
   }
   const msg = (tt, khoang) =>
     `Trạng thái: ${tt}. Khoảng tham chiếu: ${khoang}. Giá trị đo: ${valStr}. Nguồn: ${nguon}. ${tv}`;
-  if (info.nguy_hiem_duoi !== null && info.nguy_hiem_duoi !== undefined && sVal < info.nguy_hiem_duoi) {
+  const sLo = sVal >= 0 ? Math.max(0, sVal - uAbs) : sVal - uAbs;
+  const sHi = sVal + uAbs;
+  if (uAbs > 0) {
+    const zLo = _zoneForPoint(sLo, info);
+    const zMid = _zoneForPoint(sVal, info);
+    const zHi = _zoneForPoint(sHi, info);
+    const bounds = [info.nguy_hiem_duoi, info.nguy_hiem_tren, info.an_toan_min, info.an_toan_max];
+    if (Array.isArray(info.canh_bao_thap)) bounds.push(...info.canh_bao_thap);
+    if (Array.isArray(info.canh_bao_cao)) bounds.push(...info.canh_bao_cao);
+    const crosses =
+      zLo !== zHi ||
+      zLo !== zMid ||
+      bounds.some((b) => b !== null && b !== undefined && sLo < b && b < sHi);
+    if (crosses) {
+      const rangeStr = `[${sLo.toFixed(2)} – ${sHi.toFixed(2)} ‰]`;
+      return {
+        ma_loai: info.ma_loai,
+        ten_loai: info.ten_hien_thi,
+        trang_thai: "SAT_RANH_GIOI",
+        tieu_de: `SÁT RANH GIỚI: Khoảng ${rangeStr} bắt chéo ngưỡng`,
+        loi_khuyen: msg(`SÁT RANH GIỚI (khoảng ${rangeStr})`, `${zLo} → ${zHi}`),
+        nguon_tham_khao: nguon,
+      };
+    }
+  }
+  if (info.nguy_hiem_duoi !== null && info.nguy_hiem_duoi !== undefined && sHi < info.nguy_hiem_duoi) {
     const k = `< ${info.nguy_hiem_duoi} ‰`;
     return {
       ma_loai: info.ma_loai, ten_loai: info.ten_hien_thi, trang_thai: "NGUY_HIEM",
@@ -1105,7 +1146,7 @@ function evalOneSpeciesLocal(sVal, info, uVal = 0) {
       nguon_tham_khao: nguon,
     };
   }
-  if (info.nguy_hiem_tren !== null && info.nguy_hiem_tren !== undefined && sVal > info.nguy_hiem_tren) {
+  if (info.nguy_hiem_tren !== null && info.nguy_hiem_tren !== undefined && sLo > info.nguy_hiem_tren) {
     const k = `> ${info.nguy_hiem_tren} ‰`;
     return {
       ma_loai: info.ma_loai, ten_loai: info.ten_hien_thi, trang_thai: "NGUY_HIEM",
@@ -1114,7 +1155,7 @@ function evalOneSpeciesLocal(sVal, info, uVal = 0) {
       nguon_tham_khao: nguon,
     };
   }
-  if (Array.isArray(info.canh_bao_thap) && sVal >= info.canh_bao_thap[0] && sVal < info.canh_bao_thap[1]) {
+  if (Array.isArray(info.canh_bao_thap) && sLo >= info.canh_bao_thap[0] && sHi < info.canh_bao_thap[1]) {
     const k = `${info.canh_bao_thap[0]} – ${info.canh_bao_thap[1]} ‰`;
     return {
       ma_loai: info.ma_loai, ten_loai: info.ten_hien_thi, trang_thai: "CANH_BAO",
@@ -1123,7 +1164,7 @@ function evalOneSpeciesLocal(sVal, info, uVal = 0) {
       nguon_tham_khao: nguon,
     };
   }
-  if (Array.isArray(info.canh_bao_cao) && sVal > info.canh_bao_cao[0] && sVal <= info.canh_bao_cao[1]) {
+  if (Array.isArray(info.canh_bao_cao) && sLo > info.canh_bao_cao[0] && sHi <= info.canh_bao_cao[1]) {
     const k = `${info.canh_bao_cao[0]} – ${info.canh_bao_cao[1]} ‰`;
     return {
       ma_loai: info.ma_loai, ten_loai: info.ten_hien_thi, trang_thai: "CANH_BAO",
@@ -1132,20 +1173,38 @@ function evalOneSpeciesLocal(sVal, info, uVal = 0) {
       nguon_tham_khao: nguon,
     };
   }
-  const k = `${info.an_toan_min ?? 0} – ${info.an_toan_max ?? "?"} ‰`;
+  if (info.an_toan_min !== null && info.an_toan_max !== null && sLo >= info.an_toan_min && sHi <= info.an_toan_max) {
+    const k = `${info.an_toan_min} – ${info.an_toan_max} ‰`;
+    return {
+      ma_loai: info.ma_loai, ten_loai: info.ten_hien_thi, trang_thai: "AN_TOAN",
+      tieu_de: `AN TOÀN: Nằm trong khoảng tham chiếu (${k})`,
+      loi_khuyen: msg("AN TOÀN", k),
+      nguon_tham_khao: nguon,
+    };
+  }
+  const zPt = _zoneForPoint(sVal, info);
+  if (zPt === "NGUY_HIEM_DUOI" || zPt === "NGUY_HIEM_TREN") {
+    const k = zPt === "NGUY_HIEM_DUOI" ? `< ${info.nguy_hiem_duoi} ‰` : `> ${info.nguy_hiem_tren} ‰`;
+    return {
+      ma_loai: info.ma_loai, ten_loai: info.ten_hien_thi, trang_thai: "NGUY_HIEM",
+      tieu_de: `NGUY HIỂM (${k})`,
+      loi_khuyen: msg("NGUY HIỂM", k),
+      nguon_tham_khao: nguon,
+    };
+  }
   return {
-    ma_loai: info.ma_loai, ten_loai: info.ten_hien_thi, trang_thai: "AN_TOAN",
-    tieu_de: `AN TOÀN: Nằm trong khoảng tham chiếu (${k})`,
-    loi_khuyen: msg("AN TOÀN", k),
+    ma_loai: info.ma_loai, ten_loai: info.ten_hien_thi, trang_thai: "CANH_BAO",
+    tieu_de: "CHƯA XÁC ĐỊNH PHÂN VÙNG",
+    loi_khuyen: msg("CHƯA XÁC ĐỊNH PHÂN VÙNG", "ngoài các khoảng cấu hình"),
     nguon_tham_khao: nguon,
   };
 }
 
-function buildLocalSpeciesEval(sVal, maLoai) {
+function buildLocalSpeciesEval(sVal, maLoai, uVal = 0) {
   const list = STATE.bootstrap?.danh_sach_loai || [];
   const info = list.find((s) => s.ma_loai === maLoai) || list[0];
   if (!info) return null;
-  const ev = evalOneSpeciesLocal(sVal, info);
+  const ev = evalOneSpeciesLocal(sVal, info, uVal);
   let pho = null;
   if (info.co_du_lieu_nguon && info.an_toan_min !== null && info.an_toan_max !== null) {
     const sMax = info.s_max_scale || 40;
@@ -1163,18 +1222,24 @@ function buildLocalSpeciesEval(sVal, maLoai) {
     };
   }
   const ma_tran = list.map((item) => {
-    const r = evalOneSpeciesLocal(sVal, item);
+    const r = evalOneSpeciesLocal(sVal, item, uVal);
     return { ma_loai: item.ma_loai, ten_loai: item.ten_hien_thi, trang_thai: r.trang_thai, tieu_de: r.tieu_de, an_toan_str: item.an_toan_str };
   });
-  return { S_ppt: sVal, chi_tiet: { ...ev, pho, info }, ma_tran };
+  return { S_ppt: sVal, U_ppt: uVal, chi_tiet: { ...ev, pho, info }, ma_tran };
 }
 
-function renderSpeciesTab2Data(data, sVal) {
+function renderSpeciesTab2Data(data, sVal, uVal = 0) {
   STATE.speciesLast = data;
   const ct = data.chi_tiet;
-  const cls = ct.trang_thai === "AN_TOAN" ? "ok" : ct.trang_thai === "CANH_BAO" ? "warn" : ct.trang_thai === "NGUY_HIEM" ? "danger" : "info";
+  const cls =
+    ct.trang_thai === "AN_TOAN" ? "ok"
+      : ct.trang_thai === "CANH_BAO" ? "warn"
+      : ct.trang_thai === "NGUY_HIEM" ? "danger"
+      : (ct.trang_thai === "SAT_RANH_GIOI" || ct.trang_thai === "KHONG_DANH_GIA_DUOC" || ct.trang_thai === "CHUA_CO_NGUON") ? "neutral"
+      : "info";
+  const iconMain = ct.trang_thai === "SAT_RANH_GIOI" ? "⚖️" : "🛡️";
   $("#t2-verdict-box").className = `banner-25d ${cls}`;
-  $("#t2-verdict-box").innerHTML = `<div class="banner-icon">🛡️</div><div><b>${esc(ct.tieu_de)}</b><br>${esc(ct.loi_khuyen)}</div>`;
+  $("#t2-verdict-box").innerHTML = `<div class="banner-icon">${iconMain}</div><div><b>${esc(ct.tieu_de)}</b><br>${esc(ct.loi_khuyen)}</div>`;
 
   if (ct.pho) {
     const p = ct.pho, info = ct.info;
@@ -1209,7 +1274,7 @@ function renderSpeciesTab2Data(data, sVal) {
 
   $("#t2-citation-box").innerHTML = `📚 <b>Nguồn tài liệu trích dẫn:</b> ${esc(ct.nguon_tham_khao)}`;
   $("#t2-matrix-body").innerHTML = (data.ma_tran || []).map((r) => {
-    const icon = r.trang_thai === "AN_TOAN" ? "🟢" : r.trang_thai === "CANH_BAO" ? "🟡" : r.trang_thai === "NGUY_HIEM" ? "🔴" : "⚪";
+    const icon = r.trang_thai === "AN_TOAN" ? "🟢" : r.trang_thai === "CANH_BAO" ? "🟡" : r.trang_thai === "NGUY_HIEM" ? "🔴" : r.trang_thai === "SAT_RANH_GIOI" ? "⚖️" : "⚪";
     return `<tr>
       <td><b>${esc(r.ten_loai)}</b></td>
       <td>${icon} ${esc(r.trang_thai)}</td>
@@ -1221,17 +1286,18 @@ function renderSpeciesTab2Data(data, sVal) {
 
 async function evaluateSpeciesTab2() {
   const sVal = Number($("#t2-s-input").value || 0);
+  const uVal = Math.max(0, Number($("#t2-u-input")?.value || 0));
   const maLoai = $("#t2-species-select").value;
-  $("#t2-s-chip").textContent = `${fmt(sVal, 1)} ‰`;
+  $("#t2-s-chip").textContent = uVal > 0 ? `${fmt(sVal, 2)} ± ${fmt(uVal, 2)} ‰` : `${fmt(sVal, 1)} ‰`;
   try {
     if (!navigator.onLine) throw Object.assign(new Error("offline"), { offline: true });
-    const data = await apiPost("/api/species-eval", { S_ppt: sVal, ma_loai: maLoai }, "species");
-    renderSpeciesTab2Data(data, sVal);
+    const data = await apiPost("/api/species-eval", { S_ppt: sVal, U_ppt: uVal, ma_loai: maLoai }, "species");
+    renderSpeciesTab2Data(data, sVal, uVal);
   } catch (err) {
     if (isAbortError(err)) return;
-    const localData = buildLocalSpeciesEval(sVal, maLoai);
+    const localData = buildLocalSpeciesEval(sVal, maLoai, uVal);
     if (localData) {
-      renderSpeciesTab2Data(localData, sVal);
+      renderSpeciesTab2Data(localData, sVal, uVal);
     } else {
       toast(`Lỗi đánh giá loài: ${err.message}`);
     }
@@ -2188,18 +2254,22 @@ function bindEvents() {
     if ($("#meas-temp-ref")) $("#meas-temp-ref").disabled = noT;
   });
   $("#t1-species-select").addEventListener("change", () => {
+    if (STATE.lastMeasure?.khong_danh_gia_duoc) {
+      if ($("#meas-live").checked) runMeasure({ silent: true });
+      return;
+    }
     const km = STATE.lastMeasure && STATE.lastMeasure.mo_hinh_man;
     const list = STATE.bootstrap && STATE.bootstrap.danh_sach_loai;
     if (km && Array.isArray(list) && list.length) {
       const maLoai = $("#t1-species-select").value;
       const info = list.find((s) => s.ma_loai === maLoai);
       if (info) {
-        const dg = evalOneSpeciesLocal(Number(km.S_ppt), info);
+        const dg = evalOneSpeciesLocal(Number(km.S_ppt), info, Number(km.U_S_ppt || 0));
         STATE.lastMeasure.danh_gia_loai = dg;
-        const cls = dg.trang_thai === "AN_TOAN" ? "ok" : dg.trang_thai === "CANH_BAO" ? "warn" : dg.trang_thai === "NGUY_HIEM" ? "danger" : "info";
+        const cls = dg.trang_thai === "AN_TOAN" ? "ok" : dg.trang_thai === "CANH_BAO" ? "warn" : dg.trang_thai === "NGUY_HIEM" ? "danger" : (dg.trang_thai === "SAT_RANH_GIOI" || dg.trang_thai === "KHONG_DANH_GIA_DUOC" || dg.trang_thai === "CHUA_CO_NGUON") ? "neutral" : "info";
         const vBox = $("#t1-species-verdict");
         vBox.className = `banner-25d ${cls}`;
-        vBox.innerHTML = `<div class="banner-icon">🔎</div><div><b>${esc(dg.tieu_de)}</b><br>${esc(dg.loi_khuyen)}</div>`;
+        vBox.innerHTML = `<div class="banner-icon">${dg.trang_thai === "SAT_RANH_GIOI" ? "⚖️" : "🔎"}</div><div><b>${esc(dg.tieu_de)}</b><br>${esc(dg.loi_khuyen)}</div>`;
         return;
       }
     }
@@ -2253,9 +2323,11 @@ function bindEvents() {
   $("#t2-eval-btn").addEventListener("click", evaluateSpeciesTab2);
   $("#t2-species-select").addEventListener("change", evaluateSpeciesTab2);
   $("#t2-s-input").addEventListener("input", () => debounce("t2", evaluateSpeciesTab2, 120));
+  $("#t2-u-input")?.addEventListener("input", () => debounce("t2", evaluateSpeciesTab2, 120));
   $("#t2-use-tab1").addEventListener("click", () => {
     if (STATE.lastMeasure?.mo_hinh_man) {
       $("#t2-s-input").value = fmt(STATE.lastMeasure.mo_hinh_man.S_ppt, 2);
+      if ($("#t2-u-input")) $("#t2-u-input").value = fmt(STATE.lastMeasure.mo_hinh_man.U_S_ppt || 0, 2);
       evaluateSpeciesTab2();
     } else {
       toast("Chưa có số đo hợp lệ từ Tab 1!");

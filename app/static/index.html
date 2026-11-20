@@ -465,12 +465,18 @@
                 <div class="control-label"><span>Đối tượng nuôi trồng / cây trồng</span></div>
                 <select id="t2-species-select" class="select-25d"></select>
               </div>
-              <div class="control-group">
-                <div class="control-label">
-                  <span>Độ mặn cần đánh giá (‰)</span>
-                  <span class="control-val-chip" id="t2-s-chip">15.0 ‰</span>
+              <div class="control-row-2">
+                <div class="control-group">
+                  <div class="control-label">
+                    <span>Độ mặn (‰)</span>
+                    <span class="control-val-chip" id="t2-s-chip">15.0 ‰</span>
+                  </div>
+                  <input type="number" id="t2-s-input" class="input-25d" min="0" max="45" step="0.1" value="15.0" />
                 </div>
-                <input type="number" id="t2-s-input" class="input-25d" min="0" max="45" step="0.1" value="15.0" />
+                <div class="control-group">
+                  <div class="control-label"><span>Bất định ±U (‰)</span></div>
+                  <input type="number" id="t2-u-input" class="input-25d" min="0" max="30" step="0.05" value="0" />
+                </div>
               </div>
               <button type="button" id="t2-use-tab1" class="btn-25d btn-navy-25d btn-full" style="margin-top:6px;">
                 📥 Lấy kết quả vừa đo từ Tab 1

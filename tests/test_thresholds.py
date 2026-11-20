@@ -106,3 +106,28 @@ def test_danh_gia_cay_nhay_cam_va_giai_doan(tmp_path: Path):
     kq_gd = th.danh_gia_do_man_loai(11.0, tom, giai_doan="Giai đoạn giống (GIÁ TRỊ THỬ NGHIỆM)")
     assert kq_gd.trang_thai == "CANH_BAO"
     assert "Giai đoạn giống" in kq_gd.ten_loai
+
+
+def test_phan_loai_theo_khoang_bat_dinh_U(tmp_path: Path):
+    """T6: Phân loại dựa trên khoảng [S - U, S + U] gồm 3 trường hợp + KHONG_DANH_GIA_DUOC."""
+    ds = th.doc_danh_sach_loai(_ghi_yaml_thu_nghiem(tmp_path))
+    tom = ds["tom_thu_nghiem"]  # an_toan=[10, 25], canh_bao=[5..10, 25..35], nguy_hiem=<5, >35
+
+    # 1. Chắc chắn nằm gọn trong vùng an toàn: [16, 18] subset [10, 25]
+    kq_trong = th.danh_gia_do_man_loai(17.0, tom, U=1.0)
+    assert kq_trong.trang_thai == "AN_TOAN"
+
+    # 2. Bắt chéo ranh giới 25.0: [23.5, 25.5]
+    kq_ranh = th.danh_gia_do_man_loai(24.5, tom, U=1.0)
+    assert kq_ranh.trang_thai == "SAT_RANH_GIOI"
+    assert kq_ranh.mau_sac == "#64748b"
+    assert "23.50 – 25.50" in kq_ranh.tieu_de
+
+    # 3. U rất lớn phủ nhiều vùng: [0, 37]
+    kq_u_lon = th.danh_gia_do_man_loai(17.0, tom, U=20.0)
+    assert kq_u_lon.trang_thai == "SAT_RANH_GIOI"
+
+    # 4. Cổng không đánh giá được
+    kq_kdg = th.tao_ket_qua_khong_danh_gia_duoc(tom, 15.0, 0.5, ["Ảnh mô phỏng"])
+    assert kq_kdg.trang_thai == "KHONG_DANH_GIA_DUOC"
+    assert kq_kdg.mau_sac == "#64748b"

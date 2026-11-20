@@ -42,6 +42,10 @@ import yaml
 
 CONFIG_MAC_DINH = Path(__file__).resolve().parents[1] / "config.yaml"
 
+
+class LoiMoHinhHieuChuanError(ValueError):
+    """Lỗi khi giải ngược mô hình đường chuẩn (ngoài miền nghiệm hoặc suy biến)."""
+
 # ---------------------------------------------------------------------------
 # Tên cột CSV
 # ---------------------------------------------------------------------------
@@ -606,8 +610,8 @@ def _tim_nghiem_S(
                 float(brentq(lambda s: float(mh.du_doan_delta_y(s, T, T_tc=T_tc)[0]) - delta_y, a, b))
             )
     if not nghiem:
-        raise ValueError(
-            f"Δy = {delta_y:.2f} px nằm quá xa ngoài dải đường chuẩn "
+        raise LoiMoHinhHieuChuanError(
+            f"Δy = {delta_y:.3f} ({getattr(mh, 'don_vi_y', 'px')}) nằm quá xa ngoài dải đường chuẩn "
             f"(S {mh.S_min:g}–{mh.S_max:g} ‰). Không ước lượng được độ mặn."
         )
     giua = 0.5 * (mh.S_min + mh.S_max)
@@ -642,7 +646,9 @@ def uoc_luong_do_man(
 
     if getattr(mh, "don_vi_y", "px") == "mm":
         if px_per_mm is None or not math.isfinite(px_per_mm) or px_per_mm <= 0.0:
-            raise ValueError("Đường chuẩn tính theo mm nhưng chưa có thang px_per_mm (> 0) cho ảnh này.")
+            raise LoiMoHinhHieuChuanError(
+                "Đường chuẩn tính theo mm nhưng chưa có thang px_per_mm (> 0) cho ảnh này."
+            )
         y_do = float(delta_y_px) / float(px_per_mm)
         u_do_px = abs(float(sigma_delta_y_px)) / float(px_per_mm)
         u_thang = (abs(float(delta_y_px)) / (float(px_per_mm) ** 2)) * max(float(u_px_per_mm), 0.0)
@@ -654,7 +660,7 @@ def uoc_luong_do_man(
     S = _tim_nghiem_S(mh, y_do, T_C, T_tc=T_tham_chieu_C)
     f_S = mh.dao_ham_theo_S(S, T_C, T_tc=T_tham_chieu_C)
     if abs(f_S) < 1e-9:
-        raise ValueError("Độ nhạy ∂Δy/∂S ≈ 0 tại điểm này – không giải ngược được.")
+        raise LoiMoHinhHieuChuanError("Độ nhạy ∂Δy/∂S ≈ 0 tại điểm này – không giải ngược được.")
     f_T = (
         mh.dao_ham_theo_T(S, T_C, T_tc=T_tham_chieu_C)
         if (mh.co_bu_nhiet or (T_tham_chieu_C is not None and mh.co_bu_chenh_T))

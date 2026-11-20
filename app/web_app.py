@@ -43,7 +43,13 @@ from core import calibration as cal
 from core import optics as op
 from core import thang
 from core import thresholds as th
-from core.measure import KetQuaDoDeltaY, chuyen_anh_xam, do_delta_y_tu_anh
+from core.measure import (
+    AnhKhongHopLeError,
+    KetQuaDoDeltaY,
+    KhongTimThayVachError,
+    chuyen_anh_xam,
+    do_delta_y_tu_anh,
+)
 from sim.synth import (
     ThamSoMoPhong,
     sinh_anh_hai_vach_mo_phong,
@@ -96,11 +102,24 @@ def _json_err(message: str, status_code: int = 400) -> JSONResponse:
     return JSONResponse({"error": message}, status_code=status_code)
 
 
+def _json_err_typed(
+    status_code: int,
+    loai_loi: str,
+    message: str,
+    exc: Exception | None = None,
+) -> JSONResponse:
+    payload: dict[str, Any] = {"error": message, "loai_loi": loai_loi}
+    if exc is not None:
+        payload["chi_tiet_ky_thuat"] = str(exc)
+    return JSONResponse(payload, status_code=status_code)
+
+
 _CONFIG_CACHE: dict[str, Any] = {
     "sig": None,
     "optics": None,
     "species": None,
     "calib": None,
+    "image": None,
     "species_serialized": None,
 }
 
@@ -118,6 +137,7 @@ def invalidate_config_cache() -> None:
     _CONFIG_CACHE["optics"] = None
     _CONFIG_CACHE["species"] = None
     _CONFIG_CACHE["calib"] = None
+    _CONFIG_CACHE["image"] = None
     _CONFIG_CACHE["species_serialized"] = None
 
 
@@ -128,11 +148,26 @@ def _ensure_config_cache() -> None:
     cfg_opt = op.CauHinhQuangHoc.tu_yaml(CONFIG_PATH)
     ds_loai = th.doc_danh_sach_loai(CONFIG_PATH)
     cfg_cal = cal.CauHinhHieuChuan.tu_yaml(CONFIG_PATH)
+    raw_yaml = {}
+    if CONFIG_PATH.exists():
+        with open(CONFIG_PATH, encoding="utf-8") as f:
+            raw_yaml = yaml.safe_load(f) or {}
+    img_raw = raw_yaml.get("xu_ly_anh", {}) or {}
     _CONFIG_CACHE["sig"] = sig
     _CONFIG_CACHE["optics"] = cfg_opt
     _CONFIG_CACHE["species"] = ds_loai
     _CONFIG_CACHE["calib"] = cfg_cal
+    _CONFIG_CACHE["image"] = {
+        "nguong_bao_hoa": int(img_raw.get("nguong_bao_hoa", 250)),
+        "ti_le_bao_hoa_toi_da": float(img_raw.get("ti_le_bao_hoa_toi_da", 0.02)),
+        "snr_toi_thieu": float(img_raw.get("snr_toi_thieu", 10.0)),
+    }
     _CONFIG_CACHE["species_serialized"] = None
+
+
+def load_image_config() -> dict[str, Any]:
+    _ensure_config_cache()
+    return dict(_CONFIG_CACHE["image"] or {})
 
 
 def load_config() -> op.CauHinhQuangHoc:
@@ -524,8 +559,8 @@ def _serialize_species(loai: th.ThongTinLoai) -> dict[str, Any]:
     }
 
 
-def _evaluate_species_detail(S_ppt: float, loai: th.ThongTinLoai) -> dict[str, Any]:
-    dg = th.danh_gia_do_man_loai(S_ppt, loai)
+def _evaluate_species_detail(S_ppt: float, loai: th.ThongTinLoai, U: float = 0.0) -> dict[str, Any]:
+    dg = th.danh_gia_do_man_loai(S_ppt, loai, U=U)
     info = _serialize_species(loai)
 
     pho = None
@@ -571,13 +606,16 @@ def _evaluate_species_detail(S_ppt: float, loai: th.ThongTinLoai) -> dict[str, A
 
 
 def _decode_base64_image_bytes(b64_str: str) -> tuple[np.ndarray, bytes]:
-    if "," in b64_str:
-        b64_str = b64_str.split(",", 1)[1]
-    raw = base64.b64decode(b64_str)
-    arr = np.frombuffer(raw, dtype=np.uint8)
-    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-    if img is None:
-        raise ValueError("Không giải mã được định dạng ảnh tải lên.")
+    try:
+        if "," in b64_str:
+            b64_str = b64_str.split(",", 1)[1]
+        raw = base64.b64decode(b64_str, validate=False)
+        arr = np.frombuffer(raw, dtype=np.uint8)
+        img = cv2.imdecode(arr, cv2.IMREAD_COLOR) if arr.size > 0 else None
+    except Exception as exc:
+        raise AnhKhongHopLeError("Không giải mã được dữ liệu ảnh base64 tải lên.") from exc
+    if img is None or img.size == 0:
+        raise AnhKhongHopLeError("Không giải mã được định dạng ảnh tải lên.")
     return img, raw
 
 
@@ -852,6 +890,7 @@ async def api_measure(request: Request) -> JSONResponse:
             if isinstance(rmau, (list, tuple)) and len(rmau) == 4:
                 roi_mau_tuple = tuple(int(v) for v in rmau)
 
+        img_cfg = load_image_config()
         buoc_cot = max(2, int(anh_input.shape[1] // 250)) if anh_input.shape[1] > 600 else 2
         kq_do = do_delta_y_tu_anh(
             anh_input,
@@ -859,12 +898,16 @@ async def api_measure(request: Request) -> JSONResponse:
             roi_mau=roi_mau_tuple,
             phuong_phap=phuong_phap,
             buoc_nhay_cot=buoc_cot,
+            nguong_bao_hoa=int(img_cfg.get("nguong_bao_hoa", 250)),
+            ti_le_bao_hoa_toi_da=float(img_cfg.get("ti_le_bao_hoa_toi_da", 0.02)),
+            snr_toi_thieu=float(img_cfg.get("snr_toi_thieu", 10.0)),
             tao_anh_ve=True,
         )
 
         cfg_cal = load_calib_config()
         kq_man_dict = None
         error_man = None
+        loai_loi_man = None
         if math.isfinite(kq_do.delta_y_px):
             try:
                 kq_man = cal.uoc_luong_do_man(
@@ -902,16 +945,63 @@ async def api_measure(request: Request) -> JSONResponse:
                     "canh_bao": canh_bao_man,
                     "han_che": kq_man.han_che,
                 }
-            except Exception as ex_man:
+            except cal.LoiMoHinhHieuChuanError as ex_man:
                 error_man = str(ex_man)
+                loai_loi_man = "LOI_MO_HINH_GIAI_NGUOC"
+            except (ValueError, TypeError) as ex_man:
+                error_man = str(ex_man)
+                loai_loi_man = "DAU_VAO_KHONG_HOP_LE"
 
+        cq = kq_do.chat_luong
+        ly_do_khong_danh_gia: list[str] = []
+        if khong_do_nhiet_do:
+            ly_do_khong_danh_gia.append("Chưa đo nhiệt độ mẫu")
+        if not cq.hop_le:
+            ly_do_khong_danh_gia.append("Chất lượng ảnh không đạt chuẩn (bão hòa / quá mờ / nhòe / thiếu cột)")
+        if kq_man_dict is None:
+            ly_do_khong_danh_gia.append(error_man or "Không giải ngược được độ mặn")
+        else:
+            if kq_man_dict["ngoai_dai_S"]:
+                ly_do_khong_danh_gia.append("Độ mặn ước lượng nằm ngoài dải hiệu chuẩn")
+            if kq_man_dict["ngoai_dai_T"]:
+                ly_do_khong_danh_gia.append("Nhiệt độ nằm ngoài dải hiệu chuẩn")
+            if mh.la_mo_phong or la_anh_mo_phong:
+                ly_do_khong_danh_gia.append("Đang dùng ảnh hoặc đường chuẩn MÔ PHỎNG (chưa phải đo thật)")
+            elif not mh.da_xac_nhan_thuc_te:
+                ly_do_khong_danh_gia.append("Đường chuẩn CHƯA XÁC NHẬN NGUỒN DỮ LIỆU thực tế")
+
+        khong_danh_gia_duoc = bool(ly_do_khong_danh_gia)
         ds_loai = load_species_map()
         ma_loai = str(body.get("ma_loai") or "").strip() or next(iter(ds_loai.keys()), "")
         danh_gia_loai = None
-        if kq_man_dict is not None and not khong_do_nhiet_do and ma_loai in ds_loai:
-            danh_gia_loai = _evaluate_species_detail(kq_man_dict["S_ppt"], ds_loai[ma_loai])
+        if ma_loai in ds_loai:
+            if khong_do_nhiet_do:
+                danh_gia_loai = None
+            elif khong_danh_gia_duoc:
+                kq_kdg = th.tao_ket_qua_khong_danh_gia_duoc(
+                    ds_loai[ma_loai],
+                    kq_man_dict["S_ppt"] if kq_man_dict else None,
+                    kq_man_dict["U_S_ppt"] if kq_man_dict else 0.0,
+                    ly_do_khong_danh_gia,
+                )
+                danh_gia_loai = {
+                    "ma_loai": kq_kdg.ma_loai,
+                    "ten_loai": kq_kdg.ten_loai,
+                    "trang_thai": kq_kdg.trang_thai,
+                    "mau_sac": kq_kdg.mau_sac,
+                    "tieu_de": kq_kdg.tieu_de,
+                    "loi_khuyen": kq_kdg.loi_khuyen,
+                    "nguon_tham_khao": kq_kdg.nguon_tham_khao,
+                    "pho": None,
+                    "info": _serialize_species(ds_loai[ma_loai]),
+                }
+            else:
+                danh_gia_loai = _evaluate_species_detail(
+                    kq_man_dict["S_ppt"],
+                    ds_loai[ma_loai],
+                    U=kq_man_dict["U_S_ppt"],
+                )
 
-        cq = kq_do.chat_luong
         canh_bao_anh = list(cq.canh_bao)
         if mode != "sim" and not khoa_ae_af:
             canh_bao_anh.append(
@@ -961,31 +1051,55 @@ async def api_measure(request: Request) -> JSONResponse:
             "vach_mau": _serialize_line_fit(kq_do.vach_mau),
             "mo_hinh_man": kq_man_dict,
             "error_man": error_man,
+            "loai_loi_man": loai_loi_man,
+            "khong_danh_gia_duoc": khong_danh_gia_duoc,
+            "trang_thai_danh_gia": (
+                "KHONG_DANH_GIA_DUOC"
+                if khong_danh_gia_duoc
+                else (danh_gia_loai["trang_thai"] if danh_gia_loai else None)
+            ),
+            "ly_do_khong_danh_gia": ly_do_khong_danh_gia,
             "chan_li_mp": chan_li_mp,
             "anh_danh_dau_b64": anh_b64,
             "profile": _extract_profile_data(anh_input, kq_do),
             "danh_gia_loai": danh_gia_loai,
         })
-    except Exception as exc:
-        if mode != "sim":
-            return JSONResponse(
-                {
-                    "error": (
-                        "Không tìm thấy đủ 2 vạch laser rõ ràng trong ảnh. "
-                        "Hãy chụp lại trong chỗ tối, giữ máy thẳng và để cả 2 vạch sáng nằm gọn trong khung hình."
-                    ),
-                    "loai_loi": "KHONG_TIM_THAY_VACH",
-                    "chi_tiet_ky_thuat": str(exc),
-                },
-                status_code=422,
-            )
-        return _json_err(f"Lỗi khi xử lí ảnh hoặc giải ngược độ mặn: {exc}")
+    except AnhKhongHopLeError as exc:
+        return _json_err_typed(
+            400,
+            "ANH_KHONG_HOP_LE",
+            "Ảnh tải lên bị hỏng, rỗng hoặc không đúng định dạng ảnh hợp lệ.",
+            exc,
+        )
+    except KhongTimThayVachError as exc:
+        return _json_err_typed(
+            422,
+            "KHONG_TIM_THAY_VACH",
+            "Không tìm thấy đủ 2 vạch laser rõ ràng trong ảnh. "
+            "Hãy chụp lại trong chỗ tối, giữ máy thẳng và để cả 2 vạch sáng nằm gọn trong khung hình.",
+            exc,
+        )
+    except cal.LoiMoHinhHieuChuanError as exc:
+        return _json_err_typed(
+            422,
+            "LOI_MO_HINH_GIAI_NGUOC",
+            f"Lỗi mô hình hiệu chuẩn hoặc giải ngược độ mặn: {exc}",
+            exc,
+        )
+    except (ValueError, TypeError) as exc:
+        return _json_err_typed(
+            400,
+            "DAU_VAO_KHONG_HOP_LE",
+            f"Tham số đo không hợp lệ: {exc}",
+            exc,
+        )
 
 
 async def api_species_eval(request: Request) -> JSONResponse:
     try:
         body = await request.json()
         s_ppt = float(body.get("S_ppt", 15.0))
+        u_ppt = max(float(body.get("U_ppt", 0.0) or 0.0), 0.0)
         ds_loai = load_species_map()
         if not ds_loai:
             return _json_err("Không tìm thấy danh mục loài trong config.yaml.", 404)
@@ -993,12 +1107,12 @@ async def api_species_eval(request: Request) -> JSONResponse:
         if ma_loai not in ds_loai:
             return _json_err(f"Không tìm thấy loài '{ma_loai}'.", 404)
 
-        chi_tiet = _evaluate_species_detail(s_ppt, ds_loai[ma_loai])
+        chi_tiet = _evaluate_species_detail(s_ppt, ds_loai[ma_loai], U=u_ppt)
         bang_nguong = load_serialized_species()
         ser_by_code = {item["ma_loai"]: item for item in bang_nguong}
         ma_tran = []
         for k, loai_obj in ds_loai.items():
-            dg_k = th.danh_gia_do_man_loai(s_ppt, loai_obj)
+            dg_k = th.danh_gia_do_man_loai(s_ppt, loai_obj, U=u_ppt)
             ser = ser_by_code[k]
             ma_tran.append({
                 "ma_loai": k,
@@ -1011,6 +1125,7 @@ async def api_species_eval(request: Request) -> JSONResponse:
 
         return _json_ok({
             "S_ppt": s_ppt,
+            "U_ppt": u_ppt,
             "chi_tiet": chi_tiet,
             "ma_tran": ma_tran,
             "bang_nguong": bang_nguong,
