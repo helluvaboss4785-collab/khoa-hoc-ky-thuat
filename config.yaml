@@ -41,6 +41,7 @@ hieu_chuan:                      # Tham số dựng đường chuẩn (Cột m�
   sai_so_nhiet_ke_C: 0.5         # GIẢ ĐỊNH độ chính xác nhiệt kế - PHẢI lấy từ thông số nhiệt kế thật
   nguong_lech_T_khong_bu_C: 1.0  # cảnh báo nếu đường chuẩn không có bù nhiệt mà T lệch quá ngưỡng này
   nguong_lech_T_hai_ngan_C: 0.5  # cảnh báo nếu |T_mau - T_tham_chieu| vượt ngưỡng này (°C)
+  sigma_D_khi_chua_do_C: 2.0     # GIẢ ĐỊNH thận trọng cho chênh nhiệt hai ngăn khi chưa đo; thay bằng giá trị đo được sau khi khảo sát ΔT điển hình giữa hai ngăn
   sai_so_dung_dich_chuan_ppt: null  # bất định chuẩn của dung dịch NaCl chuẩn (‰) - để null khi chưa khai báo
   nhiet_do_toi_thieu_phu_C: null    # dải nhiệt độ tối thiểu cần phủ khi hiệu chuẩn (°C) - để người dùng đặt
   seed: 0                        # hạt giống ngẫu nhiên để chia train/test tái lập được

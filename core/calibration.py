@@ -109,6 +109,7 @@ class CauHinhHieuChuan:
     sai_so_nhiet_ke_C: float = 0.5
     nguong_lech_T_khong_bu_C: float = 1.0
     nguong_lech_T_hai_ngan_C: float = 0.5
+    sigma_D_khi_chua_do_C: float = 2.0
     sai_so_dung_dich_chuan_ppt: float | None = None
     nhiet_do_toi_thieu_phu_C: float | None = None
     seed: int = 0
@@ -129,6 +130,7 @@ class CauHinhHieuChuan:
             sai_so_nhiet_ke_C=float(c.get("sai_so_nhiet_ke_C", mac_dinh.sai_so_nhiet_ke_C)),
             nguong_lech_T_khong_bu_C=float(c.get("nguong_lech_T_khong_bu_C", mac_dinh.nguong_lech_T_khong_bu_C)),
             nguong_lech_T_hai_ngan_C=float(c.get("nguong_lech_T_hai_ngan_C", mac_dinh.nguong_lech_T_hai_ngan_C)),
+            sigma_D_khi_chua_do_C=float(c.get("sigma_D_khi_chua_do_C", mac_dinh.sigma_D_khi_chua_do_C)),
             sai_so_dung_dich_chuan_ppt=float(raw_dd) if raw_dd is not None else None,
             nhiet_do_toi_thieu_phu_C=float(raw_t_phu) if raw_t_phu is not None else None,
             seed=int(c.get("seed", mac_dinh.seed)),
@@ -628,6 +630,34 @@ class KetQuaDoMan:
     da_xac_nhan_thuc_te: bool = False
     canh_bao: list[str] = field(default_factory=list)
     han_che: str = HAN_CHE_NACL
+    ngoai_dai_D: bool = False
+    chenh_T_ngoai_mo_hinh: bool = False
+    khong_danh_gia_duoc: bool = False
+    canh_bao_chi_tiet: list[dict[str, str]] = field(default_factory=list)
+    mo_ta_thanh_phan_bat_dinh: dict[str, str] = field(default_factory=dict)
+
+
+def _do_nhay_S_theo_D_ly_thuyet(S_ppt: float, T_C: float) -> float:
+    """Độ nhạy lí thuyết |∂S/∂D| (‰/°C) lấy từ mô hình Snell trong core/optics.py.
+
+    Dùng khi đường chuẩn chưa học số hạng D; kết quả phản ánh xấp xỉ quang học lí thuyết,
+    KHÔNG phải giá trị đã hiệu chuẩn trên thiết bị thật.
+    """
+    from core import optics as op
+
+    cfg = op.CauHinhQuangHoc.tu_yaml()
+    h = 1e-2
+    try:
+        dy_dD = (
+            op.delta_y_vi_sai_px(S_ppt, T_C, T_C - h, cfg)
+            - op.delta_y_vi_sai_px(S_ppt, T_C, T_C + h, cfg)
+        ) / (2.0 * h)
+        px_per_ppt = op.pixel_moi_phan_nghin(S_ppt, T_C, cfg)
+        if abs(px_per_ppt) > 1e-9 and math.isfinite(dy_dD):
+            return abs(float(dy_dD / px_per_ppt))
+    except Exception:
+        pass
+    return abs(float(cfg.dn_dT / cfg.dn_dS))
 
 
 def _tim_nghiem_S(
@@ -679,11 +709,16 @@ def uoc_luong_do_man(
     px_per_mm: float | None = None,
     u_px_per_mm: float = 0.0,
     sigma_dung_dich_chuan_ppt: float | None = None,
+    sigma_D_khi_chua_do_C: float = 2.0,
 ) -> KetQuaDoMan:
     """Ước lượng độ mặn từ Δy và nhiệt độ hai ngăn, kèm bất định và cờ cảnh báo.
 
-    Nếu mô hình có `don_vi_y == "mm"`, bắt buộc truyền `px_per_mm > 0` để quy đổi Δy_px sang mm
-    và truyền sai số thang ảnh `u_px_per_mm`.
+    - Nếu thiếu `T_tham_chieu_C`: cộng thành phần bất định `chenh_nhiet_chua_do = σ_D × |∂S/∂D|`
+      (từ mô hình nếu có số hạng D, ngược lại từ lí thuyết `core/optics.py` và ghi rõ).
+    - Nếu nhập `T_tham_chieu_C` mà mô hình KHÔNG có số hạng D và |D| > `nguong_lech_T_hai_ngan_C`:
+      đánh dấu `chenh_T_ngoai_mo_hinh = True`, `khong_danh_gia_duoc = True`, cộng cận trên độ chệch
+      `|D| × |∂S/∂D|` vào u nhưng KHÔNG tự hiệu chỉnh S.
+    - Nếu mô hình có `don_vi_y == "mm"`, bắt buộc truyền `px_per_mm > 0`.
     """
     if not (math.isfinite(delta_y_px) and math.isfinite(T_C)):
         raise ValueError("Δy hoặc nhiệt độ không hợp lệ (NaN/vô cực).")
@@ -724,54 +759,142 @@ def uoc_luong_do_man(
         "he_so_duong_chuan": math.sqrt(max(mh.phuong_sai_du_doan(S, T_C, T_tc=T_tham_chieu_C), 0.0)) / abs(f_S),
         "nhiet_do": abs(f_T * sigma_T_C / f_S),
     }
+    mo_ta_thanh_phan: dict[str, str] = {}
     if T_tham_chieu_C is not None or sigma_T_tham_chieu_C > 0 or mh.co_bu_chenh_T:
         thanh_phan["nhiet_do_tham_chieu"] = abs(f_T_tc * sigma_T_tham_chieu_C / f_S)
     if sigma_dung_dich_chuan_ppt is not None and float(sigma_dung_dich_chuan_ppt) > 0.0:
         thanh_phan["dung_dich_chuan"] = float(sigma_dung_dich_chuan_ppt)
-    u = math.sqrt(sum(v * v for v in thanh_phan.values()))
 
-    canh_bao: list[str] = []
+    canh_bao_chi_tiet: list[dict[str, str]] = []
+
+    def _them_canh_bao(ma: str, cap: str, noi_dung: str) -> None:
+        canh_bao_chi_tiet.append({"ma": ma, "cap": cap, "noi_dung": noi_dung})
+
     if sigma_dung_dich_chuan_ppt is None:
-        canh_bao.append(
-            "Chưa khai báo bất định của dung dịch chuẩn (hieu_chuan.sai_so_dung_dich_chuan_ppt đang để null)."
+        _them_canh_bao(
+            "CHUA_KHAI_BAO_DUNG_DICH_CHUAN",
+            "thong_tin",
+            "Chưa khai báo bất định của dung dịch chuẩn (hieu_chuan.sai_so_dung_dich_chuan_ppt đang để null).",
         )
     if getattr(mh, "don_vi_y", "px") == "px":
-        canh_bao.append("Đường chuẩn theo pixel: chỉ đúng cho đúng một cấu hình camera và khoảng cách.")
+        _them_canh_bao(
+            "DON_VI_PX",
+            "thong_tin",
+            "Đường chuẩn theo pixel: chỉ đúng cho đúng một cấu hình camera và khoảng cách.",
+        )
+
     ngoai_S = not (mh.S_min <= S <= mh.S_max)
     if ngoai_S:
-        canh_bao.append(
+        _them_canh_bao(
+            "NGOAI_DAI_S",
+            "nghiem_trong",
             f"Độ mặn ước lượng {S:.2f} ‰ nằm NGOÀI dải hiệu chuẩn "
-            f"({mh.S_min:g}–{mh.S_max:g} ‰): kết quả là ngoại suy, không đáng tin."
+            f"({mh.S_min:g}–{mh.S_max:g} ‰): kết quả là ngoại suy, không đáng tin.",
         )
     ngoai_T = not (mh.T_min - 0.5 <= T_C <= mh.T_max + 0.5)
     if ngoai_T:
-        canh_bao.append(
+        _them_canh_bao(
+            "NGOAI_DAI_T",
+            "nghiem_trong",
             f"Nhiệt độ {T_C:.1f} °C nằm ngoài khoảng đã hiệu chuẩn "
-            f"({mh.T_min:.1f}–{mh.T_max:.1f} °C): bù nhiệt là ngoại suy."
+            f"({mh.T_min:.1f}–{mh.T_max:.1f} °C): bù nhiệt là ngoại suy.",
         )
     if not mh.co_bu_nhiet and not mh.co_bu_chenh_T and abs(T_C - mh.T_ref) > nguong_lech_T_khong_bu_C:
-        canh_bao.append(
+        _them_canh_bao(
+            "KHONG_BU_NHIET",
+            "can_than",
             f"Đường chuẩn chỉ đo ở một nhiệt độ (~{mh.T_ref:.1f} °C) nên KHÔNG bù nhiệt; "
-            f"mẫu đang ở {T_C:.1f} °C. Hãy hiệu chuẩn thêm ở nhiều nhiệt độ."
+            f"mẫu đang ở {T_C:.1f} °C. Hãy hiệu chuẩn thêm ở nhiều nhiệt độ.",
         )
+
+    ngoai_dai_D = False
+    chenh_T_ngoai_mo_hinh = False
     if T_tham_chieu_C is None:
-        canh_bao.append("Chưa đo nhiệt độ ngăn tham chiếu: giả định hai ngăn cân bằng nhiệt, chưa đo.")
+        if mh.co_bu_chenh_T:
+            he_so_d = abs(mh.dao_ham_theo_D(S, T_C, T_tc=T_C) / f_S)
+            nguon_d = "từ đường chuẩn đã học D"
+        else:
+            he_so_d = _do_nhay_S_theo_D_ly_thuyet(S, T_C)
+            nguon_d = "hệ số ∂S/∂D LÍ THUYẾT (core/optics.py), chưa hiệu chuẩn"
+        sig_d = max(float(sigma_D_khi_chua_do_C), 0.0)
+        u_chua_do = sig_d * he_so_d
+        thanh_phan["chenh_nhiet_chua_do"] = u_chua_do
+        mo_ta_thanh_phan["chenh_nhiet_chua_do"] = f"Bất định chênh nhiệt chưa đo (σ_D={sig_d:g} °C, {nguon_d})"
+        _them_canh_bao(
+            "THIEU_T_THAM_CHIEU",
+            "can_than",
+            f"Chưa đo nhiệt độ ngăn tham chiếu (giả định cân bằng nhiệt, σ_D={sig_d:g} °C): "
+            f"chênh nhiệt hai ngăn có thể làm lệch tới ±{k * u_chua_do:.2f} ‰ ({nguon_d}).",
+        )
     else:
         chenh_T = T_C - T_tham_chieu_C
-        if abs(chenh_T) > nguong_lech_T_hai_ngan_C:
-            msg_chenh = (
-                f"Chênh nhiệt độ hai ngăn |T_mẫu − T_tc| = {abs(chenh_T):.2f} °C > {nguong_lech_T_hai_ngan_C:g} °C: "
-                "hãy đợi cân bằng nhiệt hoặc đo cả hai nhiệt độ."
-            )
-            if not mh.co_bu_chenh_T:
-                msg_chenh += " (Đường chuẩn hiện tại chưa có số hạng bù chênh nhiệt độ D.)"
-            canh_bao.append(msg_chenh)
+        if not mh.co_bu_chenh_T:
+            if abs(chenh_T) > nguong_lech_T_hai_ngan_C:
+                chenh_T_ngoai_mo_hinh = True
+                he_so_d_lt = _do_nhay_S_theo_D_ly_thuyet(S, T_C)
+                u_bias = abs(chenh_T) * he_so_d_lt
+                thanh_phan["chenh_nhiet_ngoai_mo_hinh"] = u_bias
+                mo_ta_thanh_phan["chenh_nhiet_ngoai_mo_hinh"] = (
+                    "Cận trên độ chệch theo hệ số LÍ THUYẾT (core/optics.py), chưa hiệu chuẩn; KHÔNG tự hiệu chỉnh S"
+                )
+                _them_canh_bao(
+                    "CHENH_NHIET_NGOAI_MO_HINH",
+                    "nghiem_trong",
+                    f"Chênh nhiệt độ hai ngăn |D| = {abs(chenh_T):.2f} °C > {nguong_lech_T_hai_ngan_C:g} °C "
+                    f"nhưng đường chuẩn CHƯA học số hạng D (không hiệu chỉnh tự động; độ chệch ước tính theo lí thuyết tới ±{u_bias:.2f} ‰). "
+                    "Hãy đợi cân bằng nhiệt hoặc hiệu chuẩn lại có biến thiên D.",
+                )
+        else:
+            ngoai_dai_D = not (mh.D_min - 0.2 <= chenh_T <= mh.D_max + 0.2)
+            if ngoai_dai_D:
+                vuot_d = max(mh.D_min - chenh_T, chenh_T - mh.D_max, 0.0)
+                he_so_d_mh = abs(mh.dao_ham_theo_D(S, T_C, T_tc=T_tham_chieu_C) / f_S)
+                thanh_phan["ngoai_suy_chenh_nhiet"] = vuot_d * he_so_d_mh
+                mo_ta_thanh_phan["ngoai_suy_chenh_nhiet"] = "Ngoại suy ngoài dải D của đường chuẩn"
+                _them_canh_bao(
+                    "NGOAI_DAI_D",
+                    "nghiem_trong",
+                    f"Chênh nhiệt hai ngăn D = {chenh_T:+.2f} °C vượt dải hiệu chuẩn "
+                    f"({mh.D_min:g} đến {mh.D_max:g} °C): bù chênh nhiệt là ngoại suy, kết quả không đáng tin.",
+                )
+            elif abs(chenh_T) > nguong_lech_T_hai_ngan_C:
+                _them_canh_bao(
+                    "CHENH_NHIET_LON",
+                    "can_than",
+                    f"Chênh nhiệt độ hai ngăn |T_mẫu − T_tc| = {abs(chenh_T):.2f} °C > {nguong_lech_T_hai_ngan_C:g} °C: "
+                    "đã bù bằng số hạng D của đường chuẩn, nên đợi cân bằng nhiệt để giảm bất định.",
+                )
+
+    u = math.sqrt(sum(v * v for v in thanh_phan.values()))
+
     if mh.la_mo_phong:
-        canh_bao.append(f"{NHAN_CHUA_HIEU_CHUAN}: con số này KHÔNG phải kết quả đo thật.")
+        _them_canh_bao(
+            "MO_PHONG",
+            "can_than",
+            f"{NHAN_CHUA_HIEU_CHUAN}: con số này KHÔNG phải kết quả đo thật.",
+        )
     elif not mh.da_xac_nhan_thuc_te:
-        canh_bao.append(f"{NHAN_CHUA_XAC_NHAN_NGUON}: thiếu xác nhận nguon_du_lieu=THUC_TE.")
+        _them_canh_bao(
+            "CHUA_XAC_NHAN_NGUON",
+            "can_than",
+            f"{NHAN_CHUA_XAC_NHAN_NGUON}: thiếu xác nhận nguon_du_lieu=THUC_TE.",
+        )
     if f_S <= 0:
-        canh_bao.append("Đường chuẩn có độ nhạy âm/không đơn điệu tại điểm này – kiểm tra lại dữ liệu.")
+        _them_canh_bao(
+            "DO_NHAY_AM",
+            "nghiem_trong",
+            "Đường chuẩn có độ nhạy âm/không đơn điệu tại điểm này – kiểm tra lại dữ liệu.",
+        )
+
+    khong_danh_gia_duoc = bool(
+        ngoai_S
+        or ngoai_T
+        or ngoai_dai_D
+        or chenh_T_ngoai_mo_hinh
+        or mh.la_mo_phong
+        or (not mh.da_xac_nhan_thuc_te)
+    )
+    canh_bao = [item["noi_dung"] for item in canh_bao_chi_tiet]
 
     return KetQuaDoMan(
         S_ppt=float(S), u_S_ppt=u, U_S_ppt=k * u, k=k,
@@ -779,6 +902,11 @@ def uoc_luong_do_man(
         la_mo_phong=mh.la_mo_phong, nhan=mh.nhan,
         nguon_du_lieu=mh.nguon_du_lieu, da_xac_nhan_thuc_te=mh.da_xac_nhan_thuc_te,
         canh_bao=canh_bao,
+        ngoai_dai_D=ngoai_dai_D,
+        chenh_T_ngoai_mo_hinh=chenh_T_ngoai_mo_hinh,
+        khong_danh_gia_duoc=khong_danh_gia_duoc,
+        canh_bao_chi_tiet=canh_bao_chi_tiet,
+        mo_ta_thanh_phan_bat_dinh=mo_ta_thanh_phan,
     )
 
 

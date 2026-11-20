@@ -915,13 +915,31 @@ function renderMeasureResults(d) {
     vBox.innerHTML = `<div class="banner-icon">⛔</div><div><b>KHÔNG ĐÁNH GIÁ ĐƯỢC</b><br>Chưa có ước lượng độ mặn hợp lệ để đối chiếu loài.</div>`;
   }
 
-  // Cảnh báo chất lượng & mô hình
+  // Cảnh báo chất lượng & mô hình (phân cấp theo thong_tin / can_than / nghiem_trong)
   const warnItems = [];
-  for (const w of cq.canh_bao || []) warnItems.push({ cls: "warn", icon: "⚠️", text: w });
+  const capCls = (cap) =>
+    cap === "nghiem_trong" ? { cls: "danger", icon: "🚨" }
+      : cap === "can_than" ? { cls: "warn", icon: "⚠️" }
+      : { cls: "info", icon: "ℹ️" };
+  if (Array.isArray(cq.canh_bao_chi_tiet) && cq.canh_bao_chi_tiet.length) {
+    for (const item of cq.canh_bao_chi_tiet) {
+      const m = capCls(item.cap);
+      warnItems.push({ cls: m.cls, icon: m.icon, text: item.noi_dung });
+    }
+  } else {
+    for (const w of cq.canh_bao || []) warnItems.push({ cls: "warn", icon: "⚠️", text: w });
+  }
   if (km) {
-    for (const w of km.canh_bao || []) {
-      const isErr = w.includes("NGOÀI") || w.includes("CHƯA ĐO NHIỆT ĐỘ");
-      warnItems.push({ cls: isErr ? "danger" : "warn", icon: "🚨", text: w });
+    if (Array.isArray(km.canh_bao_chi_tiet) && km.canh_bao_chi_tiet.length) {
+      for (const item of km.canh_bao_chi_tiet) {
+        const m = capCls(item.cap);
+        warnItems.push({ cls: m.cls, icon: m.icon, text: item.noi_dung });
+      }
+    } else {
+      for (const w of km.canh_bao || []) {
+        const isErr = w.includes("NGOÀI") || w.includes("CHƯA ĐO NHIỆT ĐỘ");
+        warnItems.push({ cls: isErr ? "danger" : "warn", icon: "🚨", text: w });
+      }
     }
   }
   $("#t1-warnings-box").innerHTML = warnItems
@@ -1009,14 +1027,22 @@ function drawTab1Charts(d) {
       he_so_duong_chuan: "Hệ số hồi quy (u_fit)",
       nhiet_do: "Nhiệt kế mẫu (σ_T)",
       nhiet_do_tham_chieu: "Nhiệt kế ngăn TC (σ_Ttc)",
+      chenh_nhiet_chua_do: "Chênh nhiệt 2 ngăn chưa đo (σ_D)",
+      chenh_nhiet_ngoai_mo_hinh: "Chênh nhiệt ngoài mô hình (D)",
+      ngoai_suy_chenh_nhiet: "Ngoại suy dải D",
       dung_dich_chuan: "Dung dịch chuẩn NaCl",
     };
-    const colors = ["#14b8a6", "#1b4965", "#f59e0b", "#e5383b"];
-    const bars = Object.entries(km.thanh_phan_bat_dinh).map(([k, v], i) => ({
-      label: mapLabel[k] || k,
-      value: Number(v || 0),
-      color: colors[i % colors.length],
-    }));
+    const descMap = km.mo_ta_thanh_phan_bat_dinh || {};
+    const colors = ["#14b8a6", "#1b4965", "#f59e0b", "#e5383b", "#8b5cf6", "#ec4899"];
+    const bars = Object.entries(km.thanh_phan_bat_dinh).map(([k, v], i) => {
+      const base = mapLabel[k] || k;
+      const isTh = String(descMap[k] || "").includes("LÍ THUYẾT");
+      return {
+        label: isTh ? `${base} [LÍ THUYẾT]` : base,
+        value: Number(v || 0),
+        color: colors[i % colors.length],
+      };
+    });
     drawHorizontalBarChart($("#canvas-gum-bar"), $("#tip-gum-bar"), {
       title: `Tổng hợp bất định chuẩn u_c = ${fmt(km.u_S_ppt, 3)} ‰ (k=${km.k} -> U=${fmt(km.U_S_ppt, 3)} ‰)`,
       bars,

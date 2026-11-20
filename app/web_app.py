@@ -907,104 +907,27 @@ async def api_measure(request: Request) -> JSONResponse:
             tao_anh_ve=True,
         )
 
-        cfg_cal = load_calib_config()
-        kq_man_dict = None
-        error_man = None
-        loai_loi_man = None
-        if math.isfinite(kq_do.delta_y_px):
-            try:
-                kq_man = cal.uoc_luong_do_man(
-                    mh=mh,
-                    delta_y_px=kq_do.delta_y_px,
-                    T_C=nhiet_do_do,
-                    sigma_delta_y_px=kq_do.sai_so_delta_y_px,
-                    sigma_T_C=cfg_cal.sai_so_nhiet_ke_C,
-                    k=cfg_cal.he_so_phu_k,
-                    nguong_lech_T_khong_bu_C=cfg_cal.nguong_lech_T_khong_bu_C,
-                    T_tham_chieu_C=nhiet_do_tham_chieu,
-                    sigma_T_tham_chieu_C=cfg_cal.sai_so_nhiet_ke_C if nhiet_do_tham_chieu is not None else 0.0,
-                    nguong_lech_T_hai_ngan_C=cfg_cal.nguong_lech_T_hai_ngan_C,
-                    px_per_mm=px_per_mm_val,
-                    u_px_per_mm=u_px_per_mm_val,
-                    sigma_dung_dich_chuan_ppt=cfg_cal.sai_so_dung_dich_chuan_ppt,
-                )
-                canh_bao_man = list(kq_man.canh_bao)
-                if khong_do_nhiet_do:
-                    canh_bao_man.insert(
-                        0,
-                        "CHƯA ĐO NHIỆT ĐỘ: không thực hiện bù nhiệt thực tế và KHÔNG đưa ra kết luận phân loại loài.",
-                    )
-                kq_man_dict = {
-                    "S_ppt": kq_man.S_ppt,
-                    "u_S_ppt": kq_man.u_S_ppt,
-                    "U_S_ppt": kq_man.U_S_ppt,
-                    "k": kq_man.k,
-                    "thanh_phan_bat_dinh": kq_man.thanh_phan_bat_dinh,
-                    "ngoai_dai_S": kq_man.ngoai_dai_S,
-                    "ngoai_dai_T": kq_man.ngoai_dai_T,
-                    "la_mo_phong": kq_man.la_mo_phong,
-                    "nguon_du_lieu": kq_man.nguon_du_lieu,
-                    "da_xac_nhan_thuc_te": kq_man.da_xac_nhan_thuc_te,
-                    "nhan": kq_man.nhan,
-                    "canh_bao": canh_bao_man,
-                    "han_che": kq_man.han_che,
-                }
-            except cal.LoiMoHinhHieuChuanError as ex_man:
-                error_man = str(ex_man)
-                loai_loi_man = "LOI_MO_HINH_GIAI_NGUOC"
-            except (ValueError, TypeError) as ex_man:
-                error_man = str(ex_man)
-                loai_loi_man = "DAU_VAO_KHONG_HOP_LE"
-
+        (
+            kq_man_dict,
+            error_man,
+            loai_loi_man,
+            khong_danh_gia_duoc,
+            ly_do_khong_danh_gia,
+            danh_gia_loai,
+        ) = _solve_and_gate_measurement(
+            mh=mh,
+            delta_y_px=kq_do.delta_y_px,
+            sigma_delta_y_px=kq_do.sai_so_delta_y_px,
+            nhiet_do_do=nhiet_do_do,
+            nhiet_do_tham_chieu=nhiet_do_tham_chieu,
+            khong_do_nhiet_do=khong_do_nhiet_do,
+            px_per_mm_val=px_per_mm_val,
+            u_px_per_mm_val=u_px_per_mm_val,
+            chat_luong_hop_le=kq_do.chat_luong.hop_le,
+            la_anh_mo_phong=la_anh_mo_phong,
+            ma_loai_req=str(body.get("ma_loai") or "").strip(),
+        )
         cq = kq_do.chat_luong
-        ly_do_khong_danh_gia: list[str] = []
-        if khong_do_nhiet_do:
-            ly_do_khong_danh_gia.append("Chưa đo nhiệt độ mẫu")
-        if not cq.hop_le:
-            ly_do_khong_danh_gia.append("Chất lượng ảnh không đạt chuẩn (bão hòa / quá mờ / nhòe / thiếu cột)")
-        if kq_man_dict is None:
-            ly_do_khong_danh_gia.append(error_man or "Không giải ngược được độ mặn")
-        else:
-            if kq_man_dict["ngoai_dai_S"]:
-                ly_do_khong_danh_gia.append("Độ mặn ước lượng nằm ngoài dải hiệu chuẩn")
-            if kq_man_dict["ngoai_dai_T"]:
-                ly_do_khong_danh_gia.append("Nhiệt độ nằm ngoài dải hiệu chuẩn")
-            if mh.la_mo_phong or la_anh_mo_phong:
-                ly_do_khong_danh_gia.append("Đang dùng ảnh hoặc đường chuẩn MÔ PHỎNG (chưa phải đo thật)")
-            elif not mh.da_xac_nhan_thuc_te:
-                ly_do_khong_danh_gia.append("Đường chuẩn CHƯA XÁC NHẬN NGUỒN DỮ LIỆU thực tế")
-
-        khong_danh_gia_duoc = bool(ly_do_khong_danh_gia)
-        ds_loai = load_species_map()
-        ma_loai = str(body.get("ma_loai") or "").strip() or next(iter(ds_loai.keys()), "")
-        danh_gia_loai = None
-        if ma_loai in ds_loai:
-            if khong_do_nhiet_do:
-                danh_gia_loai = None
-            elif khong_danh_gia_duoc:
-                kq_kdg = th.tao_ket_qua_khong_danh_gia_duoc(
-                    ds_loai[ma_loai],
-                    kq_man_dict["S_ppt"] if kq_man_dict else None,
-                    kq_man_dict["U_S_ppt"] if kq_man_dict else 0.0,
-                    ly_do_khong_danh_gia,
-                )
-                danh_gia_loai = {
-                    "ma_loai": kq_kdg.ma_loai,
-                    "ten_loai": kq_kdg.ten_loai,
-                    "trang_thai": kq_kdg.trang_thai,
-                    "mau_sac": kq_kdg.mau_sac,
-                    "tieu_de": kq_kdg.tieu_de,
-                    "loi_khuyen": kq_kdg.loi_khuyen,
-                    "nguon_tham_khao": kq_kdg.nguon_tham_khao,
-                    "pho": None,
-                    "info": _serialize_species(ds_loai[ma_loai]),
-                }
-            else:
-                danh_gia_loai = _evaluate_species_detail(
-                    kq_man_dict["S_ppt"],
-                    ds_loai[ma_loai],
-                    U=kq_man_dict["U_S_ppt"],
-                )
 
         canh_bao_anh = list(cq.canh_bao)
         if mode != "sim" and not khoa_ae_af:
@@ -1226,26 +1149,32 @@ def _solve_and_gate_measurement(
                 px_per_mm=px_per_mm_val,
                 u_px_per_mm=u_px_per_mm_val,
                 sigma_dung_dich_chuan_ppt=cfg_cal.sai_so_dung_dich_chuan_ppt,
+                sigma_D_khi_chua_do_C=cfg_cal.sigma_D_khi_chua_do_C,
             )
             canh_bao_man = list(kq_man.canh_bao)
+            canh_bao_chi_tiet = list(kq_man.canh_bao_chi_tiet)
             if khong_do_nhiet_do:
-                canh_bao_man.insert(
-                    0,
-                    "CHƯA ĐO NHIỆT ĐỘ: không thực hiện bù nhiệt thực tế và KHÔNG đưa ra kết luận phân loại loài.",
-                )
+                msg_no_t = "CHƯA ĐO NHIỆT ĐỘ: không thực hiện bù nhiệt thực tế và KHÔNG đưa ra kết luận phân loại loài."
+                canh_bao_man.insert(0, msg_no_t)
+                canh_bao_chi_tiet.insert(0, {"ma": "CHUA_DO_NHIET_DO", "cap": "nghiem_trong", "noi_dung": msg_no_t})
             kq_man_dict = {
                 "S_ppt": kq_man.S_ppt,
                 "u_S_ppt": kq_man.u_S_ppt,
                 "U_S_ppt": kq_man.U_S_ppt,
                 "k": kq_man.k,
                 "thanh_phan_bat_dinh": kq_man.thanh_phan_bat_dinh,
+                "mo_ta_thanh_phan_bat_dinh": kq_man.mo_ta_thanh_phan_bat_dinh,
                 "ngoai_dai_S": kq_man.ngoai_dai_S,
                 "ngoai_dai_T": kq_man.ngoai_dai_T,
+                "ngoai_dai_D": kq_man.ngoai_dai_D,
+                "chenh_T_ngoai_mo_hinh": kq_man.chenh_T_ngoai_mo_hinh,
+                "khong_danh_gia_duoc": kq_man.khong_danh_gia_duoc,
                 "la_mo_phong": kq_man.la_mo_phong,
                 "nguon_du_lieu": kq_man.nguon_du_lieu,
                 "da_xac_nhan_thuc_te": kq_man.da_xac_nhan_thuc_te,
                 "nhan": kq_man.nhan,
                 "canh_bao": canh_bao_man,
+                "canh_bao_chi_tiet": canh_bao_chi_tiet,
                 "han_che": kq_man.han_che,
             }
         except cal.LoiMoHinhHieuChuanError as ex_man:
@@ -1267,6 +1196,10 @@ def _solve_and_gate_measurement(
             ly_do_khong_danh_gia.append("Độ mặn ước lượng nằm ngoài dải hiệu chuẩn")
         if kq_man_dict["ngoai_dai_T"]:
             ly_do_khong_danh_gia.append("Nhiệt độ nằm ngoài dải hiệu chuẩn")
+        if kq_man_dict.get("ngoai_dai_D"):
+            ly_do_khong_danh_gia.append("Chênh nhiệt hai ngăn D nằm ngoài dải hiệu chuẩn")
+        if kq_man_dict.get("chenh_T_ngoai_mo_hinh"):
+            ly_do_khong_danh_gia.append("Chênh nhiệt hai ngăn vượt ngưỡng trên đường chuẩn chưa học số hạng D")
         if mh.la_mo_phong or la_anh_mo_phong:
             ly_do_khong_danh_gia.append("Đang dùng ảnh hoặc đường chuẩn MÔ PHỎNG (chưa phải đo thật)")
         elif not mh.da_xac_nhan_thuc_te:

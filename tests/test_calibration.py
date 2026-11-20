@@ -216,7 +216,7 @@ def test_bootstrap_phu_hop_truyen_sai_so(df_mo_phong: pd.DataFrame, bao_cao: cal
     dy = float(mh.du_doan_delta_y(S_that, T)[0])
     trung_vi, duoi, tren = cal.uoc_luong_do_man_bootstrap(df_mo_phong, mh.bac, dy, T, so_lan=200, seed=3)
     assert duoi < S_that < tren
-    kq = cal.uoc_luong_do_man(mh, dy, T)
+    kq = cal.uoc_luong_do_man(mh, dy, T, T_tham_chieu_C=T)
     # Hai cách ước lượng cùng cỡ độ lớn (chênh không quá 3 lần)
     assert 1 / 3 < (tren - duoi) / 2 / kq.U_S_ppt < 3
 
@@ -334,4 +334,109 @@ def test_bat_dinh_dung_dich_chuan_va_canh_bao_dai_T_hep():
     kq_co = cal.uoc_luong_do_man(bc.mo_hinh, 75.0, 25.0, sigma_dung_dich_chuan_ppt=0.25)
     assert kq_co.thanh_phan_bat_dinh["dung_dich_chuan"] == pytest.approx(0.25)
     assert kq_co.u_S_ppt > kq_null.u_S_ppt
+
+
+def test_q0_bat_dinh_chenh_nhiet_va_canh_bao_phan_cap():
+    """Q0: Kiểm định lượng bất định bỏ sót D trên 200 phép đo, cổng không đánh giá được và phân cấp."""
+    from core import optics as op
+
+    cfg = op.CauHinhQuangHoc.tu_yaml()
+    # Đường chuẩn học lúc 2 ngăn cân bằng nhiệt (không có số hạng D)
+    df_cb = sinh_du_lieu_hieu_chuan_mo_phong(
+        cfg=cfg, T_tham_chieu_C=None, sigma_delta_y_px=0.05, sigma_nhiet_ke_C=0.0, seed=1
+    )
+    mh_no_d = cal.dung_duong_chuan(df_cb).mo_hinh
+    assert mh_no_d.co_bu_chenh_T is False
+
+    rng = np.random.default_rng(2026)
+    s_rand = rng.uniform(1.0, 34.0, 200)
+    noise = rng.normal(0.0, 0.05, 200)
+
+    # 1. Không nhập T_tc với D thật = 0 và D thật = 3 °C: độ phủ U (k=2) phải >= 95%
+    for D_that in (0.0, 3.0):
+        trung = 0
+        for s_true, e_px in zip(s_rand, noise):
+            T_m = 25.0
+            T_tc_that = T_m - D_that
+            dy = op.delta_y_vi_sai_px(float(s_true), T_m, T_tc_that, cfg) + float(e_px)
+            est = cal.uoc_luong_do_man(
+                mh_no_d, dy, T_m, sigma_delta_y_px=0.05, T_tham_chieu_C=None, sigma_D_khi_chua_do_C=2.0
+            )
+            assert "chenh_nhiet_chua_do" in est.thanh_phan_bat_dinh
+            assert "LÍ THUYẾT" in est.mo_ta_thanh_phan_bat_dinh["chenh_nhiet_chua_do"]
+            if abs(est.S_ppt - float(s_true)) <= est.U_S_ppt:
+                trung += 1
+        assert trung / 200 >= 0.95
+
+    # 2. Nhập T_tc với |D| = 3 °C trên mô hình KHÔNG học D -> khong_danh_gia_duoc = True
+    dy_3c = op.delta_y_vi_sai_px(18.0, 28.0, 25.0, cfg)
+    est_nmh = cal.uoc_luong_do_man(
+        mh_no_d, dy_3c, 28.0, sigma_delta_y_px=0.05, T_tham_chieu_C=25.0, sigma_T_tham_chieu_C=0.1
+    )
+    assert est_nmh.chenh_T_ngoai_mo_hinh is True
+    assert est_nmh.khong_danh_gia_duoc is True
+    assert "chenh_nhiet_ngoai_mo_hinh" in est_nmh.thanh_phan_bat_dinh
+    assert any(c["ma"] == "CHENH_NHIET_NGOAI_MO_HINH" and c["cap"] == "nghiem_trong" for c in est_nmh.canh_bao_chi_tiet)
+
+    # 3. Hai ngăn cân bằng nhiệt có nhập T_tc (sigma_T_tc <= 0.2 °C): U không tăng quá 3x và phủ >= 95%
+    trung_cb = 0
+    for s_true, e_px in zip(s_rand, noise):
+        dy = op.delta_y_vi_sai_px(float(s_true), 25.0, 25.0, cfg) + float(e_px)
+        est_ref = cal.uoc_luong_do_man(
+            mh_no_d, dy, 25.0, sigma_delta_y_px=0.05, sigma_T_C=0.1, T_tham_chieu_C=25.0, sigma_T_tham_chieu_C=0.0
+        )
+        est_meas = cal.uoc_luong_do_man(
+            mh_no_d, dy, 25.0, sigma_delta_y_px=0.05, sigma_T_C=0.1, T_tham_chieu_C=25.0, sigma_T_tham_chieu_C=0.1
+        )
+        assert est_meas.U_S_ppt <= 3.0 * est_ref.U_S_ppt
+        if abs(est_meas.S_ppt - float(s_true)) <= est_meas.U_S_ppt:
+            trung_cb += 1
+    assert trung_cb / 200 >= 0.95
+
+    # 4. Mô hình CÓ học D (T_tc in {22, 25, 28}), đo với D = 3 °C và cân bằng nhiệt có nhiễu T_tc -> RMS <= 0.1‰, phủ >= 95%
+    df_d = sinh_du_lieu_hieu_chuan_mo_phong(
+        cfg=cfg,
+        muc_S=(0.0, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 35.0),
+        muc_T=(22.0, 25.0, 28.0),
+        T_tham_chieu_C=(22.0, 25.0, 28.0),
+        so_lan_lap=2,
+        sigma_delta_y_px=0.05,
+        sigma_nhiet_ke_C=0.0,
+        seed=7,
+    )
+    mh_d = cal.dung_duong_chuan(df_d).mo_hinh
+    assert mh_d.co_bu_chenh_T is True
+    errs_d = []
+    trung_d = 0
+    for s_true, e_px in zip(s_rand, noise):
+        dy = op.delta_y_vi_sai_px(float(s_true), 28.0, 25.0, cfg) + float(e_px)
+        est_d = cal.uoc_luong_do_man(
+            mh_d, dy, 28.0, sigma_delta_y_px=0.05, sigma_T_C=0.0, T_tham_chieu_C=25.0, sigma_T_tham_chieu_C=0.0
+        )
+        errs_d.append(est_d.S_ppt - float(s_true))
+        if abs(est_d.S_ppt - float(s_true)) <= est_d.U_S_ppt:
+            trung_d += 1
+    assert float(np.sqrt(np.mean(np.square(errs_d)))) <= 0.1
+    assert trung_d / 200 >= 0.95
+
+    # Kiểm thêm trên mh_d khi 2 ngăn cùng 25 °C và nhiệt kế đo T_tc có nhiễu N(0, 0.1 °C)
+    noise_tc = rng.normal(0.0, 0.1, 200)
+    trung_d_cb = 0
+    for s_true, e_px, e_tc in zip(s_rand, noise, noise_tc):
+        dy = op.delta_y_vi_sai_px(float(s_true), 25.0, 25.0, cfg) + float(e_px)
+        est_d_ref = cal.uoc_luong_do_man(
+            mh_d, dy, 25.0, sigma_delta_y_px=0.05, sigma_T_C=0.1, T_tham_chieu_C=25.0, sigma_T_tham_chieu_C=0.0
+        )
+        est_d_tc = cal.uoc_luong_do_man(
+            mh_d, dy, 25.0, sigma_delta_y_px=0.05, sigma_T_C=0.1, T_tham_chieu_C=25.0 + float(e_tc), sigma_T_tham_chieu_C=0.1
+        )
+        assert est_d_tc.U_S_ppt <= 3.0 * est_d_ref.U_S_ppt
+        if abs(est_d_tc.S_ppt - float(s_true)) <= est_d_tc.U_S_ppt:
+            trung_d_cb += 1
+    assert trung_d_cb / 200 >= 0.95
+
+    # 5. Ngoài dải D đã hiệu chuẩn -> ngoai_dai_D = True
+    est_ext = cal.uoc_luong_do_man(mh_d, dy_3c, 35.0, T_tham_chieu_C=20.0)
+    assert est_ext.ngoai_dai_D is True
+    assert any(c["ma"] == "NGOAI_DAI_D" and c["cap"] == "nghiem_trong" for c in est_ext.canh_bao_chi_tiet)
 
