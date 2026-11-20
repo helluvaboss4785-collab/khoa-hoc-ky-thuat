@@ -636,6 +636,10 @@
                 <option value="ALL">Tất cả nguồn</option>
               </select>
             </div>
+            <div>
+              <div class="control-label"><span>⚡ Ngưỡng cảnh báo tốc độ (‰/giờ, tự đặt)</span></div>
+              <input type="number" id="t3-rate-threshold" class="input-25d" min="0" step="0.1" placeholder="Tự nhập (để trống = tắt)" />
+            </div>
             <div class="log-filter-actions">
               <button type="button" id="t3-btn-reset-filter" class="btn-25d btn-sm">↺ Bỏ lọc</button>
               <a id="t3-btn-csv" href="/api/logs/csv" class="btn-25d btn-navy-25d btn-sm">📥 Xuất CSV</a>
@@ -690,6 +694,7 @@
                   <th class="pro-only">Δy (px)</th>
                   <th>Độ mặn (‰)</th>
                   <th class="pro-only">±U₉₅%</th>
+                  <th>Tốc độ (‰/giờ)</th>
                   <th>Nhiệt độ (°C)</th>
                   <th>Độ đục</th>
                   <th class="pro-only">Nguồn</th>

@@ -1477,12 +1477,27 @@ async function loadLogs(_retry = false) {
     $("#t3-btn-reset-filter").disabled = parts.length === 0;
 
     const rows = data.rows || [];
+    const threshRaw = ($("#t3-rate-threshold")?.value || "").trim();
+    const rateThresh = threshRaw !== "" && Number(threshRaw) > 0 ? Number(threshRaw) : null;
     if (!rows.length) {
-      $("#t3-table-body").innerHTML = `<tr class="log-empty-row"><td colspan="12">
+      $("#t3-table-body").innerHTML = `<tr class="log-empty-row"><td colspan="13">
         📭 Chưa có bản ghi nào${parts.length ? " phù hợp với bộ lọc" : ""}. Hãy đo mẫu nước ở tab <b>Đo Nước</b> rồi bấm <b>Lưu kết quả</b>.
       </td></tr>`;
     } else {
-      $("#t3-table-body").innerHTML = rows.map((r) => `
+      $("#t3-table-body").innerHTML = rows.map((r) => {
+        const rate = r.toc_do_ppt_gio;
+        const uRate = r.u_toc_do_ppt_gio;
+        let rateHtml = `<span style="color:#94a3b8;">—</span>`;
+        if (rate !== null && rate !== undefined && Number.isFinite(Number(rate))) {
+          const rNum = Number(rate);
+          const sign = rNum >= 0 ? "+" : "";
+          const txt = `${sign}${fmt(rNum, 2)} ± ${fmt(Number(uRate || 0), 2)}`;
+          const over = rateThresh !== null && Math.abs(rNum) >= rateThresh;
+          rateHtml = over
+            ? `<span style="color:#b91c1c; font-weight:700;" title="Vượt ngưỡng tự đặt (${rateThresh} ‰/giờ)">⚠️ ${txt}</span>`
+            : txt;
+        }
+        return `
         <tr data-row-id="${esc(r.id)}">
           <td class="pro-only">${esc(r.id)}</td>
           <td>${esc(r.thoi_gian)}</td>
@@ -1491,6 +1506,7 @@ async function loadLogs(_retry = false) {
           <td class="pro-only">${fmt(r.delta_y_px, 2)}</td>
           <td>${salinityChip(r)}</td>
           <td class="pro-only">±${fmt(r.bat_dinh_U_ppt, 2)}</td>
+          <td>${rateHtml}</td>
           <td>${fmt(r.nhiet_do_C, 1)}</td>
           <td>${fmt(r.do_duc, 2)}</td>
           <td class="pro-only">${esc(r.nguon_du_lieu)}</td>
@@ -1501,7 +1517,8 @@ async function loadLogs(_retry = false) {
               title="Xóa bản ghi này">🗑️</button>
           </td>
         </tr>
-      `).join("");
+      `;
+      }).join("");
     }
 
     drawLogsChart(data);
@@ -2469,6 +2486,19 @@ function bindEvents() {
   $("#t2-btn-save-species").addEventListener("click", saveSpeciesConfig);
 
   // Tab 3
+  const rateInp = $("#t3-rate-threshold");
+  if (rateInp) {
+    try {
+      const savedThresh = localStorage.getItem("salinity_rate_threshold");
+      if (savedThresh !== null) rateInp.value = savedThresh;
+    } catch (_) {}
+    rateInp.addEventListener("input", () => {
+      try {
+        localStorage.setItem("salinity_rate_threshold", rateInp.value.trim());
+      } catch (_) {}
+      debounce("t3-rate", () => loadLogs(), 180);
+    });
+  }
   $("#t3-filter-species").addEventListener("change", () => loadLogs());
   $("#t3-filter-source").addEventListener("change", () => loadLogs());
   $("#t3-filter-location").addEventListener("change", () => loadLogs());

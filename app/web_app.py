@@ -1576,12 +1576,47 @@ async def api_species_eval(request: Request) -> JSONResponse:
         return _json_err(f"Lỗi đánh giá loài: {exc}")
 
 
+def _tinh_toc_do_bien_doi_df(df_all: pd.DataFrame) -> dict[int, tuple[float | None, float | None]]:
+    """Tính tốc độ biến đổi độ mặn (‰/giờ) và bất định giữa 2 lần đo liên tiếp cùng (vị trí, nguồn)."""
+    ket_qua: dict[int, tuple[float | None, float | None]] = {}
+    if df_all.empty or "id" not in df_all.columns:
+        return ket_qua
+    work = df_all.copy()
+    work["_dt"] = pd.to_datetime(work["thoi_gian"], errors="coerce")
+    work["_loc"] = work["vi_tri"].fillna("").astype(str).str.strip()
+    work["_src"] = work["nguon_du_lieu"].fillna("").astype(str).str.strip()
+
+    for _, grp in work.groupby(["_loc", "_src"], sort=False):
+        grp_s = grp.sort_values(by=["_dt", "id"], ascending=[True, True], na_position="first")
+        prev_row = None
+        for _, row in grp_s.iterrows():
+            rid = int(row["id"])
+            if prev_row is None or pd.isna(row["_dt"]) or pd.isna(prev_row["_dt"]):
+                ket_qua[rid] = (None, None)
+                prev_row = row
+                continue
+            dt_h = (row["_dt"] - prev_row["_dt"]).total_seconds() / 3600.0
+            if dt_h <= 1e-6:
+                ket_qua[rid] = (None, None)
+            else:
+                s_curr = float(row["do_man_ppt"])
+                s_prev = float(prev_row["do_man_ppt"])
+                u_curr = float(row["bat_dinh_U_ppt"]) if pd.notna(row["bat_dinh_U_ppt"]) else 0.0
+                u_prev = float(prev_row["bat_dinh_U_ppt"]) if pd.notna(prev_row["bat_dinh_U_ppt"]) else 0.0
+                rate = (s_curr - s_prev) / dt_h
+                u_rate = math.hypot(u_curr, u_prev) / dt_h
+                ket_qua[rid] = (rate, u_rate)
+            prev_row = row
+    return ket_qua
+
+
 async def api_logs_list(request: Request) -> JSONResponse:
     ho_so = _req_ho_so(request)
     loai = request.query_params.get("loai")
     nguon = request.query_params.get("nguon")
     vi_tri = request.query_params.get("vi_tri")
     df_all = doc_lich_su_df(ho_so=ho_so)
+    rates_map = _tinh_toc_do_bien_doi_df(df_all)
     df = df_all
     if loai and loai != "ALL":
         df = df[df["loai_nuoi"] == loai]
@@ -1589,6 +1624,13 @@ async def api_logs_list(request: Request) -> JSONResponse:
         df = df[df["nguon_du_lieu"] == nguon]
     if vi_tri and vi_tri != "ALL":
         df = df[df["vi_tri"] == vi_tri]
+
+    rows = df.to_dict(orient="records")
+    for r in rows:
+        rid = r.get("id")
+        rate_val, u_rate_val = rates_map.get(int(rid), (None, None)) if rid is not None else (None, None)
+        r["toc_do_ppt_gio"] = rate_val
+        r["u_toc_do_ppt_gio"] = u_rate_val
 
     summary = {
         "tong_so": len(df),
@@ -1600,7 +1642,7 @@ async def api_logs_list(request: Request) -> JSONResponse:
     return _json_ok({
         "ho_so_hien_tai": ho_so,
         "all_profiles": lay_danh_sach_ho_so(),
-        "rows": df.to_dict(orient="records"),
+        "rows": rows,
         "summary": summary,
         "all_species": sorted(df_all["loai_nuoi"].dropna().unique().tolist()) if len(df_all) else [],
         "all_sources": sorted(df_all["nguon_du_lieu"].dropna().unique().tolist()) if len(df_all) else [],

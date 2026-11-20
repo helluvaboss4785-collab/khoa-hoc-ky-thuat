@@ -254,3 +254,61 @@ def test_api_measure_multi_voi_khung_hong() -> None:
     assert len(d["khung_loi"]) == 1
     assert d["khung_loi"][0]["khung"] == 3
     assert d["delta_y_px"] > 0
+
+
+def test_api_logs_toc_do_bien_doi_do_man(tmp_path: Path, monkeypatch) -> None:
+    import math
+    import pytest
+
+    monkeypatch.setattr(web_app, "DB_PATH", tmp_path / "test_logs_t11.db")
+    monkeypatch.setattr(web_app, "_DB_INIT_PATH", None)
+
+    # 2 bản ghi cùng ao & cùng nguồn cách nhau 2 giờ; 1 bản ghi khác nguồn
+    web_app.luu_nhat_ki(
+        vi_tri="Ao_A",
+        loai_nuoi="Tôm thử",
+        delta_y_px=50.0,
+        do_man_ppt=10.0,
+        bat_dinh_U_ppt=0.3,
+        nhiet_do_C=25.0,
+        do_duc=0.1,
+        chat_luong_hop_le=True,
+        nguon_du_lieu="ĐO THẬT",
+        ghi_chu="lan 1",
+        thoi_gian_tuy_chinh="2026-11-20 08:00:00",
+    )
+    web_app.luu_nhat_ki(
+        vi_tri="Ao_A",
+        loai_nuoi="Tôm thử",
+        delta_y_px=70.0,
+        do_man_ppt=14.0,
+        bat_dinh_U_ppt=0.4,
+        nhiet_do_C=26.0,
+        do_duc=0.1,
+        chat_luong_hop_le=True,
+        nguon_du_lieu="ĐO THẬT",
+        ghi_chu="lan 2",
+        thoi_gian_tuy_chinh="2026-11-20 10:00:00",
+    )
+    web_app.luu_nhat_ki(
+        vi_tri="Ao_A",
+        loai_nuoi="Tôm thử",
+        delta_y_px=100.0,
+        do_man_ppt=20.0,
+        bat_dinh_U_ppt=0.5,
+        nhiet_do_C=26.0,
+        do_duc=0.1,
+        chat_luong_hop_le=True,
+        nguon_du_lieu="MÔ PHỎNG",
+        ghi_chu="khac nguon",
+        thoi_gian_tuy_chinh="2026-11-20 11:00:00",
+    )
+
+    resp = _run_coro(web_app.api_logs_list(_make_request("GET", "/api/logs")))
+    assert resp.status_code == 200
+    data = json.loads(resp.body.decode("utf-8"))
+    by_note = {r["ghi_chu"]: r for r in data["rows"]}
+    assert by_note["lan 1"]["toc_do_ppt_gio"] is None
+    assert by_note["lan 2"]["toc_do_ppt_gio"] == pytest.approx(2.0)
+    assert by_note["lan 2"]["u_toc_do_ppt_gio"] == pytest.approx(math.hypot(0.3, 0.4) / 2.0)
+    assert by_note["khac nguon"]["toc_do_ppt_gio"] is None
