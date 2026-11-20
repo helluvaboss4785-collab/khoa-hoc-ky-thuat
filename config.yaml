@@ -42,6 +42,11 @@ xu_ly_anh:                       # Tham số thuật toán tìm tâm và đánh 
   phuong_phap_mac_dinh: "gauss"  # "gauss" (khớp Gauss) hoặc "centroid" (trọng tâm)
   kenh_laser: "auto"             # "auto" | "R" | "G" | "B" | "xam" (ưu tiên kênh tương phản cao nhất, hòa ưu tiên R)
 
+gioi_han:                        # Giới hạn đầu vào bảo vệ bộ nhớ/server (Q8)
+  dung_luong_anh_MB: 25          # GIẢ ĐỊNH, giới hạn dung lượng mỗi ảnh tải lên (MB)
+  so_khung_toi_da: 60            # GIẢ ĐỊNH, số khung tối đa trong đo đa khung
+  so_megapixel_toi_da: 60        # GIẢ ĐỊNH, độ phân giải tối đa mỗi ảnh (triệu pixel)
+
 hieu_chuan:                      # Tham số dựng đường chuẩn (Cột mốc 4)
   ti_le_tap_test: 0.25           # tỉ lệ điểm giữ lại làm tập kiểm tra (không dùng để khớp)
   so_fold_kiem_dinh_cheo: 5      # số phần (fold) khi kiểm định chéo

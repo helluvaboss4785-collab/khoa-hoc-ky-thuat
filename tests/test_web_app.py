@@ -401,3 +401,73 @@ def test_q7_api_optics_sim_quan_fry_va_canh_bao_ngoai_dai():
     assert any("0–30 °C" in m for m in d_qf_bad["canh_bao_mo_hinh"])
 
 
+def test_q8_gioi_han_dau_vao_413_va_lam_sach_ten_file(monkeypatch):
+    """Q8: Ảnh quá dung lượng / quá nhiều khung / quá MP trả HTTP 413 ANH_QUA_LON; file giả trả 400; tên file được làm sạch."""
+    import base64
+    import cv2
+    import numpy as np
+
+    # 1. Tên file chứa path traversal và null byte phải được làm sạch
+    clean = web_app._lam_sach_ten_file("../../etc/passwd\x00..\\abc def?.png")
+    assert ".." not in clean and "/" not in clean and "\\" not in clean and "\x00" not in clean
+
+    # 2. File không phải ảnh -> 400 ANH_KHONG_HOP_LE
+    not_img_b64 = base64.b64encode(b"day khong phai la anh png hay jpg").decode("ascii")
+    r_bad = _run_coro(
+        web_app.api_measure(
+            _make_request("POST", "/api/measure", {"mode": "upload", "image_base64": not_img_b64, "nhiet_do_do": 25.0})
+        )
+    )
+    assert r_bad.status_code == 400
+    assert json.loads(r_bad.body.decode("utf-8"))["loai_loi"] == "ANH_KHONG_HOP_LE"
+
+    # 3. Quá số khung tối đa (> 60) -> 413 ANH_QUA_LON
+    img_ok = np.zeros((40, 40, 3), dtype=np.uint8)
+    ok, buf = cv2.imencode(".png", img_ok)
+    assert ok
+    img_ok_b64 = base64.b64encode(buf.tobytes()).decode("ascii")
+    r_frames = _run_coro(
+        web_app.api_measure_multi(
+            _make_request(
+                "POST",
+                "/api/measure-multi",
+                {"mode": "upload", "images_base64": [img_ok_b64] * 61, "nhiet_do_do": 25.0},
+            )
+        )
+    )
+    assert r_frames.status_code == 413
+    assert json.loads(r_frames.body.decode("utf-8"))["loai_loi"] == "ANH_QUA_LON"
+
+    # 4. Quá dung lượng MB (test qua giới hạn thấp monkeypatch để không cấp phát >25MB RAM giả) -> 413 ANH_QUA_LON
+    monkeypatch.setattr(
+        web_app,
+        "load_limits_config",
+        lambda: {"dung_luong_anh_MB": 0.0001, "so_khung_toi_da": 60, "so_megapixel_toi_da": 60.0},
+    )
+    r_mb = _run_coro(
+        web_app.api_measure(
+            _make_request("POST", "/api/measure", {"mode": "upload", "image_base64": img_ok_b64, "nhiet_do_do": 25.0})
+        )
+    )
+    assert r_mb.status_code == 413
+    assert json.loads(r_mb.body.decode("utf-8"))["loai_loi"] == "ANH_QUA_LON"
+
+    # 5. Quá Megapixel (ảnh 200x200 = 0.04 MP vượt ngưỡng 0.01 MP) -> 413 ANH_QUA_LON
+    monkeypatch.setattr(
+        web_app,
+        "load_limits_config",
+        lambda: {"dung_luong_anh_MB": 25.0, "so_khung_toi_da": 60, "so_megapixel_toi_da": 0.01},
+    )
+    big_ok, big_buf = cv2.imencode(".png", np.zeros((200, 200, 3), dtype=np.uint8))
+    assert big_ok
+    big_b64 = base64.b64encode(big_buf.tobytes()).decode("ascii")
+    r_mp = _run_coro(
+        web_app.api_measure(
+            _make_request("POST", "/api/measure", {"mode": "upload", "image_base64": big_b64, "nhiet_do_do": 25.0})
+        )
+    )
+    assert r_mp.status_code == 413
+    assert json.loads(r_mp.body.decode("utf-8"))["loai_loi"] == "ANH_QUA_LON"
+
+
+

@@ -124,6 +124,7 @@ _CONFIG_CACHE: dict[str, Any] = {
     "species": None,
     "calib": None,
     "image": None,
+    "limits": None,
     "species_serialized": None,
 }
 
@@ -142,6 +143,7 @@ def invalidate_config_cache() -> None:
     _CONFIG_CACHE["species"] = None
     _CONFIG_CACHE["calib"] = None
     _CONFIG_CACHE["image"] = None
+    _CONFIG_CACHE["limits"] = None
     _CONFIG_CACHE["species_serialized"] = None
 
 
@@ -176,12 +178,27 @@ def _ensure_config_cache() -> None:
         "snr_toi_thieu": float(img_raw.get("snr_toi_thieu", 10.0)),
         "kenh_laser": str(img_raw.get("kenh_laser", "auto")),
     }
+    lim_raw = raw_yaml.get("gioi_han", {}) or {}
+    _CONFIG_CACHE["limits"] = {
+        "dung_luong_anh_MB": float(lim_raw.get("dung_luong_anh_MB", 25.0)),
+        "so_khung_toi_da": int(lim_raw.get("so_khung_toi_da", 60)),
+        "so_megapixel_toi_da": float(lim_raw.get("so_megapixel_toi_da", 60.0)),
+    }
     _CONFIG_CACHE["species_serialized"] = None
 
 
 def load_image_config() -> dict[str, Any]:
     _ensure_config_cache()
     return dict(_CONFIG_CACHE["image"] or {})
+
+
+def load_limits_config() -> dict[str, Any]:
+    _ensure_config_cache()
+    return dict(_CONFIG_CACHE["limits"] or {
+        "dung_luong_anh_MB": 25.0,
+        "so_khung_toi_da": 60,
+        "so_megapixel_toi_da": 60.0,
+    })
 
 
 def load_config() -> op.CauHinhQuangHoc:
@@ -622,17 +639,63 @@ def _evaluate_species_detail(S_ppt: float, loai: th.ThongTinLoai, U: float = 0.0
     }
 
 
-def _decode_base64_image_bytes(b64_str: str) -> tuple[np.ndarray, bytes]:
+class AnhQuaLonError(ValueError):
+    """Ảnh hoặc chuỗi khung hình vượt quá giới hạn dung lượng/độ phân giải/số khung (HTTP 413)."""
+
+
+def _lam_sach_ten_file(ten_file: Any, mac_dinh: str = "tep_tai_len") -> str:
+    """Làm sạch tên file tải lên, loại bỏ đường dẫn, `..` và ký tự điều khiển."""
+    if ten_file is None:
+        return mac_dinh
+    raw = str(ten_file).replace("\x00", "").strip()
+    if not raw:
+        return mac_dinh
+    base = raw.replace("\\", "/").rsplit("/", 1)[-1]
+    base = base.replace("..", "_")
+    clean = re.sub(r"[^a-zA-Z0-9._-]+", "_", base).strip("._")
+    if not clean:
+        return mac_dinh
+    return clean[:120]
+
+
+def _decode_base64_image_bytes(
+    b64_str: str,
+    max_mb: float | None = None,
+    max_mp: float | None = None,
+) -> tuple[np.ndarray, bytes]:
+    lim = load_limits_config() if (max_mb is None or max_mp is None) else {}
+    lim_mb = float(max_mb if max_mb is not None else lim.get("dung_luong_anh_MB", 25.0))
+    lim_mp = float(max_mp if max_mp is not None else lim.get("so_megapixel_toi_da", 60.0))
+    max_bytes = max(int(round(lim_mb * 1024 * 1024)), 1)
+
+    if "," in b64_str:
+        b64_str = b64_str.split(",", 1)[1]
+    b64_clean = b64_str.strip()
+    # Kiểm nhanh độ dài chuỗi base64 trước khi cấp phát buffer giải mã
+    if len(b64_clean) > int(max_bytes * 1.45) + 128:
+        raise AnhQuaLonError(f"Ảnh tải lên vượt quá giới hạn dung lượng {lim_mb:g} MB.")
+
     try:
-        if "," in b64_str:
-            b64_str = b64_str.split(",", 1)[1]
-        raw = base64.b64decode(b64_str, validate=False)
-        arr = np.frombuffer(raw, dtype=np.uint8)
-        img = cv2.imdecode(arr, cv2.IMREAD_COLOR) if arr.size > 0 else None
+        raw = base64.b64decode(b64_clean, validate=False)
     except Exception as exc:
         raise AnhKhongHopLeError("Không giải mã được dữ liệu ảnh base64 tải lên.") from exc
+
+    if len(raw) > max_bytes:
+        raise AnhQuaLonError(
+            f"Dung lượng ảnh ({len(raw) / (1024 * 1024):.2f} MB) vượt quá giới hạn {lim_mb:g} MB."
+        )
+
+    arr = np.frombuffer(raw, dtype=np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR) if arr.size > 0 else None
     if img is None or img.size == 0:
         raise AnhKhongHopLeError("Không giải mã được định dạng ảnh tải lên.")
+
+    h_img, w_img = img.shape[:2]
+    mp_val = (h_img * w_img) / 1_000_000.0
+    if mp_val > lim_mp:
+        raise AnhQuaLonError(
+            f"Độ phân giải ảnh ({w_img}×{h_img} = {mp_val:.2f} MP) vượt quá giới hạn {lim_mp:g} MP."
+        )
     return img, raw
 
 
@@ -885,6 +948,7 @@ async def api_measure(request: Request) -> JSONResponse:
                 "drift_px": drift_px,
             }
         elif mode == "upload":
+            _ = _lam_sach_ten_file(body.get("ten_file") or body.get("file_name"), mac_dinh="anh_upload")
             image_b64 = body.get("image_base64")
             if not image_b64 or not isinstance(image_b64, str):
                 return _json_err("Chưa cung cấp ảnh (image_base64) để đo.")
@@ -1048,6 +1112,13 @@ async def api_measure(request: Request) -> JSONResponse:
             "profile": _extract_profile_data(anh_input, kq_do),
             "danh_gia_loai": danh_gia_loai,
         })
+    except AnhQuaLonError as exc:
+        return _json_err_typed(
+            413,
+            "ANH_QUA_LON",
+            str(exc),
+            exc,
+        )
     except AnhKhongHopLeError as exc:
         return _json_err_typed(
             400,
@@ -1334,10 +1405,16 @@ async def api_measure_multi(request: Request) -> JSONResponse:
         pre_errors: list[tuple[int, str]] = []
         exif_info: dict[str, Any] = {}
 
+        lim_cfg = load_limits_config()
+        max_frames = max(2, int(lim_cfg.get("so_khung_toi_da", 60)))
+
         if mode == "sim":
             raw_times = body.get("thoi_gian_s")
             so_khung_mac_dinh = len(raw_times) if isinstance(raw_times, list) and len(raw_times) >= 2 else 5
-            so_khung = max(2, min(60, int(body.get("so_khung", so_khung_mac_dinh))))
+            so_khung_req = int(body.get("so_khung", so_khung_mac_dinh))
+            if so_khung_req > max_frames:
+                raise AnhQuaLonError(f"Số lượng khung hình ({so_khung_req}) vượt quá giới hạn {max_frames} khung.")
+            so_khung = max(2, so_khung_req)
             s_mp = float(body.get("S_ppt", 16.5))
             t_mp = float(body.get("T_C", nhiet_do_do))
             t_tc_mp = float(body.get("T_tham_chieu_C", nhiet_do_tham_chieu if nhiet_do_tham_chieu is not None else t_mp))
@@ -1381,17 +1458,25 @@ async def api_measure_multi(request: Request) -> JSONResponse:
                     "DAU_VAO_KHONG_HOP_LE",
                     "Đo đa khung hình cần gửi danh sách images_base64 gồm ít nhất 2 ảnh.",
                 )
+            if len(raw_imgs) > max_frames:
+                raise AnhQuaLonError(f"Số lượng khung hình ({len(raw_imgs)}) vượt quá giới hạn {max_frames} khung.")
             tong_so_gui = len(raw_imgs)
             for idx, b64_item in enumerate(raw_imgs):
                 if not isinstance(b64_item, str) or not b64_item.strip():
                     pre_errors.append((idx, "Dữ liệu ảnh trống"))
                     continue
                 try:
-                    img_bgr, raw_bytes = _decode_base64_image_bytes(b64_item)
+                    img_bgr, raw_bytes = _decode_base64_image_bytes(
+                        b64_item,
+                        max_mb=float(lim_cfg.get("dung_luong_anh_MB", 25.0)),
+                        max_mp=float(lim_cfg.get("so_megapixel_toi_da", 60.0)),
+                    )
                     if not exif_info and raw_bytes:
                         exif_info = thang.doc_exif_phoi_sang(raw_bytes)
                     frames_ok.append(img_bgr)
                     raw_idx_map.append(idx)
+                except AnhQuaLonError:
+                    raise
                 except AnhKhongHopLeError as exc_dec:
                     pre_errors.append((idx, str(exc_dec)))
 
@@ -1582,6 +1667,8 @@ async def api_measure_multi(request: Request) -> JSONResponse:
             "profile": _extract_profile_data(anh_rep, kq_rep),
             "danh_gia_loai": danh_gia_loai,
         })
+    except AnhQuaLonError as exc:
+        return _json_err_typed(413, "ANH_QUA_LON", str(exc), exc)
     except AnhKhongHopLeError as exc:
         return _json_err_typed(400, "ANH_KHONG_HOP_LE", f"Chuỗi ảnh tải lên không hợp lệ: {exc}", exc)
     except KhongTimThayVachError as exc:
@@ -1805,7 +1892,12 @@ async def api_calibrate(request: Request) -> JSONResponse:
             if not csv_text or not isinstance(csv_text, str):
                 return _json_err("Chưa cung cấp nội dung CSV hiệu chuẩn.")
             df_cal = cal.doc_csv_hieu_chuan(io.StringIO(csv_text))
-            ten_nguon = str(body.get("file_name", f"File CSV tải lên ({len(df_cal)} điểm)"))
+            raw_fname = body.get("file_name")
+            ten_nguon = (
+                _lam_sach_ten_file(raw_fname, mac_dinh="csv_tai_len.csv")
+                if raw_fname
+                else f"File CSV tải lên ({len(df_cal)} điểm)"
+            )
         else:
             return _json_err(f"Chế độ hiệu chuẩn '{mode}' không hợp lệ.")
 
