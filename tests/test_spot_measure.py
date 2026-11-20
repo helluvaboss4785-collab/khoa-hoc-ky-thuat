@@ -366,3 +366,27 @@ def test_q1_chon_kenh_laser_va_bao_hoa_theo_kenh():
     assert kq_g.kenh_su_dung == "G"
 
 
+def test_q2_canh_bao_dom_cuc_bo_va_cot_lien_tiep():
+    """Q2: Đốm bão hòa rải rác (<15 cột liên tiếp, <=30%) chỉ cảnh báo cẩn thận; >=15 cột liên tiếp -> nghiêm trọng."""
+    anh, _ = tao_anh_hai_vach_ly_thuyet(h=220, w=150, y_tc=55.0, y_mau=135.0, amp_tc=190.0, amp_mau=190.0, seed=55)
+    # 1. Rải 6 cột rời rạc bão hòa trong ROI mẫu (~5% cột < 30%, độ dài liên tiếp = 2 < 15)
+    anh_dom = anh.copy()
+    for col in (20, 21, 50, 51, 90, 91):
+        anh_dom[134:137, col] = 255
+    kq_dom = do_delta_y_tu_anh(anh_dom, roi_tham_chieu=(35, 75, 10, 140), roi_mau=(115, 155, 10, 140), tao_anh_ve=False)
+    assert kq_dom.chat_luong.bao_hoa is False
+    assert kq_dom.chat_luong.co_dom_bao_hoa_cuc_bo is True
+    assert kq_dom.chat_luong.hop_le is True
+    assert kq_dom.chat_luong.so_cot_bao_hoa_lien_tiep_max == 2
+    assert any(c["ma"] == "DOM_BAO_HOA_CUC_BO" and c["cap"] == "can_than" for c in kq_dom.chat_luong.canh_bao_chi_tiet)
+
+    # 2. Một đoạn bẹt đỉnh 18 cột liên tiếp (>= 15, dù tỉ lệ < 30%) -> phải gắn bao_hoa=True, hop_le=False
+    anh_bet = anh.copy()
+    anh_bet[134:137, 40:58] = 255
+    kq_bet = do_delta_y_tu_anh(anh_bet, roi_tham_chieu=(35, 75, 10, 140), roi_mau=(115, 155, 10, 140), tao_anh_ve=False)
+    assert kq_bet.chat_luong.bao_hoa is True
+    assert kq_bet.chat_luong.hop_le is False
+    assert kq_bet.chat_luong.so_cot_bao_hoa_lien_tiep_max >= 15
+
+
+

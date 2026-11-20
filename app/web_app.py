@@ -161,6 +161,8 @@ def _ensure_config_cache() -> None:
     _CONFIG_CACHE["image"] = {
         "nguong_bao_hoa": int(img_raw.get("nguong_bao_hoa", 250)),
         "ti_le_bao_hoa_toi_da": float(img_raw.get("ti_le_bao_hoa_toi_da", 0.02)),
+        "ti_le_cot_bao_hoa_nghiem_trong": float(img_raw.get("ti_le_cot_bao_hoa_nghiem_trong", 0.30)),
+        "so_cot_lien_tiep_bao_hoa": int(img_raw.get("so_cot_lien_tiep_bao_hoa", 15)),
         "snr_toi_thieu": float(img_raw.get("snr_toi_thieu", 10.0)),
         "kenh_laser": str(img_raw.get("kenh_laser", "auto")),
     }
@@ -766,6 +768,37 @@ async def api_bootstrap(request: Request) -> JSONResponse:
     })
 
 
+def _serialize_chat_luong(
+    cq: Any,
+    hop_le_override: bool,
+    extra_warnings: list[tuple[str, str, str]],
+) -> dict[str, Any]:
+    """Chuẩn hóa đối tượng chất lượng ảnh và gộp cảnh báo bổ sung thành JSON."""
+    canh_bao_ct = [dict(c) for c in getattr(cq, "canh_bao_chi_tiet", [])]
+    canh_bao_txt = list(getattr(cq, "canh_bao", []))
+    seen = set(canh_bao_txt)
+    for ma, cap, noi_dung in extra_warnings:
+        if noi_dung not in seen:
+            canh_bao_txt.append(noi_dung)
+            canh_bao_ct.append({"ma": ma, "cap": cap, "noi_dung": noi_dung})
+            seen.add(noi_dung)
+    return {
+        "hop_le": bool(hop_le_override),
+        "bao_hoa": bool(cq.bao_hoa),
+        "ti_le_bao_hoa": cq.ti_le_bao_hoa,
+        "kenh_bao_hoa": list(getattr(cq, "kenh_bao_hoa", [])),
+        "co_dom_bao_hoa_cuc_bo": bool(getattr(cq, "co_dom_bao_hoa_cuc_bo", False)),
+        "so_cot_bao_hoa_lien_tiep_max": int(getattr(cq, "so_cot_bao_hoa_lien_tiep_max", 0)),
+        "qua_mo": bool(cq.qua_mo),
+        "snr": cq.snr,
+        "nhoe": bool(cq.nhoe),
+        "fwhm_mau": cq.fwhm_mau,
+        "fwhm_tc": cq.fwhm_tc,
+        "canh_bao": canh_bao_txt,
+        "canh_bao_chi_tiet": canh_bao_ct,
+    }
+
+
 async def api_measure(request: Request) -> JSONResponse:
     try:
         body = await request.json()
@@ -910,6 +943,8 @@ async def api_measure(request: Request) -> JSONResponse:
             snr_toi_thieu=float(img_cfg.get("snr_toi_thieu", 10.0)),
             tao_anh_ve=True,
             kenh_laser=str(img_cfg.get("kenh_laser", "auto")),
+            ti_le_cot_bao_hoa_nghiem_trong=float(img_cfg.get("ti_le_cot_bao_hoa_nghiem_trong", 0.30)),
+            so_cot_lien_tiep_bao_hoa=int(img_cfg.get("so_cot_lien_tiep_bao_hoa", 15)),
         )
 
         (
@@ -933,12 +968,14 @@ async def api_measure(request: Request) -> JSONResponse:
             ma_loai_req=str(body.get("ma_loai") or "").strip(),
         )
         cq = kq_do.chat_luong
-
-        canh_bao_anh = list(cq.canh_bao)
+        extra_anh: list[tuple[str, str, str]] = []
         if mode != "sim" and not khoa_ae_af:
-            canh_bao_anh.append(
-                "Chưa khóa phơi sáng và lấy nét (AE/AF lock): độ sáng/độ nét vạch có thể thay đổi giữa các lần chụp."
-            )
+            extra_anh.append((
+                "CHUA_KHOA_AE_AF",
+                "can_than",
+                "Chưa khóa phơi sáng và lấy nét (AE/AF lock): độ sáng/độ nét vạch có thể thay đổi giữa các lần chụp.",
+            ))
+        chat_luong_dict = _serialize_chat_luong(cq, cq.hop_le, extra_anh)
         delta_y_mm_val = None
         sai_so_delta_y_mm_val = None
         if px_per_mm_val is not None and math.isfinite(kq_do.delta_y_px):
@@ -969,18 +1006,7 @@ async def api_measure(request: Request) -> JSONResponse:
             "sai_so_delta_y_px": kq_do.sai_so_delta_y_px,
             "x_ref": kq_do.x_ref,
             "chi_so_do_duc_tuong_doi": kq_do.chi_so_do_duc_tuong_doi,
-            "chat_luong": {
-                "hop_le": cq.hop_le,
-                "bao_hoa": cq.bao_hoa,
-                "ti_le_bao_hoa": cq.ti_le_bao_hoa,
-                "kenh_bao_hoa": cq.kenh_bao_hoa,
-                "qua_mo": cq.qua_mo,
-                "snr": cq.snr,
-                "nhoe": cq.nhoe,
-                "fwhm_mau": cq.fwhm_mau,
-                "fwhm_tc": cq.fwhm_tc,
-                "canh_bao": canh_bao_anh,
-            },
+            "chat_luong": chat_luong_dict,
             "vach_tham_chieu": _serialize_line_fit(kq_do.vach_tham_chieu),
             "vach_mau": _serialize_line_fit(kq_do.vach_mau),
             "mo_hinh_man": kq_man_dict,
@@ -1340,6 +1366,9 @@ async def api_measure_multi(request: Request) -> JSONResponse:
                 raise AnhKhongHopLeError("Không giải mã được khung ảnh hợp lệ nào trong chuỗi.")
 
         img_cfg = load_image_config()
+        kenh_laser = str(img_cfg.get("kenh_laser", "auto"))
+        bh_nghiem_trong = float(img_cfg.get("ti_le_cot_bao_hoa_nghiem_trong", 0.30))
+        bh_lien_tiep = int(img_cfg.get("so_cot_lien_tiep_bao_hoa", 15))
         kq_da = do_delta_y_da_khung_hinh(
             frames_ok,
             roi_tham_chieu=roi_tc_tuple,
@@ -1348,6 +1377,9 @@ async def api_measure_multi(request: Request) -> JSONResponse:
             nguong_bao_hoa=int(img_cfg.get("nguong_bao_hoa", 250)),
             ti_le_bao_hoa_toi_da=float(img_cfg.get("ti_le_bao_hoa_toi_da", 0.02)),
             snr_toi_thieu=float(img_cfg.get("snr_toi_thieu", 10.0)),
+            kenh_laser=kenh_laser,
+            ti_le_cot_bao_hoa_nghiem_trong=bh_nghiem_trong,
+            so_cot_lien_tiep_bao_hoa=bh_lien_tiep,
         )
 
         # Hợp nhất danh sách khung lỗi (cả khung lỗi lúc giải mã + khung lỗi lúc đo vạch)
@@ -1369,7 +1401,9 @@ async def api_measure_multi(request: Request) -> JSONResponse:
             ti_le_bao_hoa_toi_da=float(img_cfg.get("ti_le_bao_hoa_toi_da", 0.02)),
             snr_toi_thieu=float(img_cfg.get("snr_toi_thieu", 10.0)),
             tao_anh_ve=True,
-            kenh_laser=str(img_cfg.get("kenh_laser", "auto")),
+            kenh_laser=kenh_laser,
+            ti_le_cot_bao_hoa_nghiem_trong=bh_nghiem_trong,
+            so_cot_lien_tiep_bao_hoa=bh_lien_tiep,
         )
         sigma_dy_use = max(kq_da.sai_so_thong_ke_px, kq_rep.sai_so_delta_y_px if kq_da.sai_so_thong_ke_px <= 0 else 0.0)
         cq_chung = kq_da.chat_luong_chung
@@ -1396,13 +1430,20 @@ async def api_measure_multi(request: Request) -> JSONResponse:
             ma_loai_req=str(body.get("ma_loai") or "").strip(),
         )
 
-        canh_bao_anh = list(cq_chung.canh_bao)
+        extra_multi: list[tuple[str, str, str]] = []
         if pre_errors:
-            canh_bao_anh.append(f"Có {len(pre_errors)}/{tong_so_gui} khung ảnh không giải mã được.")
+            extra_multi.append((
+                "KHUNG_KHONG_GIAI_MA",
+                "can_than",
+                f"Có {len(pre_errors)}/{tong_so_gui} khung ảnh không giải mã được.",
+            ))
         if mode != "sim" and not khoa_ae_af:
-            canh_bao_anh.append(
-                "Chưa khóa phơi sáng và lấy nét (AE/AF lock): độ sáng/độ nét vạch có thể thay đổi giữa các lần chụp."
-            )
+            extra_multi.append((
+                "CHUA_KHOA_AE_AF",
+                "can_than",
+                "Chưa khóa phơi sáng và lấy nét (AE/AF lock): độ sáng/độ nét vạch có thể thay đổi giữa các lần chụp.",
+            ))
+        chat_luong_multi_dict = _serialize_chat_luong(cq_chung, tong_hop_le_cuoi, extra_multi)
 
         delta_y_mm_val = None
         sai_so_delta_y_mm_val = None
@@ -1441,18 +1482,7 @@ async def api_measure_multi(request: Request) -> JSONResponse:
             "canh_bao_troi_theo_thoi_gian": kq_da.canh_bao_troi_theo_thoi_gian,
             "canh_bao_dao_dong_phoi_sang": kq_da.canh_bao_dao_dong_phoi_sang,
             "canh_bao_da_khung": kq_da.canh_bao_da_khung,
-            "chat_luong": {
-                "hop_le": tong_hop_le_cuoi,
-                "bao_hoa": cq_chung.bao_hoa,
-                "ti_le_bao_hoa": cq_chung.ti_le_bao_hoa,
-                "kenh_bao_hoa": cq_chung.kenh_bao_hoa,
-                "qua_mo": cq_chung.qua_mo,
-                "snr": cq_chung.snr,
-                "nhoe": cq_chung.nhoe,
-                "fwhm_mau": cq_chung.fwhm_mau,
-                "fwhm_tc": cq_chung.fwhm_tc,
-                "canh_bao": canh_bao_anh,
-            },
+            "chat_luong": chat_luong_multi_dict,
             "vach_tham_chieu": _serialize_line_fit(kq_rep.vach_tham_chieu),
             "vach_mau": _serialize_line_fit(kq_rep.vach_mau),
             "mo_hinh_man": kq_man_dict,

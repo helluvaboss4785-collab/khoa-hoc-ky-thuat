@@ -44,8 +44,8 @@ class ChatLuongAnh:
     """Đánh giá chất lượng quang học của ảnh chụp vạch laser."""
 
     hop_le: bool                 # Ảnh có đủ điều kiện để lấy kết quả đo tin cậy không
-    bao_hoa: bool                # Cờ báo vạch bị bão hòa (cháy sáng, pixel = 255)
-    ti_le_bao_hoa: float         # Tỉ lệ pixel bão hòa trong vùng sáng lõi vạch
+    bao_hoa: bool                # Cờ báo vạch bị bão hòa nghiêm trọng / bẹt đỉnh thật (không hợp lệ)
+    ti_le_bao_hoa: float         # Tỉ lệ cột có đỉnh >= ngưỡng bão hòa trên các cột có tín hiệu
     qua_mo: bool                 # Cờ báo vạch quá mờ (tín hiệu yếu)
     snr: float                   # Tỉ số tín hiệu trên nhiễu ước lượng (Peak / Noise_Std)
     nhoe: bool                   # Cờ báo vạch bị nhòe/biến dạng bất thường
@@ -53,6 +53,9 @@ class ChatLuongAnh:
     fwhm_tc: float               # FWHM vạch tham chiếu (px)
     canh_bao: list[str] = field(default_factory=list)
     kenh_bao_hoa: list[str] = field(default_factory=list)
+    co_dom_bao_hoa_cuc_bo: bool = False
+    so_cot_bao_hoa_lien_tiep_max: int = 0
+    canh_bao_chi_tiet: list[dict[str, str]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -154,14 +157,28 @@ def chon_kenh_laser(
     return (out.astype(np.uint8) if out.dtype != np.uint8 else out), best_name
 
 
+def _doan_lien_tiep_toi_da(mask_1d: np.ndarray) -> int:
+    """Đếm độ dài đoạn cột True liên tiếp dài nhất (phân biệt speckle rời rạc với bẹt đỉnh rộng)."""
+    max_run = 0
+    cur_run = 0
+    for val in np.asarray(mask_1d, dtype=bool):
+        if val:
+            cur_run += 1
+            if cur_run > max_run:
+                max_run = cur_run
+        else:
+            cur_run = 0
+    return int(max_run)
+
+
 def _danh_gia_vung_don(
     vung: np.ndarray,
     nguong_bao_hoa: int,
-) -> tuple[float, float, float, float, float]:
+) -> tuple[float, int, float, float, float, float]:
     """Tính các chỉ số chất lượng bất biến theo chiều cao ROI cho một vùng đơn.
 
     - Bão hòa tính theo tỉ lệ CỘT có đỉnh >= ngưỡng bão hòa trên các cột có tín hiệu,
-      giúp kết quả không bị pha loãng khi người dùng kéo ROI cao hơn.
+      kèm độ dài đoạn cột bão hòa liên tiếp tối đa để phân biệt speckle nhỏ với bẹt đỉnh thật.
     - SNR và độ tương phản lấy theo trung vị đỉnh cột so với nền để bất biến diện tích ROI.
     """
     if vung.size == 0 or vung.shape[0] < 1 or vung.shape[1] < 1:
@@ -170,13 +187,16 @@ def _danh_gia_vung_don(
     nen = float(np.percentile(vung, 10))
     col_max = np.max(vung, axis=0)
     cot_co_tin_hieu = col_max >= (nen + 15.0)
+    cot_bao_hoa = col_max >= nguong_bao_hoa
 
     if np.any(cot_co_tin_hieu):
-        ti_le_bh = float(np.mean(col_max[cot_co_tin_hieu] >= nguong_bao_hoa))
+        ti_le_bh = float(np.mean(cot_bao_hoa[cot_co_tin_hieu]))
         dinh = float(np.median(col_max[cot_co_tin_hieu]))
+        lien_tiep_max = _doan_lien_tiep_toi_da(cot_bao_hoa[cot_co_tin_hieu])
     else:
-        ti_le_bh = float(np.mean(col_max >= nguong_bao_hoa))
+        ti_le_bh = float(np.mean(cot_bao_hoa))
         dinh = float(np.max(col_max))
+        lien_tiep_max = _doan_lien_tiep_toi_da(cot_bao_hoa)
 
     nen_mask = vung <= (nen + 5.0)
     std_nen = float(np.std(vung[nen_mask])) if np.any(nen_mask) else 1.0
@@ -184,7 +204,7 @@ def _danh_gia_vung_don(
 
     tuong_phan = dinh - nen
     snr = tuong_phan / std_nen
-    return ti_le_bh, snr, tuong_phan, nen, dinh
+    return ti_le_bh, lien_tiep_max, snr, tuong_phan, nen, dinh
 
 
 def kiem_tra_chat_luong_vung(
@@ -197,9 +217,11 @@ def kiem_tra_chat_luong_vung(
     fwhm_toi_thieu: float = 1.2,
     fwhm_toi_da: float = 65.0,
     anh_goc: np.ndarray | None = None,
+    ti_le_cot_bao_hoa_nghiem_trong: float = 0.30,
+    so_cot_lien_tiep_bao_hoa: int = 15,
 ) -> tuple[ChatLuongAnh, float, float]:
-    """Kiểm tra chất lượng cho CẢ HAI vùng; với ảnh màu kiểm bão hòa trên từng kênh RGB gốc."""
-    canh_bao: list[str] = []
+    """Kiểm tra chất lượng cho CẢ HAI vùng; phân biệt đốm speckle cục bộ với bão hòa bẹt đỉnh."""
+    canh_bao_chi_tiet: list[dict[str, str]] = []
 
     y1_tc, y2_tc, x1_tc, x2_tc = roi_tc
     y1_m, y2_m, x1_m, x2_m = roi_mau
@@ -207,42 +229,78 @@ def kiem_tra_chat_luong_vung(
     vung_tc = anh_xam[y1_tc:y2_tc, x1_tc:x2_tc]
     vung_m = anh_xam[y1_m:y2_m, x1_m:x2_m]
 
-    ti_le_bh_tc, snr_tc, contrast_tc, nen_tc, dinh_tc = _danh_gia_vung_don(vung_tc, nguong_bao_hoa)
-    ti_le_bh_m, snr_m, contrast_m, _, _ = _danh_gia_vung_don(vung_m, nguong_bao_hoa)
+    ti_le_bh_tc, run_tc, snr_tc, contrast_tc, nen_tc, dinh_tc = _danh_gia_vung_don(vung_tc, nguong_bao_hoa)
+    ti_le_bh_m, run_m, snr_m, contrast_m, _, _ = _danh_gia_vung_don(vung_m, nguong_bao_hoa)
 
-    # 1. Bão hòa sáng theo cột: kiểm tra cả các kênh B, G, R gốc nếu ảnh đầu vào là ảnh màu
+    # 1. Bão hòa sáng theo cột (từng kênh B, G, R gốc nếu ảnh màu) & phân cấp speckle vs bẹt đỉnh rộng
     ti_le_bh = max(ti_le_bh_tc, ti_le_bh_m)
-    kenh_bao_hoa: list[str] = []
+    lien_tiep_max = max(run_tc, run_m)
+    kenh_nghiem_trong: list[str] = []
+    kenh_dom_cuc_bo: list[str] = []
+
+    def _la_nghiem_trong(bh_val: float, run_val: int) -> bool:
+        return (bh_val > ti_le_cot_bao_hoa_nghiem_trong) or (run_val >= so_cot_lien_tiep_bao_hoa)
+
     if anh_goc is not None and hasattr(anh_goc, "ndim") and anh_goc.ndim == 3 and anh_goc.shape[2] >= 3:
         for ch_name, ch_idx in (("R", 2), ("G", 1), ("B", 0)):
             ch_tc = anh_goc[y1_tc:y2_tc, x1_tc:x2_tc, ch_idx]
             ch_m = anh_goc[y1_m:y2_m, x1_m:x2_m, ch_idx]
-            bh_tc_c, *_ = _danh_gia_vung_don(ch_tc, nguong_bao_hoa)
-            bh_m_c, *_ = _danh_gia_vung_don(ch_m, nguong_bao_hoa)
+            bh_tc_c, run_tc_c, *_ = _danh_gia_vung_don(ch_tc, nguong_bao_hoa)
+            bh_m_c, run_m_c, *_ = _danh_gia_vung_don(ch_m, nguong_bao_hoa)
             bh_c = max(bh_tc_c, bh_m_c)
+            run_c = max(run_tc_c, run_m_c)
             ti_le_bh = max(ti_le_bh, bh_c)
-            if bh_c > ti_le_bao_hoa_toi_da:
-                kenh_bao_hoa.append(ch_name)
-    elif ti_le_bh > ti_le_bao_hoa_toi_da:
-        kenh_bao_hoa.append("xam")
+            lien_tiep_max = max(lien_tiep_max, run_c)
+            if _la_nghiem_trong(bh_c, run_c):
+                kenh_nghiem_trong.append(ch_name)
+            elif bh_c > ti_le_bao_hoa_toi_da:
+                kenh_dom_cuc_bo.append(ch_name)
+    else:
+        if _la_nghiem_trong(ti_le_bh, lien_tiep_max):
+            kenh_nghiem_trong.append("xam")
+        elif ti_le_bh > ti_le_bao_hoa_toi_da:
+            kenh_dom_cuc_bo.append("xam")
 
-    co_bao_hoa = bool(kenh_bao_hoa) or (ti_le_bh > ti_le_bao_hoa_toi_da)
+    co_bao_hoa = bool(kenh_nghiem_trong) or _la_nghiem_trong(ti_le_bh, lien_tiep_max)
+    co_dom_cuc_bo = (not co_bao_hoa) and (bool(kenh_dom_cuc_bo) or (ti_le_bh > ti_le_bao_hoa_toi_da))
+    kenh_bao_hoa = kenh_nghiem_trong if co_bao_hoa else kenh_dom_cuc_bo
+
     if co_bao_hoa:
         kenh_txt = f" (kênh {', '.join(kenh_bao_hoa)})" if kenh_bao_hoa else ""
-        canh_bao.append(
-            f"Vạch sáng bị bão hòa{kenh_txt} ({ti_le_bh*100:.1f}% cột có đỉnh ≥ {nguong_bao_hoa}). "
-            "Cần giảm phơi sáng máy ảnh hoặc giảm công suất laser để tránh bẹt đỉnh."
-        )
+        canh_bao_chi_tiet.append({
+            "ma": "BAO_HOA_NGHIEM_TRONG",
+            "cap": "nghiem_trong",
+            "noi_dung": (
+                f"Vạch sáng bị bão hòa rộng{kenh_txt} ({ti_le_bh*100:.1f}% cột có đỉnh ≥ {nguong_bao_hoa}, "
+                f"đoạn liên tiếp dài nhất {lien_tiep_max} cột): đỉnh Gauss bị bẹt. "
+                "Cần giảm phơi sáng máy ảnh hoặc giảm công suất laser."
+            ),
+        })
+    elif co_dom_cuc_bo:
+        kenh_txt = f" (kênh {', '.join(kenh_bao_hoa)})" if kenh_bao_hoa else ""
+        canh_bao_chi_tiet.append({
+            "ma": "DOM_BAO_HOA_CUC_BO",
+            "cap": "can_than",
+            "noi_dung": (
+                f"Phát hiện đốm bão hòa cục bộ{kenh_txt} ({ti_le_bh*100:.1f}% cột, đoạn liên tiếp tối đa "
+                f"{lien_tiep_max} cột < {so_cot_lien_tiep_bao_hoa}), có thể do hạt đốm laser (speckle); "
+                "lõi vạch vẫn định tâm được nhưng nên giảm nhẹ phơi sáng khi chụp tiếp."
+            ),
+        })
 
     # 2. Tín hiệu / nhiễu (SNR): tính cho cả hai vùng và lấy giá trị thấp hơn
     snr_uoc_luong = min(snr_tc, snr_m)
     contrast_min = min(contrast_tc, contrast_m)
     co_qua_mo = bool(snr_uoc_luong < snr_toi_thieu or contrast_min < 15.0)
     if co_qua_mo:
-        canh_bao.append(
-            f"Vạch sáng quá mờ (SNR tối thiểu giữa 2 vùng = {snr_uoc_luong:.1f} < {snr_toi_thieu} hoặc tương phản yếu). "
-            "Cần che bớt ánh sáng môi trường hoặc tăng sáng laser."
-        )
+        canh_bao_chi_tiet.append({
+            "ma": "QUA_MO",
+            "cap": "nghiem_trong",
+            "noi_dung": (
+                f"Vạch sáng quá mờ (SNR tối thiểu giữa 2 vùng = {snr_uoc_luong:.1f} < {snr_toi_thieu} hoặc tương phản yếu). "
+                "Cần che bớt ánh sáng môi trường hoặc tăng sáng laser."
+            ),
+        })
 
     hop_le = not (co_bao_hoa or co_qua_mo)
 
@@ -255,8 +313,11 @@ def kiem_tra_chat_luong_vung(
         nhoe=False,
         fwhm_mau=0.0,
         fwhm_tc=0.0,
-        canh_bao=canh_bao,
+        canh_bao=[c["noi_dung"] for c in canh_bao_chi_tiet],
         kenh_bao_hoa=kenh_bao_hoa,
+        co_dom_bao_hoa_cuc_bo=co_dom_cuc_bo,
+        so_cot_bao_hoa_lien_tiep_max=lien_tiep_max,
+        canh_bao_chi_tiet=canh_bao_chi_tiet,
     )
     return chat_luong, nen_tc, dinh_tc
 
@@ -446,6 +507,8 @@ def do_delta_y_tu_anh(
     snr_toi_thieu: float = 10.0,
     tao_anh_ve: bool = True,
     kenh_laser: str = "auto",
+    ti_le_cot_bao_hoa_nghiem_trong: float = 0.30,
+    so_cot_lien_tiep_bao_hoa: int = 15,
 ) -> KetQuaDoDeltaY:
     """Đo độ lệch vi sai Δy và chỉ số độ đục từ một ảnh chụp (chọn kênh laser tối ưu & kiểm bão hòa gốc)."""
     anh_kenh, ten_kenh = chon_kenh_laser(anh, kenh_laser=kenh_laser)
@@ -472,6 +535,8 @@ def do_delta_y_tu_anh(
         ti_le_bao_hoa_toi_da=ti_le_bao_hoa_toi_da,
         snr_toi_thieu=snr_toi_thieu,
         anh_goc=anh,
+        ti_le_cot_bao_hoa_nghiem_trong=ti_le_cot_bao_hoa_nghiem_trong,
+        so_cot_lien_tiep_bao_hoa=so_cot_lien_tiep_bao_hoa,
     )
 
     # 3. Xác định cột tham chiếu x_ref chung tối ưu
@@ -512,8 +577,9 @@ def do_delta_y_tu_anh(
         )
     except ValueError as e:
         # Nếu không đủ số cột đạt chuẩn để khớp vạch (ảnh quá mờ hoặc nhiễu nặng)
-        canh_bao_loi = list(chat_luong_khoi_tao.canh_bao)
-        canh_bao_loi.append(f"Không thể định vị vạch: {e}")
+        canh_bao_ct_loi = list(chat_luong_khoi_tao.canh_bao_chi_tiet)
+        msg_loi = f"Không thể định vị vạch: {e}"
+        canh_bao_ct_loi.append({"ma": "KHONG_DINH_VI_VACH", "cap": "nghiem_trong", "noi_dung": msg_loi})
         chat_luong_loi = ChatLuongAnh(
             hop_le=False,
             bao_hoa=chat_luong_khoi_tao.bao_hoa,
@@ -523,8 +589,11 @@ def do_delta_y_tu_anh(
             nhoe=True,
             fwhm_mau=0.0,
             fwhm_tc=0.0,
-            canh_bao=canh_bao_loi,
+            canh_bao=[c["noi_dung"] for c in canh_bao_ct_loi],
             kenh_bao_hoa=list(chat_luong_khoi_tao.kenh_bao_hoa),
+            co_dom_bao_hoa_cuc_bo=chat_luong_khoi_tao.co_dom_bao_hoa_cuc_bo,
+            so_cot_bao_hoa_lien_tiep_max=chat_luong_khoi_tao.so_cot_bao_hoa_lien_tiep_max,
+            canh_bao_chi_tiet=canh_bao_ct_loi,
         )
         # Tạo kết quả rỗng giả lập
         vach_rong = KetQuaUocLuongVach(
@@ -566,13 +635,17 @@ def do_delta_y_tu_anh(
     )
 
     # 7. Cập nhật cảnh báo độ nhòe và hoàn thiện đối tượng chất lượng
-    canh_bao_final = list(chat_luong_khoi_tao.canh_bao)
+    canh_bao_ct_final = list(chat_luong_khoi_tao.canh_bao_chi_tiet)
     co_nhoe = bool(vach_m.fwhm_trung_binh > 50.0 or vach_tc.fwhm_trung_binh > 50.0)
     if co_nhoe:
-        canh_bao_final.append(
-            f"Vạch bị nhòe lớn (FWHM mẫu = {vach_m.fwhm_trung_binh:.1f} px, FWHM tc = {vach_tc.fwhm_trung_binh:.1f} px). "
-            "Cần kiểm tra lại hội tụ của ống kính hoặc mẫu quá đục làm mất biên dạng vạch."
-        )
+        canh_bao_ct_final.append({
+            "ma": "NHOE_VACH",
+            "cap": "nghiem_trong",
+            "noi_dung": (
+                f"Vạch bị nhòe lớn (FWHM mẫu = {vach_m.fwhm_trung_binh:.1f} px, FWHM tc = {vach_tc.fwhm_trung_binh:.1f} px). "
+                "Cần kiểm tra lại hội tụ của ống kính hoặc mẫu quá đục làm mất biên dạng vạch."
+            ),
+        })
 
     chat_luong_final = ChatLuongAnh(
         hop_le=bool(chat_luong_khoi_tao.hop_le and not co_nhoe),
@@ -583,8 +656,11 @@ def do_delta_y_tu_anh(
         nhoe=co_nhoe,
         fwhm_mau=vach_m.fwhm_trung_binh,
         fwhm_tc=vach_tc.fwhm_trung_binh,
-        canh_bao=canh_bao_final,
+        canh_bao=[c["noi_dung"] for c in canh_bao_ct_final],
         kenh_bao_hoa=list(chat_luong_khoi_tao.kenh_bao_hoa),
+        co_dom_bao_hoa_cuc_bo=chat_luong_khoi_tao.co_dom_bao_hoa_cuc_bo,
+        so_cot_bao_hoa_lien_tiep_max=chat_luong_khoi_tao.so_cot_bao_hoa_lien_tiep_max,
+        canh_bao_chi_tiet=canh_bao_ct_final,
     )
 
     # 8. Sinh ảnh vẽ kết quả kiểm chứng
@@ -614,6 +690,8 @@ def do_delta_y_da_khung_hinh(
     ti_le_bao_hoa_toi_da: float = 0.02,
     snr_toi_thieu: float = 10.0,
     kenh_laser: str = "auto",
+    ti_le_cot_bao_hoa_nghiem_trong: float = 0.30,
+    so_cot_lien_tiep_bao_hoa: int = 15,
 ) -> KetQuaDoDaKhungHinh:
     """Xử lí chuỗi nhiều khung hình (video / multi-shot), lấy trung vị và độ phân tán.
 
@@ -644,6 +722,8 @@ def do_delta_y_da_khung_hinh(
                 snr_toi_thieu=snr_toi_thieu,
                 tao_anh_ve=False,
                 kenh_laser=kenh_laser,
+                ti_le_cot_bao_hoa_nghiem_trong=ti_le_cot_bao_hoa_nghiem_trong,
+                so_cot_lien_tiep_bao_hoa=so_cot_lien_tiep_bao_hoa,
             )
         except (AnhKhongHopLeError, KhongTimThayVachError, ValueError) as exc:
             khung_loi.append((idx, str(exc)))
@@ -721,13 +801,18 @@ def do_delta_y_da_khung_hinh(
 
     # Tổng hợp chất lượng theo mức XẤU NHẤT trong toàn bộ chuỗi
     canh_bao_gop: list[str] = []
+    canh_bao_ct_gop: list[dict[str, str]] = []
     for cq_item in ds_cq_tat_ca:
         for w_msg in cq_item.canh_bao:
             if w_msg not in canh_bao_gop:
                 canh_bao_gop.append(w_msg)
+        for item_ct in cq_item.canh_bao_chi_tiet:
+            if item_ct["noi_dung"] not in {x["noi_dung"] for x in canh_bao_ct_gop}:
+                canh_bao_ct_gop.append(dict(item_ct))
     for w_dk in canh_bao_da_khung:
         if w_dk not in canh_bao_gop:
             canh_bao_gop.append(w_dk)
+            canh_bao_ct_gop.append({"ma": "CANH_BAO_DA_KHUNG", "cap": "can_than", "noi_dung": w_dk})
 
     kenh_bh_gop: list[str] = []
     for cq_item in ds_cq_tat_ca:
@@ -746,6 +831,9 @@ def do_delta_y_da_khung_hinh(
         fwhm_tc=max(c.fwhm_tc for c in ds_cq_tat_ca),
         canh_bao=canh_bao_gop,
         kenh_bao_hoa=kenh_bh_gop,
+        co_dom_bao_hoa_cuc_bo=any(c.co_dom_bao_hoa_cuc_bo for c in ds_cq_tat_ca),
+        so_cot_bao_hoa_lien_tiep_max=max(c.so_cot_bao_hoa_lien_tiep_max for c in ds_cq_tat_ca),
+        canh_bao_chi_tiet=canh_bao_ct_gop,
     )
 
     return KetQuaDoDaKhungHinh(

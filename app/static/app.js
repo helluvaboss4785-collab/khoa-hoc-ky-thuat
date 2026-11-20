@@ -892,7 +892,8 @@ function renderMeasureResults(d) {
   qCard.className = `kpi-card-25d ${cq.hop_le ? "tone-emerald" : "tone-red"}`;
   $("#kpi-qual-val").textContent = cq.hop_le ? "ĐẠT CHUẨN" : "CẦN LƯU Ý";
   $("#kpi-qual-snr").textContent = `SNR = ${fmt(cq.snr, 1)}`;
-  $("#kpi-qual-sub").textContent = `Bão hòa (≥250): ${fmt(cq.ti_le_bao_hoa * 100, 2)}% pixel`;
+  const domNote = cq.co_dom_bao_hoa_cuc_bo ? " • Đốm cục bộ" : "";
+  $("#kpi-qual-sub").textContent = `Bão hòa (≥250): ${fmt(cq.ti_le_bao_hoa * 100, 1)}% cột (liên tiếp ${cq.so_cot_bao_hoa_lien_tiep_max ?? 0})${domNote}`;
 
   // Đánh giá theo loài (qua cổng chất lượng T6)
   const dg = d.danh_gia_loai;
