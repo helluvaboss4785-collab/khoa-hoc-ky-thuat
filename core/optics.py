@@ -33,6 +33,10 @@ class GanPhanXaToanPhanWarning(UserWarning):
     """Cảnh báo khi n·sin(A) gần 1: độ nhạy tăng vọt nhưng rất dễ mất tia."""
 
 
+class NgoaiDaiQuanFryWarning(UserWarning):
+    """Cảnh báo khi T, S hoặc bước sóng λ nằm ngoài dải hiệu lực công thức Quan–Fry."""
+
+
 @dataclass(frozen=True)
 class CauHinhQuangHoc:
     """Các tham số quang học (đọc từ config.yaml)."""
@@ -45,6 +49,8 @@ class CauHinhQuangHoc:
     T_tham_chieu_C: float  # nhiệt độ ứng với n_nuoc_ngot (°C)
     bien_TIR: float        # biên an toàn phản xạ toàn phần
     pixel_mm: float        # kích thước pixel quy đổi trên màn (mm/px)
+    mo_hinh_chiet_suat: str = "tuyen_tinh"  # "tuyen_tinh" hoặc "quan_fry"
+    buoc_song_nm: float = 650.0             # bước sóng (nm) cho công thức Quan–Fry
 
     @classmethod
     def tu_yaml(cls, duong_dan: str | Path = CONFIG_MAC_DINH) -> "CauHinhQuangHoc":
@@ -61,15 +67,74 @@ class CauHinhQuangHoc:
             T_tham_chieu_C=float(q["nhiet_do_tham_chieu_C"]),
             bien_TIR=float(q["bien_an_toan_TIR"]),
             pixel_mm=float(a["kich_thuoc_pixel_mm"]),
+            mo_hinh_chiet_suat=str(q.get("mo_hinh_chiet_suat", "tuyen_tinh")).strip().lower(),
+            buoc_song_nm=float(q.get("buoc_song_nm", 650.0)),
         )
 
 
-def chiet_suat(S_ppt: float, T_C: float, cfg: CauHinhQuangHoc) -> float:
-    """Chiết suất nước mặn theo mô hình tuyến tính.
+def chiet_suat_quan_fry(S_ppt: float, T_C: float, buoc_song_nm: float = 650.0) -> float:
+    """Chiết suất tuyệt đối của nước biển n(S, T, λ) theo công thức thực nghiệm Quan–Fry.
 
-    n(S, T) = n0 + (dn/dS)·S + (dn/dT)·(T − T_ref)
-    Giả định: tuyến tính trong dải hẹp; chỉ xét NaCl (nước thật còn ion khác).
+    Các hệ số lấy từ nhóm; PHẢI đối chiếu với bài gốc Quan & Fry (Applied Optics, 1995) trước khi đưa vào báo cáo.
+    Không nhân thêm chiết suất không khí. Phát cảnh báo khi ngoài dải 0–30 °C, 0–35 ‰, 400–700 nm.
     """
+    a0 = 1.31405
+    a1 = 1.779e-4
+    a2 = -1.05e-6
+    a3 = 1.6e-8
+    a4 = -2.02e-6
+    a5 = 15.868
+    a6 = 0.01155
+    a7 = -0.00423
+    a8 = -4382.0
+    a9 = 1.1455e6
+
+    ngoai: list[str] = []
+    if not (0.0 <= T_C <= 30.0):
+        ngoai.append(f"T={T_C:g} °C ngoài 0–30 °C")
+    if not (0.0 <= S_ppt <= 35.0):
+        ngoai.append(f"S={S_ppt:g} ‰ ngoài 0–35 ‰")
+    if not (400.0 <= buoc_song_nm <= 700.0):
+        ngoai.append(f"λ={buoc_song_nm:g} nm ngoài 400–700 nm")
+    if ngoai:
+        warnings.warn(
+            "Ngoài dải hiệu lực Quan–Fry (" + ", ".join(ngoai) + ").",
+            NgoaiDaiQuanFryWarning,
+            stacklevel=2,
+        )
+
+    lam = float(buoc_song_nm)
+    return float(
+        a0
+        + (a1 + a2 * T_C + a3 * (T_C**2)) * S_ppt
+        + a4 * (T_C**2)
+        + (a5 + a6 * S_ppt + a7 * T_C) / lam
+        + a8 / (lam**2)
+        + a9 / (lam**3)
+    )
+
+
+def _dn_dS(S_ppt: float, T_C: float, cfg: CauHinhQuangHoc) -> float:
+    if cfg.mo_hinh_chiet_suat == "quan_fry":
+        return float(1.779e-4 - 1.05e-6 * T_C + 1.6e-8 * (T_C**2) + 0.01155 / cfg.buoc_song_nm)
+    return cfg.dn_dS
+
+
+def _dn_dT(S_ppt: float, T_C: float, cfg: CauHinhQuangHoc) -> float:
+    if cfg.mo_hinh_chiet_suat == "quan_fry":
+        return float((-1.05e-6 + 2.0 * 1.6e-8 * T_C) * S_ppt + 2.0 * (-2.02e-6) * T_C - 0.00423 / cfg.buoc_song_nm)
+    return cfg.dn_dT
+
+
+def chiet_suat(S_ppt: float, T_C: float, cfg: CauHinhQuangHoc) -> float:
+    """Chiết suất nước mặn theo mô hình tuyến tính hoặc Quan–Fry (nếu chọn trong config).
+
+    - Mặc định ("tuyen_tinh"): n(S, T) = n0 + (dn/dS)·S + (dn/dT)·(T − T_ref).
+    - Nếu mo_hinh_chiet_suat == "quan_fry": gọi `chiet_suat_quan_fry`.
+    Giả định: chỉ xét thành phần muối biển chuẩn / NaCl (nước ao thật còn ion khác).
+    """
+    if cfg.mo_hinh_chiet_suat == "quan_fry":
+        return chiet_suat_quan_fry(S_ppt, T_C, cfg.buoc_song_nm)
     return cfg.n_nuoc_ngot + cfg.dn_dS * S_ppt + cfg.dn_dT * (T_C - cfg.T_tham_chieu_C)
 
 
@@ -157,7 +222,7 @@ def pixel_moi_phan_nghin(
     n = chiet_suat(S_ppt, T_C, cfg)
     delta = math.radians(goc_lech(n, A))
     dd_dn = do_nhay_goc_theo_n(n, A)
-    mm_moi_ppt = D * 1000.0 * dd_dn * cfg.dn_dS / math.cos(delta) ** 2
+    mm_moi_ppt = D * 1000.0 * dd_dn * _dn_dS(S_ppt, T_C, cfg) / math.cos(delta) ** 2
     return mm_moi_ppt / cfg.pixel_mm
 
 
@@ -184,7 +249,7 @@ def ngan_sach_sai_so(
     """
     px_ppt = pixel_moi_phan_nghin(S_ppt, T_C, cfg)
     tim_tam = sai_so_tim_tam_px / px_ppt
-    nhiet = abs(cfg.dn_dT) * lech_nhiet_do_C / abs(cfg.dn_dS)
+    nhiet = abs(_dn_dT(S_ppt, T_C, cfg)) * lech_nhiet_do_C / abs(_dn_dS(S_ppt, T_C, cfg))
 
     h = 1e-3  # độ, bước sai phân
     y_p = delta_y_vi_sai_px(S_ppt, T_C, T_C, cfg, cfg.A_do + h)

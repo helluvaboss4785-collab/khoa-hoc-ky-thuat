@@ -11,6 +11,8 @@ quang_hoc:
   dn_dT_moi_do_C: -1.0e-4        # dn/dT (mỗi °C) - cần xác nhận bằng tài liệu và đường chuẩn thực nghiệm
   nhiet_do_tham_chieu_C: 20.0    # GIẢ ĐỊNH: nhiệt độ ứng với n = 1,333 - cần xác nhận
   bien_an_toan_TIR: 0.02         # cảnh báo khi n*sin(A) > 1 - biên này (gần phản xạ toàn phần)
+  mo_hinh_chiet_suat: "tuyen_tinh"  # "tuyen_tinh" (mặc định) hoặc "quan_fry"
+  buoc_song_nm: 650.0            # bước sóng laser đỏ (nm) dùng cho mô hình Quan-Fry
 
 anh:
   kich_thuoc_pixel_mm: 0.05      # GIẢ ĐỊNH để vẽ biểu đồ - PHẢI đo lại bằng thước đặt trên màn

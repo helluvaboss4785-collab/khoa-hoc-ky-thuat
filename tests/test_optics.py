@@ -84,3 +84,35 @@ def test_ngan_sach_sai_so():
     # ΔT = 0,5 °C => |dn/dT|·ΔT/(dn/dS) = 1e-4·0,5/1,8e-4 ≈ 0,278 ‰
     assert r["nhiet_do"] == pytest.approx(0.5 * 1e-4 / 1.8e-4, rel=1e-9)
     assert r["tong_RSS"] >= max(v for k, v in r.items() if k != "tong_RSS")
+
+
+def test_quan_fry_kiem_tinh_hop_li_va_canh_bao():
+    """T10: Kiểm tính hợp lí sơ bộ (KHÔNG phải kiểm chuẩn với bài báo gốc 1995)."""
+    from dataclasses import replace
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        n_ref = op.chiet_suat_quan_fry(S_ppt=0.0, T_C=20.0, buoc_song_nm=589.0)
+    assert abs(n_ref - 1.3330) < 3e-4
+
+    h = 0.01
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        dn_dS_num = (
+            op.chiet_suat_quan_fry(15.0 + h, 25.0, 650.0)
+            - op.chiet_suat_quan_fry(15.0 - h, 25.0, 650.0)
+        ) / (2.0 * h)
+    assert dn_dS_num == pytest.approx(1.79e-4, rel=0.05)
+
+    # Cảnh báo ngoài dải hiệu lực Quan–Fry
+    for kw in ({"T_C": 35.0}, {"S_ppt": 40.0}, {"buoc_song_nm": 750.0}):
+        params = {"S_ppt": 15.0, "T_C": 25.0, "buoc_song_nm": 650.0, **kw}
+        with pytest.warns(op.NgoaiDaiQuanFryWarning):
+            op.chiet_suat_quan_fry(**params)
+
+    # Kiểm tra dispatch theo cấu hình mo_hinh_chiet_suat="quan_fry"
+    cfg_qf = replace(CFG, mo_hinh_chiet_suat="quan_fry", buoc_song_nm=650.0)
+    hs = 0.01
+    y1 = op.delta_y_vi_sai_px(15.0 + hs, 25.0, 25.0, cfg_qf)
+    y0 = op.delta_y_vi_sai_px(15.0 - hs, 25.0, 25.0, cfg_qf)
+    assert op.pixel_moi_phan_nghin(15.0, 25.0, cfg_qf) == pytest.approx((y1 - y0) / (2.0 * hs), rel=1e-4)
