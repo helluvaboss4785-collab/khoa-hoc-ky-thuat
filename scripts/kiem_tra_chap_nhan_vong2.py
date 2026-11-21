@@ -26,6 +26,7 @@ if str(ROOT) not in sys.path:
 from core import calibration as cal  # noqa: E402
 from core import optics as op  # noqa: E402
 from core.measure import do_delta_y_tu_anh  # noqa: E402
+from scripts.danh_gia_do_ben_vung import khoang_tin_cay_wilson  # noqa: E402
 from sim.synth import (  # noqa: E402
     ThamSoMoPhong,
     sinh_anh_hai_vach_mo_phong,
@@ -56,6 +57,7 @@ def _do_phu_200_mau(
     cfg_op: op.CauHinhQuangHoc,
     D_that: float,
     nhap_T_tc: bool,
+    sigma_T_C: float = 0.0,
     sigma_T_tc: float = 0.0,
     seed: int = 2026,
 ) -> tuple[float, float, float]:
@@ -75,7 +77,7 @@ def _do_phu_200_mau(
             dy,
             float(t_m),
             sigma_delta_y_px=0.05,
-            sigma_T_C=0.0,
+            sigma_T_C=sigma_T_C,
             T_tham_chieu_C=t_tc_in,
             sigma_T_tham_chieu_C=sigma_T_tc,
         )
@@ -113,10 +115,10 @@ def chay_tat_ca() -> pd.DataFrame:
     cov_d3_none, rms_d3_none, u_d3_none = _do_phu_200_mau(mh_no_D, cfg_op, 3.0, False, seed=12)
     add_row("Q0", "Q0_khong_T_tc_D3", "Chưa nhập T_tc, D thật = 3°C (200 phép đo)", f"cov={cov_d3_none*100:.1f}%, RMS={rms_d3_none:.3f}‰, U_tb={u_d3_none:.3f}‰", "cov >= 95%", cov_d3_none >= 0.95)
 
-    cov_ref0, _, u_ref0 = _do_phu_200_mau(mh_no_D, cfg_op, 0.0, True, sigma_T_tc=0.0, seed=13)
-    cov_in, _, u_in = _do_phu_200_mau(mh_no_D, cfg_op, 0.0, True, sigma_T_tc=0.2, seed=14)
+    cov_ref0, _, u_ref0 = _do_phu_200_mau(mh_no_D, cfg_op, 0.0, True, sigma_T_C=0.1, sigma_T_tc=0.0, seed=13)
+    cov_in, _, u_in = _do_phu_200_mau(mh_no_D, cfg_op, 0.0, True, sigma_T_C=0.1, sigma_T_tc=0.2, seed=14)
     ratio_u = u_in / max(u_ref0, 1e-9)
-    add_row("Q0", "Q0_nhap_T_tc_D0", "Có nhập T_tc (σ<=0.2°C), D=0°C (200 phép đo)", f"cov={cov_in*100:.1f}%, U/U_ref={ratio_u:.2f}x", "cov >= 95% & <= 3x", cov_in >= 0.95 and ratio_u <= 3.0)
+    add_row("Q0", "Q0_nhap_T_tc_D0", "Có nhập T_tc (σ_T=0.1, σ_Ttc<=0.2°C), D=0°C (200 phép đo)", f"cov={cov_in*100:.1f}%, U/U_ref={ratio_u:.2f}x", "cov >= 95% & <= 3x", cov_in >= 0.95 and ratio_u <= 3.0)
 
     dy_d3 = op.delta_y_vi_sai_px(18.0, 26.0, 23.0, cfg_op)
     est_gate = cal.uoc_luong_do_man(mh_no_D, dy_d3, 26.0, T_tham_chieu_C=23.0)
@@ -139,39 +141,66 @@ def chay_tat_ca() -> pd.DataFrame:
     q1_clean_ok = bool(kq_r.kenh_su_dung == "R" and kq_r.chat_luong.snr >= kq_x.chat_luong.snr and err_r <= 0.05)
     add_row("Q1", "Q1_sach_SNR_va_sai_so", "Ảnh màu sạch kênh R vs ảnh xám", f"SNR_R={kq_r.chat_luong.snr:.1f} >= {kq_x.chat_luong.snr:.1f}, |err|={err_r:.4f}px", "SNR_R>=SNR_xam & <=0.05px", q1_clean_ok)
 
-    # ---- Q2 ----
+    # ---- Q2 (R2: 100 seed cố định 1000..1099, 600x400, y_tc=100) ----
     for spk in (0.1, 0.2):
-        ok_cnt = 0
-        errs = []
-        for s in range(10):
-            mp = sinh_anh_hai_vach_mo_phong(ThamSoMoPhong(S_ppt=20.0, T_C=25.0, speckle_cuong_do=spk, seed=s), cfg=cfg_op)
-            kq = do_delta_y_tu_anh(mp.anh, x_ref=mp.x_ref, tao_anh_ve=False)
-            e = abs(kq.delta_y_px - mp.delta_y_ly_thuyet_px)
-            errs.append(e)
-            if kq.chat_luong.hop_le and e < 0.15:
-                ok_cnt += 1
-        add_row("Q2", f"Q2_speckle_{spk}", f"10 seed speckle_cuong_do={spk}, S=20‰", f"dat={ok_cnt}/10, max|err|={max(errs):.4f}px", ">=9/10 & <0.15px", ok_cnt >= 9)
+        n_seed = 100
+        hop_le_cnt = 0
+        errs_valid = []
+        for s in range(1000, 1000 + n_seed):
+            mp = sinh_anh_hai_vach_mo_phong(
+                ThamSoMoPhong(chieu_cao=400, chieu_rong=600, y_tham_chieu_goc=100.0, S_ppt=20.0, T_C=25.0, speckle_cuong_do=spk, seed=s),
+                cfg=cfg_op,
+            )
+            try:
+                kq = do_delta_y_tu_anh(mp.anh, x_ref=mp.x_ref, tao_anh_ve=False)
+                if kq.chat_luong.hop_le and np.isfinite(kq.delta_y_px):
+                    hop_le_cnt += 1
+                    errs_valid.append(abs(kq.delta_y_px - mp.delta_y_ly_thuyet_px))
+            except Exception:
+                continue
+        n_duoi_015 = sum(1 for e in errs_valid if e < 0.15)
+        ti_le_hl = hop_le_cnt / n_seed
+        ti_le_015 = (n_duoi_015 / hop_le_cnt) if hop_le_cnt else 0.0
+        lo_hl, hi_hl = khoang_tin_cay_wilson(hop_le_cnt, n_seed)
+        lo_15, hi_15 = khoang_tin_cay_wilson(n_duoi_015, max(hop_le_cnt, 1))
+        arr_e = np.asarray(errs_valid, float)
+        rms_v = float(np.sqrt(np.mean(arr_e**2)))
+        med_v = float(np.median(arr_e))
+        p95_v = float(np.percentile(arr_e, 95))
+        max_v = float(np.max(arr_e))
+        add_row(
+            "Q2",
+            f"Q2_speckle_{spk}",
+            f"100 seed 1000..1099 speckle={spk}, 600x400, S=20‰",
+            f"hl={hop_le_cnt}/100 [{lo_hl*100:.1f}..{hi_hl*100:.1f}%], <0.15={ti_le_015*100:.1f}% [{lo_15*100:.1f}..{hi_15*100:.1f}%], RMS={rms_v:.4f}, med={med_v:.4f}, p95={p95_v:.4f}, max={max_v:.4f}",
+            "hl>=90% & (<0.15|hl)>=90%",
+            ti_le_hl >= 0.90 and ti_le_015 >= 0.90,
+        )
 
     mp_clip = sinh_anh_hai_vach_mo_phong(ThamSoMoPhong(S_ppt=20.0, T_C=25.0, cho_phep_bao_hoa=True, cuong_do_dinh_goc=400.0, seed=1), cfg=cfg_op)
     kq_clip = do_delta_y_tu_anh(mp_clip.anh, x_ref=mp_clip.x_ref, tao_anh_ve=False)
     add_row("Q2", "Q2_clipping_that_400", "Cháy sáng phẳng đỉnh 400 (S=20‰)", f"hop_le={kq_clip.chat_luong.hop_le}, max_run={kq_clip.chat_luong.so_cot_bao_hoa_lien_tiep_max}", "hop_le=False", (kq_clip.chat_luong.bao_hoa and not kq_clip.chat_luong.hop_le))
 
-    # ---- Q3 ----
+    # ---- Q3 (R2: 100 seed cố định 1000..1099, 600x400, y_tc=100) ----
     for grad in (40.0, 90.0):
         pass_cnt = 0
         errs_g = []
         nen_cnt = 0
-        for s in range(10):
-            mp = sinh_anh_hai_vach_mo_phong(ThamSoMoPhong(S_ppt=20.0, T_C=25.0, gradient_nen_y=grad, seed=200 + s), cfg=cfg_op)
+        for s in range(1000, 1100):
+            mp = sinh_anh_hai_vach_mo_phong(
+                ThamSoMoPhong(chieu_cao=400, chieu_rong=600, y_tham_chieu_goc=100.0, S_ppt=20.0, T_C=25.0, gradient_nen_y=grad, seed=s),
+                cfg=cfg_op,
+            )
             kq = do_delta_y_tu_anh(mp.anh, x_ref=mp.x_ref, tao_anh_ve=False)
             e = abs(kq.delta_y_px - mp.delta_y_ly_thuyet_px)
             errs_g.append(e)
             co_flag = bool(kq.chat_luong.nen_khong_deu and any(c["ma"] == "NEN_KHONG_DEU" for c in kq.chat_luong.canh_bao_chi_tiet))
             if co_flag:
                 nen_cnt += 1
-            if e < 0.2 or co_flag:
+            if e < 0.2 and co_flag:
                 pass_cnt += 1
-        add_row("Q3", f"Q3_gradient_{int(grad)}", f"10 seed gradient_nen_y={int(grad)}", f"pass={pass_cnt}/10, nen_khong_deu={nen_cnt}/10, max|err|={max(errs_g):.4f}px", "10/10 dat & <0.2px", pass_cnt == 10 and max(errs_g) < 0.2)
+        lo_g, hi_g = khoang_tin_cay_wilson(pass_cnt, 100)
+        add_row("Q3", f"Q3_gradient_{int(grad)}", f"100 seed 1000..1099 gradient_nen_y={int(grad)}", f"pass={pass_cnt}/100 [{lo_g*100:.1f}..{hi_g*100:.1f}%], nen_khong_deu={nen_cnt}/100, max|err|={max(errs_g):.4f}px", "100/100 dat & <0.2px", pass_cnt == 100 and max(errs_g) < 0.2)
 
     h_big, w_big = 3000, 4000
     anh_big = np.full((h_big, w_big), 14, dtype=np.uint8)

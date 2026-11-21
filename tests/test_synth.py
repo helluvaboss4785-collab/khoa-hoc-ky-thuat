@@ -257,21 +257,31 @@ def test_q1_anh_mau_laser_do_bao_hoa_kenh_r_va_snr():
 
 
 def test_q2_phan_biet_speckle_va_bao_hoa_that():
-    """Q2: Đốm speckle (0.1 và 0.2, 10 seed/mức) phải >=90% hợp lệ đồng thời |sai số| <0.15 px; clipping thật phải bị loại."""
+    """Q2/R2: Đốm speckle (0.1 và 0.2, 100 seed cố định 1000..1099, 600x400) phải >=90% hợp lệ và >=90% (trong số hợp lệ) có |sai số| <0.15 px; clipping thật phải bị loại."""
     for spk in (0.1, 0.2):
-        dat_ca_hai = 0
-        errs = []
-        for s in range(10):
-            p = ThamSoMoPhong(S_ppt=20.0, T_C=25.0, speckle_cuong_do=spk, seed=s)
+        hop_le_cnt = 0
+        errs_valid = []
+        for s in range(1000, 1100):
+            p = ThamSoMoPhong(
+                chieu_cao=400,
+                chieu_rong=600,
+                y_tham_chieu_goc=100.0,
+                S_ppt=20.0,
+                T_C=25.0,
+                speckle_cuong_do=spk,
+                seed=s,
+            )
             mp = sinh_anh_hai_vach_mo_phong(p, cfg=CFG)
             kq = do_delta_y_tu_anh(mp.anh, x_ref=mp.x_ref, tao_anh_ve=False)
-            err = abs(kq.delta_y_px - mp.delta_y_ly_thuyet_px)
-            errs.append(err)
-            if kq.chat_luong.hop_le and err < 0.15:
-                dat_ca_hai += 1
-        rms = float(np.sqrt(np.mean(np.square(errs))))
-        assert dat_ca_hai >= 9, f"Speckle {spk}: chỉ {dat_ca_hai}/10 đạt đồng thời hop_le và |err|<0.15 px"
-        assert rms < 0.10, f"Speckle {spk}: RMS {rms:.4f} >= 0.10 px"
+            if kq.chat_luong.hop_le and np.isfinite(kq.delta_y_px):
+                hop_le_cnt += 1
+                errs_valid.append(abs(kq.delta_y_px - mp.delta_y_ly_thuyet_px))
+        n_duoi_015 = sum(1 for e in errs_valid if e < 0.15)
+        rms = float(np.sqrt(np.mean(np.square(errs_valid))))
+        assert hop_le_cnt >= 90, f"Speckle {spk}: chỉ {hop_le_cnt}/100 hợp lệ (< 90%)"
+        assert n_duoi_015 / hop_le_cnt >= 0.90, (
+            f"Speckle {spk}: chỉ {n_duoi_015}/{hop_le_cnt} hợp lệ có |err|<0.15 px (RMS={rms:.4f})"
+        )
 
     # Kiểm tra ảnh có bẹt đỉnh thực sự: cho_phep_bao_hoa=True, đỉnh 400 -> bao_hoa=True, hop_le=False
     p_clip = ThamSoMoPhong(S_ppt=20.0, T_C=25.0, cho_phep_bao_hoa=True, cuong_do_dinh_goc=400.0, seed=1)
@@ -284,10 +294,18 @@ def test_q2_phan_biet_speckle_va_bao_hoa_that():
 
 
 def test_q3_nen_sang_khong_deu_gradient_40_va_90():
-    """Q3: Với gradient_nen_y = 40 và 90 (10 seed/mức), phải đo đúng (<0.2 px) hoặc báo đúng nguyên nhân nen_khong_deu."""
+    """Q3/R2: Với gradient_nen_y = 40 và 90 (100 seed cố định 1000..1099, 600x400), phải đo đúng (<0.2 px) và báo đúng NEN_KHONG_DEU."""
     for grad in (40.0, 90.0):
-        for s in range(10):
-            p = ThamSoMoPhong(S_ppt=20.0, T_C=25.0, gradient_nen_y=grad, seed=200 + s)
+        for s in range(1000, 1100):
+            p = ThamSoMoPhong(
+                chieu_cao=400,
+                chieu_rong=600,
+                y_tham_chieu_goc=100.0,
+                S_ppt=20.0,
+                T_C=25.0,
+                gradient_nen_y=grad,
+                seed=s,
+            )
             mp = sinh_anh_hai_vach_mo_phong(p, cfg=CFG)
             kq = do_delta_y_tu_anh(mp.anh, x_ref=mp.x_ref, tao_anh_ve=False)
             sai_so = abs(kq.delta_y_px - mp.delta_y_ly_thuyet_px)

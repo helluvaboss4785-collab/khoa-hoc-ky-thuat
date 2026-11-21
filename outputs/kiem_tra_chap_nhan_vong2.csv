@@ -1,14 +1,14 @@
 ﻿nguon_du_lieu,nhom,ma_kiem_tra,mo_ta,ket_qua_do,nguong_chap_nhan,dat
 MO_PHONG,Q0,Q0_khong_T_tc_D0,"Chưa nhập T_tc, D thật = 0°C (200 phép đo)","cov=100.0%, U_tb=2.423‰",cov >= 95%,True
 MO_PHONG,Q0,Q0_khong_T_tc_D3,"Chưa nhập T_tc, D thật = 3°C (200 phép đo)","cov=100.0%, RMS=1.817‰, U_tb=2.425‰",cov >= 95%,True
-MO_PHONG,Q0,Q0_nhap_T_tc_D0,"Có nhập T_tc (σ<=0.2°C), D=0°C (200 phép đo)","cov=99.5%, U/U_ref=1.00x",cov >= 95% & <= 3x,True
+MO_PHONG,Q0,Q0_nhap_T_tc_D0,"Có nhập T_tc (σ_T=0.1, σ_Ttc<=0.2°C), D=0°C (200 phép đo)","cov=100.0%, U/U_ref=2.20x",cov >= 95% & <= 3x,True
 MO_PHONG,Q0,Q0_gating_khong_D,Nhập T_tc với |D|=3°C trên mô hình không học D,khong_danh_gia_duoc=True,True,True
 MO_PHONG,Q0,Q0_co_hoc_D_D3,"Đường chuẩn có học D, đo tại D=3°C (200 phép đo)","cov=100.0%, RMS=0.0099‰",cov >= 95% & RMS <= 0.1‰,True
 MO_PHONG,Q1,Q1_bao_hoa_kenh_R,Laser đỏ cháy kênh R (xám trộn <250),"max_xam=120, kenh_bh=['R']",bao_hoa=True & 'R',True
 MO_PHONG,Q1,Q1_sach_SNR_va_sai_so,Ảnh màu sạch kênh R vs ảnh xám,"SNR_R=155.8 >= 118.4, |err|=0.0074px",SNR_R>=SNR_xam & <=0.05px,True
-MO_PHONG,Q2,Q2_speckle_0.1,"10 seed speckle_cuong_do=0.1, S=20‰","dat=10/10, max|err|=0.0784px",>=9/10 & <0.15px,True
-MO_PHONG,Q2,Q2_speckle_0.2,"10 seed speckle_cuong_do=0.2, S=20‰","dat=10/10, max|err|=0.0933px",>=9/10 & <0.15px,True
+MO_PHONG,Q2,Q2_speckle_0.1,"100 seed 1000..1099 speckle=0.1, 600x400, S=20‰","hl=100/100 [96.3..100.0%], <0.15=100.0% [96.3..100.0%], RMS=0.0375, med=0.0272, p95=0.0729, max=0.1018",hl>=90% & (<0.15|hl)>=90%,True
+MO_PHONG,Q2,Q2_speckle_0.2,"100 seed 1000..1099 speckle=0.2, 600x400, S=20‰","hl=96/100 [90.2..98.4%], <0.15=95.8% [89.8..98.4%], RMS=0.0732, med=0.0571, p95=0.1448, max=0.1787",hl>=90% & (<0.15|hl)>=90%,True
 MO_PHONG,Q2,Q2_clipping_that_400,Cháy sáng phẳng đỉnh 400 (S=20‰),"hop_le=False, max_run=192",hop_le=False,True
-MO_PHONG,Q3,Q3_gradient_40,10 seed gradient_nen_y=40,"pass=10/10, nen_khong_deu=10/10, max|err|=0.0088px",10/10 dat & <0.2px,True
-MO_PHONG,Q3,Q3_gradient_90,10 seed gradient_nen_y=90,"pass=10/10, nen_khong_deu=10/10, max|err|=0.0100px",10/10 dat & <0.2px,True
-MO_PHONG,Q3,Q3_anh_12MP_4000x3000,Tốc độ & độ đúng ảnh 4000×3000,"time=0.146s, |err|=0.0009px",<= 3.0s & < 0.2px,True
+MO_PHONG,Q3,Q3_gradient_40,100 seed 1000..1099 gradient_nen_y=40,"pass=100/100 [96.3..100.0%], nen_khong_deu=100/100, max|err|=0.0155px",100/100 dat & <0.2px,True
+MO_PHONG,Q3,Q3_gradient_90,100 seed 1000..1099 gradient_nen_y=90,"pass=100/100 [96.3..100.0%], nen_khong_deu=100/100, max|err|=0.0151px",100/100 dat & <0.2px,True
+MO_PHONG,Q3,Q3_anh_12MP_4000x3000,Tốc độ & độ đúng ảnh 4000×3000,"time=0.487s, |err|=0.0009px",<= 3.0s & < 0.2px,True
