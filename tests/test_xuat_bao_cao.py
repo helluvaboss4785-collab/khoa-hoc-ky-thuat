@@ -63,10 +63,13 @@ def test_r9_xuat_bao_cao_du_lieu_mo_phong_bat_buoc_watermark(tmp_path: Path):
 
 
 def test_r9_xuat_bao_cao_chi_kiem_logic_nhan_thuc_te_khong_watermark(tmp_path: Path):
-    """Nhánh 2 (chỉ kiểm logic, dữ liệu vẫn là mô phỏng): toàn bộ dòng CSV gắn THUC_TE -> không có watermark mô phỏng."""
-    # Tái sử dụng bộ sinh mô phỏng chỉ để lấy tọa độ số liệu tổng hợp, rồi gán nhãn THUC_TE để kiểm logic nhánh.
+    """Nhánh 2 (chỉ kiểm logic, dữ liệu vẫn là mô phỏng): toàn bộ dòng CSV gắn THUC_TE và sạch dấu mô phỏng -> không có watermark mô phỏng."""
+    # Tái sử dụng bộ sinh mô phỏng chỉ để lấy tọa độ số liệu tổng hợp, rồi gán nhãn THUC_TE sạch để kiểm logic nhánh.
     df_sim = sinh_du_lieu_hieu_chuan_mo_phong()
     df_sim["nguon_du_lieu"] = "THUC_TE"
+    df_sim["id_thiet_bi"] = "TB_KIEM_LOGIC"
+    df_sim["id_dien_thoai"] = "DT_KIEM_LOGIC"
+    df_sim["ghi_chu"] = "kiem_logic"
     csv_hc = tmp_path / "hc_thuc_te_chi_kiem_logic.csv"
     df_sim.to_csv(csv_hc, index=False, encoding="utf-8")
 

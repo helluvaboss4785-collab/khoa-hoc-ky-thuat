@@ -20,8 +20,11 @@ Vật lí & Mô hình mô phỏng:
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import math
+import struct
+import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -30,6 +33,144 @@ import cv2
 import numpy as np
 
 from core.optics import CauHinhQuangHoc, delta_y_vi_sai_px
+
+_PNG_SIG = b"\x89PNG\r\n\x1a\n"
+NHAN_NHUNG_PNG_KEY = b"SimulatedImage"
+NHAN_NHUNG_TEXT = "SIMULATED - DU LIEU MO PHONG (salinity-khkt)"
+
+
+def nhung_nhan_mo_phong_png_bytes(png_bytes: bytes, nhan: str = NHAN_NHUNG_TEXT) -> bytes:
+    """Chèn chunk PNG tEXt ('SimulatedImage') ngay trước chunk IEND bằng struct/zlib thuần."""
+    if not png_bytes.startswith(_PNG_SIG):
+        raise ValueError("Dữ liệu không phải định dạng PNG hợp lệ để nhúng nhãn.")
+    key = NHAN_NHUNG_PNG_KEY
+    val_txt = nhan if "SIMULATED" in nhan.upper() else f"SIMULATED: {nhan}"
+    payload = key + b"\x00" + val_txt.encode("latin-1", errors="replace")
+    crc = zlib.crc32(b"tEXt" + payload) & 0xFFFFFFFF
+    text_chunk = struct.pack(">I", len(payload)) + b"tEXt" + payload + struct.pack(">I", crc)
+
+    pos = len(_PNG_SIG)
+    while pos + 12 <= len(png_bytes):
+        length = struct.unpack(">I", png_bytes[pos : pos + 4])[0]
+        ctype = png_bytes[pos + 4 : pos + 8]
+        chunk_end = pos + 12 + length
+        if chunk_end > len(png_bytes):
+            break
+        if ctype == b"IEND":
+            return png_bytes[:pos] + text_chunk + png_bytes[pos:]
+        pos = chunk_end
+    return png_bytes + text_chunk
+
+
+def nhung_nhan_mo_phong_jpeg_bytes(jpeg_bytes: bytes, nhan: str = NHAN_NHUNG_TEXT) -> bytes:
+    """Chèn đoạn JPEG COM (0xFFFE) mang chuỗi 'SIMULATED' ngay sau SOI (0xFFD8)."""
+    if not jpeg_bytes.startswith(b"\xff\xd8"):
+        raise ValueError("Dữ liệu không phải định dạng JPEG hợp lệ để nhúng nhãn.")
+    val_txt = nhan if "SIMULATED" in nhan.upper() else f"SIMULATED: {nhan}"
+    msg = val_txt.encode("utf-8", errors="replace")[:65530]
+    seg = b"\xff\xfe" + struct.pack(">H", len(msg) + 2) + msg
+    return jpeg_bytes[:2] + seg + jpeg_bytes[2:]
+
+
+def doc_nhan_mo_phong(duong_dan_hoac_bytes: str | Path | bytes | bytearray) -> bool:
+    """Đọc nhãn nhúng 'SIMULATED' từ chunk PNG tEXt/iTXt/zTXt hoặc đoạn JPEG COM.
+
+    Trả False an toàn nếu là ảnh chụp bình thường hoặc dữ liệu không hợp lệ (không ném lỗi).
+    """
+    try:
+        if isinstance(duong_dan_hoac_bytes, (str, Path)):
+            data = Path(duong_dan_hoac_bytes).read_bytes()
+        elif isinstance(duong_dan_hoac_bytes, bytearray):
+            data = bytes(duong_dan_hoac_bytes)
+        else:
+            data = bytes(duong_dan_hoac_bytes)
+    except Exception:
+        return False
+
+    if data.startswith(_PNG_SIG):
+        pos = len(_PNG_SIG)
+        n_len = len(data)
+        while pos + 12 <= n_len:
+            length = struct.unpack(">I", data[pos : pos + 4])[0]
+            ctype = data[pos + 4 : pos + 8]
+            chunk_end = pos + 12 + length
+            if chunk_end > n_len:
+                break
+            payload = data[pos + 8 : pos + 8 + length]
+            if ctype == b"tEXt" and b"\x00" in payload:
+                key, val = payload.split(b"\x00", 1)
+                if key == NHAN_NHUNG_PNG_KEY or (
+                    key in (b"Comment", b"Description", b"Software") and b"SIMULATED" in val.upper()
+                ):
+                    return True
+            elif ctype == b"iTXt" and b"\x00" in payload:
+                key, rest = payload.split(b"\x00", 1)
+                if key == NHAN_NHUNG_PNG_KEY or (
+                    key in (b"Comment", b"Description", b"Software") and b"SIMULATED" in rest.upper()
+                ):
+                    return True
+            elif ctype == b"zTXt" and b"\x00" in payload:
+                key, rest = payload.split(b"\x00", 1)
+                if key == NHAN_NHUNG_PNG_KEY:
+                    return True
+                if len(rest) >= 2 and rest[0] == 0:
+                    try:
+                        val_z = zlib.decompress(rest[1:])
+                        if key in (b"Comment", b"Description", b"Software") and b"SIMULATED" in val_z.upper():
+                            return True
+                    except Exception:
+                        pass
+            if ctype == b"IEND":
+                break
+            pos = chunk_end
+        return False
+
+    if data.startswith(b"\xff\xd8"):
+        pos = 2
+        n_len = len(data)
+        while pos < n_len:
+            if data[pos] != 0xFF:
+                pos += 1
+                continue
+            while pos < n_len and data[pos] == 0xFF:
+                pos += 1
+            if pos >= n_len:
+                break
+            marker = data[pos]
+            pos += 1
+            if marker == 0x00 or (0xD0 <= marker <= 0xD8):
+                continue
+            if marker in (0xD9, 0xDA):  # EOI hoặc SOS (phần dữ liệu nén ảnh)
+                break
+            if pos + 2 > n_len:
+                break
+            seg_len = struct.unpack(">H", data[pos : pos + 2])[0]
+            if seg_len < 2 or pos + seg_len > n_len:
+                break
+            if marker == 0xFE:  # COM
+                comment = data[pos + 2 : pos + seg_len]
+                if b"SIMULATED" in comment.upper():
+                    return True
+            pos += seg_len
+        return False
+
+    return False
+
+
+def ma_hoa_anh_mo_phong_jpeg_bytes(
+    img: np.ndarray,
+    quality: int = 90,
+    sampling_flag: int | None = None,
+    nhan: str = NHAN_NHUNG_TEXT,
+) -> bytes:
+    """Mã hóa ảnh NumPy sang JPEG và nhúng bắt buộc đoạn COM 'SIMULATED'."""
+    params = [cv2.IMWRITE_JPEG_QUALITY, int(np.clip(quality, 1, 100))]
+    if sampling_flag is not None and hasattr(cv2, "IMWRITE_JPEG_SAMPLING_FACTOR"):
+        params.extend([cv2.IMWRITE_JPEG_SAMPLING_FACTOR, int(sampling_flag)])
+    ok, buf = cv2.imencode(".jpg", img, params)
+    if not ok:
+        raise RuntimeError("Không thể mã hóa JPEG ảnh mô phỏng.")
+    return nhung_nhan_mo_phong_jpeg_bytes(buf.tobytes(), nhan=nhan)
 
 
 @dataclass(frozen=True)
@@ -218,11 +359,10 @@ def sinh_anh_hai_vach_mo_phong(
 
     if p.chat_luong_jpeg is not None:
         q = int(np.clip(p.chat_luong_jpeg, 1, 100))
-        ok_jpg, buf_jpg = cv2.imencode(".jpg", img_uint8, [cv2.IMWRITE_JPEG_QUALITY, q])
-        if ok_jpg:
-            decoded = cv2.imdecode(buf_jpg, cv2.IMREAD_GRAYSCALE)
-            if decoded is not None:
-                img_uint8 = decoded
+        raw_jpg = ma_hoa_anh_mo_phong_jpeg_bytes(img_uint8, quality=q)
+        decoded = cv2.imdecode(np.frombuffer(raw_jpg, dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
+        if decoded is not None:
+            img_uint8 = decoded
 
     # 6. Gắn watermark rõ ràng nhưng ở góc dưới ảnh để không che mất đường quang học
     if gan_watermark:
@@ -309,7 +449,7 @@ def luu_anh_mo_phong_png(
     duong_dan: str | Path,
     gan_watermark: bool = True,
 ) -> Path:
-    """Lưu ảnh mô phỏng ra đĩa: mặc định bật watermark và luôn ghi file .json cạnh ảnh."""
+    """Lưu ảnh mô phỏng PNG ra đĩa: mặc định bật watermark, nhúng chunk tEXt 'SimulatedImage' và ghi .json."""
     p_path = Path(duong_dan)
     p_path.parent.mkdir(parents=True, exist_ok=True)
     img_out = anh_mp.anh.copy()
@@ -317,8 +457,37 @@ def luu_anh_mo_phong_png(
     if gan_watermark and not da_wm:
         _ve_watermark_mo_phong(img_out)
         da_wm = True
-    cv2.imwrite(str(p_path), img_out)
-    meta_out = {"simulated": True, **anh_mp.metadata, "da_gan_watermark": da_wm}
+    ok, buf = cv2.imencode(".png", img_out)
+    if not ok:
+        raise RuntimeError(f"Không thể mã hóa PNG ảnh mô phỏng: {p_path}")
+    raw_tagged = nhung_nhan_mo_phong_png_bytes(buf.tobytes())
+    p_path.write_bytes(raw_tagged)
+    meta_out = {"simulated": True, "nhan_nhung": NHAN_NHUNG_TEXT, **anh_mp.metadata, "da_gan_watermark": da_wm}
+    p_path.with_suffix(".json").write_text(
+        json.dumps(meta_out, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return p_path
+
+
+def luu_anh_mo_phong_jpeg(
+    anh_mp: AnhMoPhong,
+    duong_dan: str | Path,
+    quality: int = 90,
+    sampling_flag: int | None = None,
+    gan_watermark: bool = True,
+) -> Path:
+    """Lưu ảnh mô phỏng JPEG ra đĩa: nhúng bắt buộc đoạn COM 'SIMULATED' và ghi .json cạnh ảnh."""
+    p_path = Path(duong_dan)
+    p_path.parent.mkdir(parents=True, exist_ok=True)
+    img_out = anh_mp.anh.copy()
+    da_wm = bool(anh_mp.metadata.get("da_gan_watermark", False))
+    if gan_watermark and not da_wm:
+        _ve_watermark_mo_phong(img_out)
+        da_wm = True
+    raw_tagged = ma_hoa_anh_mo_phong_jpeg_bytes(img_out, quality=quality, sampling_flag=sampling_flag)
+    p_path.write_bytes(raw_tagged)
+    meta_out = {"simulated": True, "nhan_nhung": NHAN_NHUNG_TEXT, **anh_mp.metadata, "da_gan_watermark": da_wm}
     p_path.with_suffix(".json").write_text(
         json.dumps(meta_out, ensure_ascii=False, indent=2),
         encoding="utf-8",

@@ -57,6 +57,7 @@ from core.measure import (
 )
 from sim.synth import (
     ThamSoMoPhong,
+    doc_nhan_mo_phong,
     sinh_anh_hai_vach_mo_phong,
     sinh_du_lieu_hieu_chuan_mo_phong,
 )
@@ -895,6 +896,7 @@ async def api_measure(request: Request) -> JSONResponse:
     mh: cal.MoHinhHieuChuan = get_model_for_profile(ho_so)
     chan_li_mp: dict[str, Any] | None = None
     la_anh_mo_phong = mode == "sim"
+    phat_hien_nhan_mp = False
 
     try:
         khong_do_nhiet_do = bool(body.get("khong_do_nhiet_do", False))
@@ -961,6 +963,9 @@ async def api_measure(request: Request) -> JSONResponse:
             if not image_b64 or not isinstance(image_b64, str):
                 return _json_err("Chưa cung cấp ảnh (image_base64) để đo.")
             anh_input, raw_img_bytes = _decode_base64_image_bytes(image_b64)
+            if doc_nhan_mo_phong(raw_img_bytes):
+                phat_hien_nhan_mp = True
+                la_anh_mo_phong = True
             exif_info = thang.doc_exif_phoi_sang(raw_img_bytes)
         else:
             return _json_err(f"Chế độ đo '{mode}' không được hỗ trợ.")
@@ -1072,6 +1077,12 @@ async def api_measure(request: Request) -> JSONResponse:
         )
         cq = kq_do.chat_luong
         extra_anh: list[tuple[str, str, str]] = []
+        if phat_hien_nhan_mp:
+            extra_anh.append((
+                "ANH_MO_PHONG_NHUNG",
+                "nghiem_trong",
+                "Ảnh tải lên có nhãn metadata SIMULATED (ảnh mô phỏng): cưỡng chế chặn kết luận thực tế.",
+            ))
         if mode != "sim" and not khoa_ae_af:
             extra_anh.append((
                 "CHUA_KHOA_AE_AF",
@@ -1094,6 +1105,8 @@ async def api_measure(request: Request) -> JSONResponse:
 
         return _json_ok({
             "la_anh_mo_phong": la_anh_mo_phong,
+            "la_mo_phong": bool(la_anh_mo_phong or (kq_man_dict and kq_man_dict.get("la_mo_phong"))),
+            "phat_hien_nhan_mo_phong_anh": phat_hien_nhan_mp,
             "khong_do_nhiet_do": khong_do_nhiet_do,
             "nhiet_do_do": None if khong_do_nhiet_do else nhiet_do_do,
             "nhiet_do_tham_chieu": nhiet_do_tham_chieu,
@@ -1319,11 +1332,11 @@ def _solve_and_gate_measurement(
                 "ngoai_dai_T": kq_man.ngoai_dai_T,
                 "ngoai_dai_D": kq_man.ngoai_dai_D,
                 "chenh_T_ngoai_mo_hinh": kq_man.chenh_T_ngoai_mo_hinh,
-                "khong_danh_gia_duoc": kq_man.khong_danh_gia_duoc,
-                "la_mo_phong": kq_man.la_mo_phong,
-                "nguon_du_lieu": kq_man.nguon_du_lieu,
-                "da_xac_nhan_thuc_te": kq_man.da_xac_nhan_thuc_te,
-                "nhan": kq_man.nhan,
+                "khong_danh_gia_duoc": bool(kq_man.khong_danh_gia_duoc or la_anh_mo_phong),
+                "la_mo_phong": bool(kq_man.la_mo_phong or la_anh_mo_phong),
+                "nguon_du_lieu": cal.NHAN_MO_PHONG if (kq_man.la_mo_phong or la_anh_mo_phong) else kq_man.nguon_du_lieu,
+                "da_xac_nhan_thuc_te": False if la_anh_mo_phong else kq_man.da_xac_nhan_thuc_te,
+                "nhan": cal.NHAN_CHUA_HIEU_CHUAN if la_anh_mo_phong else kq_man.nhan,
                 "canh_bao": canh_bao_man,
                 "canh_bao_chi_tiet": canh_bao_chi_tiet,
                 "giai_thich_bat_dinh": kq_man.giai_thich_bat_dinh,
@@ -1404,6 +1417,7 @@ async def api_measure_multi(request: Request) -> JSONResponse:
     cfg = load_config()
     mh: cal.MoHinhHieuChuan = get_model_for_profile(ho_so)
     la_anh_mo_phong = mode == "sim"
+    phat_hien_nhan_mp = False
     chan_li_mp: dict[str, Any] | None = None
 
     try:
@@ -1492,6 +1506,9 @@ async def api_measure_multi(request: Request) -> JSONResponse:
                         max_mb=float(lim_cfg.get("dung_luong_anh_MB", 25.0)),
                         max_mp=float(lim_cfg.get("so_megapixel_toi_da", 60.0)),
                     )
+                    if doc_nhan_mo_phong(raw_bytes):
+                        phat_hien_nhan_mp = True
+                        la_anh_mo_phong = True
                     if not exif_info and raw_bytes:
                         exif_info = thang.doc_exif_phoi_sang(raw_bytes)
                     frames_ok.append(img_bgr)
@@ -1659,6 +1676,12 @@ async def api_measure_multi(request: Request) -> JSONResponse:
         )
 
         extra_multi: list[tuple[str, str, str]] = []
+        if phat_hien_nhan_mp:
+            extra_multi.append((
+                "ANH_MO_PHONG_NHUNG",
+                "nghiem_trong",
+                "Ít nhất một khung hình tải lên chứa nhãn metadata SIMULATED (ảnh mô phỏng): cưỡng chế chặn kết luận thực tế.",
+            ))
         if pre_errors:
             extra_multi.append((
                 "KHUNG_KHONG_GIAI_MA",
@@ -1686,6 +1709,8 @@ async def api_measure_multi(request: Request) -> JSONResponse:
         return _json_ok({
             "da_khung_hinh": True,
             "la_anh_mo_phong": la_anh_mo_phong,
+            "la_mo_phong": bool(la_anh_mo_phong or (kq_man_dict and kq_man_dict.get("la_mo_phong"))),
+            "phat_hien_nhan_mo_phong_anh": phat_hien_nhan_mp,
             "khong_do_nhiet_do": khong_do_nhiet_do,
             "nhiet_do_do": None if khong_do_nhiet_do else nhiet_do_do,
             "nhiet_do_tham_chieu": nhiet_do_tham_chieu,
@@ -1872,6 +1897,11 @@ async def api_logs_add(request: Request) -> JSONResponse:
     try:
         body = await request.json()
         ho_so = _req_ho_so(request, body)
+        la_mp_log = bool(body.get("la_anh_mo_phong") or body.get("la_mo_phong") or body.get("phat_hien_nhan_mo_phong_anh"))
+        nguon_log = "MÔ PHỎNG" if la_mp_log else str(body.get("nguon_du_lieu", "MÔ PHỎNG"))
+        ghi_chu_log = str(body.get("ghi_chu", ""))
+        if bool(body.get("phat_hien_nhan_mo_phong_anh")) and "MO_PHONG_NHUNG" not in ghi_chu_log:
+            ghi_chu_log = f"[MO_PHONG_NHUNG] {ghi_chu_log}".strip()
         row_id = luu_nhat_ki(
             vi_tri=str(body.get("vi_tri", "Ao nuôi tôm số 1")),
             loai_nuoi=str(body.get("loai_nuoi", "Chưa chọn")),
@@ -1881,8 +1911,8 @@ async def api_logs_add(request: Request) -> JSONResponse:
             nhiet_do_C=float(body["nhiet_do_C"]),
             do_duc=float(body["do_duc"]),
             chat_luong_hop_le=bool(body.get("chat_luong_hop_le", True)),
-            nguon_du_lieu=str(body.get("nguon_du_lieu", "MÔ PHỎNG")),
-            ghi_chu=str(body.get("ghi_chu", "")),
+            nguon_du_lieu=nguon_log,
+            ghi_chu=ghi_chu_log,
             thoi_gian_tuy_chinh=str(body["thoi_gian"]) if body.get("thoi_gian") else None,
             ho_so=ho_so,
             px_per_mm=float(body["px_per_mm"]) if body.get("px_per_mm") not in (None, "") else None,

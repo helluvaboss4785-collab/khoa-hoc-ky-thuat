@@ -277,12 +277,18 @@ def xuat_bo_bao_cao(
     bc = cal.dung_duong_chuan(df, ch, don_vi_y=don_vi_y)
     mh = bc.mo_hinh
 
-    # Bất kì dòng nào không phải THUC_TE -> khóa bắt buộc đóng dấu MÔ PHỎNG / CHƯA XÁC NHẬN
+    # Bất kì dòng nào không phải THUC_TE HOẶC mang dấu vết mô phỏng ở cột phụ -> bắt buộc đóng dấu MÔ PHỎNG / CHƯA XÁC NHẬN
     co_dong_khong_thuc = (
         cal.COT_NGUON not in df.columns
         or any(str(v).strip().upper() != cal.NHAN_THUC_TE for v in df[cal.COT_NGUON].fillna(""))
     )
-    chua_xac_nhan_hc = (not mh.da_xac_nhan_thuc_te) or co_dong_khong_thuc
+    co_dau_vet_mp_cot_phu = any(
+        any(tok in str(v).upper() for tok in ("MO_PHONG", "SIMULATED", "MÔ PHỎNG"))
+        for col in (cal.COT_ID_THIET_BI, cal.COT_ID_DIEN_THOAI, cal.COT_GHI_CHU)
+        if col in df.columns
+        for v in df[col].fillna("")
+    )
+    chua_xac_nhan_hc = (not mh.da_xac_nhan_thuc_te) or co_dong_khong_thuc or co_dau_vet_mp_cot_phu
 
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)

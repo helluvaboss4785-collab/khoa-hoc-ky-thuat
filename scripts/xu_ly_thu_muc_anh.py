@@ -14,6 +14,8 @@ LƯU Ý TRUNG THỰC DỮ LIỆU:
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import re
 import sys
 from pathlib import Path
@@ -31,9 +33,37 @@ if str(ROOT) not in sys.path:
 from core import calibration as cal  # noqa: E402
 from core import thang  # noqa: E402
 from core.measure import AnhKhongHopLeError, KhongTimThayVachError, do_delta_y_tu_anh  # noqa: E402
+from sim.synth import doc_nhan_mo_phong  # noqa: E402
 
 DUOI_ANH_HOP_LE = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
 MAU_TEN_FILE_RE = re.compile(r"^(\d+(?:\.\d+)?)_(\d+(?:\.\d+)?)_(\d+)$")
+
+
+class LoiAnhMoPhongGanNhanThucTeError(ValueError):
+    """Phát hiện ảnh có dấu hiệu mô phỏng khi người dùng chọn --nguon THUC_TE."""
+
+
+def kiem_tra_nghi_van_anh_mo_phong(img_path: Path, raw_bytes: bytes | None = None) -> list[str]:
+    """Kiểm tra toàn bộ dấu hiệu ảnh mô phỏng: nhãn metadata nhúng, file .json cạnh ảnh và tên file."""
+    ly_do: list[str] = []
+    raw = raw_bytes if raw_bytes is not None else img_path.read_bytes()
+    if doc_nhan_mo_phong(raw):
+        ly_do.append("nhãn SIMULATED nhúng trong metadata ảnh (PNG tEXt / JPEG COM)")
+
+    json_sidecar = img_path.with_suffix(".json")
+    if json_sidecar.exists():
+        try:
+            meta_sc = json.loads(json_sidecar.read_text(encoding="utf-8"))
+            if bool(meta_sc.get("simulated")) or str(meta_sc.get("NGUON", "")).strip().upper() == "SIMULATED":
+                ly_do.append(f"file JSON cạnh ảnh ({json_sidecar.name}) đánh dấu simulated=true")
+        except Exception:
+            pass
+
+    ten_u = img_path.name.upper()
+    if "MO_PHONG" in ten_u or "SIMULATED" in ten_u:
+        ly_do.append("tên file chứa dấu hiệu 'MO_PHONG' hoặc 'SIMULATED'")
+
+    return ly_do
 
 COT_CSV_HIEU_CHUAN = [
     cal.COT_DO_MAN,
@@ -49,6 +79,7 @@ COT_CSV_HIEU_CHUAN = [
     cal.COT_ID_DIEN_THOAI,
     cal.COT_NGUON,
     cal.COT_KHOA_AE_AF,
+    "sha256_anh",
 ]
 
 
@@ -165,6 +196,18 @@ def xu_ly_thu_muc_anh(
     )
     if not ds_anh:
         raise ValueError(f"Không tìm thấy ảnh hợp lệ ({', '.join(sorted(DUOI_ANH_HOP_LE))}) trong {thu_muc}.")
+
+    if nguon == "THUC_TE":
+        ds_nghi_van: list[str] = []
+        for img_path in ds_anh:
+            ly_do_nv = kiem_tra_nghi_van_anh_mo_phong(img_path)
+            if ly_do_nv:
+                ds_nghi_van.append(f" - {img_path.name}: {'; '.join(ly_do_nv)}")
+        if ds_nghi_van:
+            raise LoiAnhMoPhongGanNhanThucTeError(
+                "TỪ CHỐI --nguon THUC_TE: phát hiện ảnh có dấu hiệu mô phỏng (KHÔNG ghi CSV):\n"
+                + "\n".join(ds_nghi_van)
+            )
 
     if out_csv is None:
         duoi = "_MO_PHONG" if nguon == "MO_PHONG" else "_THUC_TE"
@@ -327,6 +370,7 @@ def xu_ly_thu_muc_anh(
                 cal.COT_ID_DIEN_THOAI: id_dt,
                 cal.COT_NGUON: nguon,
                 cal.COT_KHOA_AE_AF: khoa_ae,
+                "sha256_anh": hashlib.sha256(raw_bytes).hexdigest(),
             })
 
     df_cal = pd.DataFrame(cal_rows, columns=COT_CSV_HIEU_CHUAN)

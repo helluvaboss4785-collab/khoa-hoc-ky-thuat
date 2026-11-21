@@ -27,7 +27,11 @@ if str(ROOT) not in sys.path:
 from core.measure import do_delta_y_tu_anh  # noqa: E402
 from core.optics import CauHinhQuangHoc  # noqa: E402
 from scripts.danh_gia_do_ben_vung import khoang_tin_cay_wilson  # noqa: E402
-from sim.synth import ThamSoMoPhong, sinh_anh_mau_mo_phong  # noqa: E402
+from sim.synth import (  # noqa: E402
+    ThamSoMoPhong,
+    ma_hoa_anh_mo_phong_jpeg_bytes,
+    sinh_anh_mau_mo_phong,
+)
 
 DUOI_ANH_HOP_LE = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
 CAC_KENH = ("R", "G", "B", "xam", "Y", "auto")
@@ -68,13 +72,11 @@ def _tai_mau_jpeg_sim(
         )
         for q in qualities:
             for s_name, s_flag in sampling_modes:
-                params = [cv2.IMWRITE_JPEG_QUALITY, int(q)]
-                if s_flag is not None:
-                    params.extend([cv2.IMWRITE_JPEG_SAMPLING_FACTOR, int(s_flag)])
-                ok, buf = cv2.imencode(".jpg", mp.anh, params)
-                if not ok:
+                try:
+                    raw_jpg = ma_hoa_anh_mo_phong_jpeg_bytes(mp.anh, quality=int(q), sampling_flag=s_flag)
+                except Exception:
                     continue
-                img_dec = cv2.imdecode(buf, cv2.IMREAD_COLOR)
+                img_dec = cv2.imdecode(np.frombuffer(raw_jpg, dtype=np.uint8), cv2.IMREAD_COLOR)
                 if img_dec is None:
                     continue
                 dieu_kien = f"JPEG_Q{q}_{s_name}"
