@@ -48,8 +48,13 @@ $$n(S, T, \lambda) = a_0 + (a_1 + a_2 T + a_3 T^2) S + a_4 T^2 + \frac{a_5 + a_6
    ```powershell
    .\.venv\Scripts\python.exe scripts/kiem_tra_quan_fry.py --csv data/doi_chieu_quan_fry_nguoi_dung.csv
    ```
-3. Nếu toàn bộ 10 hệ số đều khớp (`mã thoát 0`) và bạn muốn đánh dấu đã đối chiếu để panel *"Các tham số còn là giả định"* (R7) gỡ mục `quan_fry.he_so_quan_fry_1995`, chạy thêm cờ `--luu-xac-nhan`:
+3. Nếu toàn bộ 10 hệ số đều khớp (`mã thoát 0`) và bạn đã điền **đầy đủ cột `trang_bang` cho tất cả 10 dòng**, để lưu xác nhận cục bộ cần truyền thêm `--nguoi-doi-chieu`, `--trich-dan` (và tùy chọn `--nguoi-xac-nhan-2` cho GVHD/người kiểm chéo):
    ```powershell
-   .\.venv\Scripts\python.exe scripts/kiem_tra_quan_fry.py --csv data/doi_chieu_quan_fry_nguoi_dung.csv --luu-xac-nhan
+   .\.venv\Scripts\python.exe scripts/kiem_tra_quan_fry.py `
+     --csv data/doi_chieu_quan_fry_nguoi_dung.csv `
+     --luu-xac-nhan `
+     --nguoi-doi-chieu "Tên Học Sinh" `
+     --nguoi-xac-nhan-2 "Tên Giáo Viên HD" `
+     --trich-dan "Quan, X., & Fry, E. S. (1995), Applied Optics, ..."
    ```
-   Lệnh trên tạo file cục bộ `data/xac_nhan_quan_fry.json`. Nếu có bất kì hệ số nào lệch hoặc thiếu, script thoát mã `1`, báo rõ tên hệ số lệch và **không** tạo file xác nhận.
+   Lệnh trên tạo file cục bộ `data/xac_nhan_quan_fry.json`. Nếu giá trị bạn nhập chép y hệt từ mã hoặc từ tài liệu hướng dẫn thì **không phải đối chiếu bài gốc**. Nếu thiếu `trang_bang`, thiếu người/trích dẫn hoặc lệch hệ số nào, script thoát mã `1` và **không** tạo file xác nhận.

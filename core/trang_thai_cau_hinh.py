@@ -264,23 +264,70 @@ def _lay_gia_tri_long(section: dict[str, Any], khoa_path: str) -> tuple[bool, An
     return True, cur
 
 
+def phan_tich_xac_nhan_quan_fry(
+    xac_nhan_path: str | Path | None = XAC_NHAN_QF_MAC_DINH,
+) -> dict[str, Any]:
+    """Phân tích chi tiết 3 trạng thái đối chiếu Quan–Fry: chua_xac_nhan | xac_nhan_1_nguoi | xac_nhan_2_nguoi."""
+    mac_dinh: dict[str, Any] = {
+        "trang_thai": "chua_xac_nhan",
+        "da_doi_chieu_khop": False,
+        "so_nguoi_xac_nhan": 0,
+        "nguoi_doi_chieu": "",
+        "nguoi_xac_nhan_2": "",
+        "ngay": "",
+        "trich_dan": "",
+        "thong_diep": "Chưa chạy đối chiếu 10 hệ số Quan–Fry với bài gốc (1995).",
+    }
+    if xac_nhan_path is None:
+        return {**mac_dinh, "thong_diep": "Chưa có đường dẫn file xác nhận đối chiếu."}
+    p = Path(xac_nhan_path)
+    if not p.exists():
+        return mac_dinh
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        if not isinstance(data, dict) or not bool(data.get("da_doi_chieu_khop")):
+            return {**mac_dinh, "thong_diep": "File xác nhận Quan–Fry chưa hợp lệ hoặc chưa khớp toàn bộ."}
+        ngay = str(data.get("thoi_gian") or "").strip()
+        td = str(data.get("trich_dan") or "").strip()
+        if "nguoi_doi_chieu" in data:
+            n1 = str(data.get("nguoi_doi_chieu") or "").strip()
+            if not n1 or not td:
+                return {**mac_dinh, "thong_diep": "File xác nhận thiếu tên người đối chiếu hoặc trích dẫn bài gốc."}
+        else:
+            # Tương thích định dạng tối giản của kiểm thử R7 cũ, vẫn yêu cầu người xác nhận 2
+            n1 = "(bản ghi R7 cũ, chưa ghi tên người 1)"
+        n2 = str(data.get("nguoi_xac_nhan_2") or "").strip()
+        if n2 and n2.casefold() != n1.casefold():
+            return {
+                "trang_thai": "xac_nhan_2_nguoi",
+                "da_doi_chieu_khop": True,
+                "so_nguoi_xac_nhan": 2,
+                "nguoi_doi_chieu": n1,
+                "nguoi_xac_nhan_2": n2,
+                "ngay": ngay,
+                "trich_dan": td,
+                "thong_diep": f"Đã đối chiếu khớp và có đủ 2 người xác nhận ({n1}; {n2}, {ngay}).",
+            }
+        return {
+            "trang_thai": "xac_nhan_1_nguoi",
+            "da_doi_chieu_khop": True,
+            "so_nguoi_xac_nhan": 1,
+            "nguoi_doi_chieu": n1,
+            "nguoi_xac_nhan_2": "",
+            "ngay": ngay,
+            "trich_dan": td,
+            "thong_diep": f"Đã đối chiếu bởi {n1} ({ngay}), chưa có người xác nhận thứ hai.",
+        }
+    except Exception:
+        return {**mac_dinh, "thong_diep": "File xác nhận Quan–Fry bị lỗi định dạng."}
+
+
 def kiem_tra_xac_nhan_quan_fry(
     xac_nhan_path: str | Path | None = XAC_NHAN_QF_MAC_DINH,
 ) -> tuple[bool, str]:
-    """Kiểm tra file xác nhận đối chiếu hệ số Quan–Fry (chỉ do người dùng tự tạo qua R8)."""
-    if xac_nhan_path is None:
-        return False, "Chưa có đường dẫn file xác nhận đối chiếu."
-    p = Path(xac_nhan_path)
-    if not p.exists():
-        return False, "Chưa chạy đối chiếu 10 hệ số Quan–Fry với bài gốc (1995)."
-    try:
-        data = json.loads(p.read_text(encoding="utf-8"))
-        if bool(data.get("da_doi_chieu_khop")):
-            ngay = str(data.get("thoi_gian") or "").strip()
-            return True, f"Đã đối chiếu khớp theo ghi nhận cục bộ ({ngay})."
-    except Exception:
-        pass
-    return False, "File xác nhận Quan–Fry chưa hợp lệ hoặc chưa khớp toàn bộ."
+    """Kiểm tra file xác nhận đối chiếu hệ số Quan–Fry (tương thích R7/R8)."""
+    info = phan_tich_xac_nhan_quan_fry(xac_nhan_path)
+    return bool(info["da_doi_chieu_khop"]), str(info["thong_diep"])
 
 
 def liet_ke_tham_so_chua_xac_nhan(
@@ -345,9 +392,9 @@ def liet_ke_tham_so_chua_xac_nhan(
             "viec_can_lam": "Đọc tài liệu khoa học hoặc quy chuẩn gốc, điền dải an toàn và trích dẫn đủ tác giả, năm, trang/DOI.",
         })
 
-    # Kiểm tra đối chiếu hệ số Quan–Fry (luôn nằm trong danh sách cho tới khi file đối chiếu hợp lệ tồn tại)
-    da_khop_qf, msg_qf = kiem_tra_xac_nhan_quan_fry(xac_nhan_quan_fry_path)
-    if not da_khop_qf:
+    # Kiểm tra 3 trạng thái đối chiếu Quan–Fry (V2)
+    qf_info = phan_tich_xac_nhan_quan_fry(xac_nhan_quan_fry_path)
+    if qf_info["trang_thai"] == "chua_xac_nhan":
         danh_sach.append({
             "ma": "quan_fry.he_so_quan_fry_1995",
             "nhom": "quan_fry",
@@ -355,12 +402,25 @@ def liet_ke_tham_so_chua_xac_nhan(
             "gia_tri_hien_tai": "10 hằng số tạm từ nhóm",
             "trang_thai": "CHƯA ĐỐI CHIẾU BÀI GỐC",
             "viec_can_lam": (
-                f"{msg_qf} Mở docs/DOI_CHIEU_QUAN_FRY.md, đối chiếu bài gốc Quan & Fry (1995) "
-                "và chạy scripts/kiem_tra_quan_fry.py --luu-xac-nhan."
+                f"{qf_info['thong_diep']} Mở docs/DOI_CHIEU_QUAN_FRY.md, đối chiếu bài gốc Quan & Fry (1995) "
+                "(đủ trang/bảng) và chạy scripts/kiem_tra_quan_fry.py --luu-xac-nhan --nguoi-doi-chieu ... --trich-dan ...."
+            ),
+        })
+    elif qf_info["trang_thai"] == "xac_nhan_1_nguoi":
+        danh_sach.append({
+            "ma": "quan_fry.xac_nhan_doc_lap_nguoi_2",
+            "nhom": "quan_fry",
+            "ten_tham_so": "Xác nhận độc lập lần 2 cho 10 hệ số Quan–Fry (GVHD / thành viên thứ hai)",
+            "gia_tri_hien_tai": f"Người 1: {qf_info['nguoi_doi_chieu']} ({qf_info['ngay']})",
+            "trang_thai": "CHƯA CÓ NGƯỜI XÁC NHẬN THỨ HAI",
+            "viec_can_lam": (
+                f"Đã có người 1 xác nhận (trích dẫn: {qf_info['trich_dan'] or 'n/a'}), nhưng chưa có người xác nhận thứ hai. "
+                "Chạy lại scripts/kiem_tra_quan_fry.py với --nguoi-xac-nhan-2."
             ),
         })
 
     return {
         "so_tham_so_chua_xac_nhan": len(danh_sach),
+        "xac_nhan_quan_fry": qf_info,
         "danh_sach": danh_sach,
     }

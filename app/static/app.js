@@ -605,6 +605,13 @@ async function openAssumptionsPanel() {
   try {
     const data = await apiGet("/api/trang-thai-cau-hinh", "assumptions");
     updateUnconfirmedCountUI(data.so_tham_so_chua_xac_nhan);
+    const qfBox = $("#modal-qf-status");
+    if (qfBox && data.xac_nhan_quan_fry) {
+      const qf = data.xac_nhan_quan_fry;
+      qfBox.className = qf.trang_thai === "xac_nhan_2_nguoi" ? "banner-25d ok" : "banner-25d warn";
+      const tdStr = qf.trich_dan ? ` | Trích dẫn: ${esc(qf.trich_dan)}` : "";
+      qfBox.innerHTML = `<div class="banner-icon">${qf.so_nguoi_xac_nhan || 0}/2</div><div><b>Đối chiếu Quan–Fry:</b> ${esc(qf.thong_diep)}${tdStr}</div>`;
+    }
     const tbody = $("#assumptions-tbody");
     if (tbody && Array.isArray(data.danh_sach)) {
       tbody.innerHTML = data.danh_sach.map((it) => `
