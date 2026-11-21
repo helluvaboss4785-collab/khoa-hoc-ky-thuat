@@ -6,18 +6,18 @@
   <meta name="theme-color" content="#0b1d3a" />
   <title>Đo Độ Mặn Quang Học Vi Sai 2.5D | KHKT</title>
   <link rel="manifest" href="/manifest.json" />
-  <link rel="icon" type="image/svg+xml" href="/static/logo.svg" />
+  <link rel="icon" type="image/svg+xml" href="/static/logo.svg?v=8" />
   <link rel="alternate icon" type="image/png" href="/static/favicon.png" />
   <link rel="shortcut icon" href="/favicon.ico" />
   <link rel="apple-touch-icon" href="/static/favicon.png" />
-  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="stylesheet" href="/static/styles.css?v=8" />
 </head>
 <body class="ui-simple">
   <div class="app-shell">
     <!-- ==================== THANH BÊN THIẾT BỊ 2.5D ==================== -->
     <aside class="sidebar-25d">
       <div class="sb-brand">
-        <div class="sb-logo-25d"><img src="/static/logo.svg" alt="Logo Quang Học Vi Sai" width="46" height="46" decoding="async" /></div>
+        <div class="sb-logo-25d"><img src="/static/logo.svg?v=8" alt="Logo Quang Học Vi Sai" width="46" height="46" decoding="async" /></div>
         <div>
           <div class="sb-title">ĐO ĐỘ MẶN <span>VI SAI</span></div>
           <div class="sb-subtitle">Nông nghiệp &amp; Công nghiệp</div>
@@ -25,25 +25,25 @@
       </div>
 
       <div class="ui-mode-switch" role="group" aria-label="Chế độ giao diện">
-        <button type="button" class="ui-mode-btn active" data-ui-mode="simple">🌾 Dễ dùng</button>
-        <button type="button" class="ui-mode-btn" data-ui-mode="pro">🔬 Kỹ thuật</button>
+        <button type="button" class="ui-mode-btn active" data-ui-mode="simple">Dễ dùng</button>
+        <button type="button" class="ui-mode-btn" data-ui-mode="pro">Kỹ thuật</button>
       </div>
 
       <div class="sb-card-25d">
-        <div class="sb-card-head">🏠 Hộ nuôi / Xưởng đang chọn</div>
+        <div class="sb-card-head">Hộ nuôi / Xưởng đang chọn</div>
         <div class="sb-profile-row">
           <select id="sb-profile-select" class="sb-select-25d" title="Tách riêng nhật kí và hiệu chuẩn theo hộ nuôi hoặc xưởng"></select>
-          <button type="button" id="btn-add-profile" class="btn-25d btn-sidebar-25d btn-sm sb-profile-add" title="Tạo hồ sơ hộ nuôi / xưởng mới">➕</button>
+          <button type="button" id="btn-add-profile" class="btn-25d btn-sidebar-25d btn-sm sb-profile-add" title="Tạo hồ sơ hộ nuôi / xưởng mới">+</button>
         </div>
       </div>
 
       <div id="sb-calib-status" class="sb-card-25d status-sim">
-        <div class="sb-card-head">📊 Trạng thái máy đo</div>
+        <div class="sb-card-head">Trạng thái máy đo</div>
         <div id="sb-calib-body">Đang tải thông tin mô hình...</div>
       </div>
 
       <div class="sb-card-25d pro-only">
-        <div class="sb-card-head">📐 Cấu hình quang học</div>
+        <div class="sb-card-head">Cấu hình quang học</div>
         <div id="sb-optics-specs">
           • Góc đỉnh A: <b>40.0°</b><br />
           • Khoảng cách màn D: <b>1.0 m</b><br />
@@ -52,11 +52,11 @@
       </div>
 
       <button type="button" id="btn-open-guide" class="btn-25d btn-sidebar-25d btn-sm">
-        📖 Hướng dẫn sử dụng
+        Hướng dẫn sử dụng
       </button>
 
       <label class="sb-toggle-row pro-only">
-        <span>🧭 Hiện trợ lý 4 bước</span>
+        <span>Hiện trợ lý 4 bước</span>
         <input type="checkbox" id="toggle-coach" />
       </label>
     </aside>
@@ -73,11 +73,11 @@
             </p>
           </div>
           <div class="hero-badges">
-            <span class="pill-25d pill-green" id="net-status-pill">🟢 Trực tuyến</span>
-            <span class="pill-25d pill-amber" id="offline-queue-pill" style="display:none; cursor:pointer;" title="Nhấn để đồng bộ ngay">🔄 <span id="offline-queue-count">0</span> chờ đồng bộ</span>
-            <span class="pill-25d pill-glass pro-only" id="badge-prism">📐 A = 40.0°</span>
-            <span class="pill-25d pill-amber" id="badge-model-mode">🧪 CHƯA HIỆU CHUẨN</span>
-            <span class="pill-25d pill-teal">📒 <span id="hero-log-count">0</span> bản ghi</span>
+            <span class="pill-25d pill-green" id="net-status-pill">● Trực tuyến</span>
+            <span class="pill-25d pill-amber" id="offline-queue-pill" style="display:none; cursor:pointer;" title="Nhấn để đồng bộ ngay"><span id="offline-queue-count">0</span> chờ đồng bộ</span>
+            <span class="pill-25d pill-glass pro-only" id="badge-prism">A = 40.0°</span>
+            <span class="pill-25d pill-amber" id="badge-model-mode">CHƯA HIỆU CHUẨN</span>
+            <span class="pill-25d pill-teal"><span id="hero-log-count">0</span> bản ghi</span>
           </div>
         </div>
       </header>
@@ -86,7 +86,7 @@
       <section id="coach-bar" class="coach-bar-25d" style="display:none;">
         <div class="coach-top">
           <div class="coach-head">
-            <div class="coach-badge-icon" id="coach-icon">👋</div>
+            <div class="coach-badge-icon" id="coach-icon">01</div>
             <div>
               <div style="font-weight:800; color:#0b1d3a; font-size:0.88rem;" id="coach-title">
                 Bước 1/4: Sẵn sàng thu nhận ảnh vạch laser
@@ -97,7 +97,7 @@
             </div>
           </div>
           <button type="button" id="btn-coach-quickstart" class="btn-25d btn-teal-25d btn-sm">
-            ⚡ Thử mẫu 16.5 ‰
+            Thử mẫu 16.5 ‰
           </button>
         </div>
         <div class="coach-steps">
@@ -110,12 +110,12 @@
 
       <!-- Hàng Tab Nổi 2.5D -->
       <nav class="tab-dock-25d" role="tablist">
-        <button type="button" class="tab-btn-25d active" data-tab="tab-1">💧 Đo Nước</button>
-        <button type="button" class="tab-btn-25d" data-tab="tab-2">🦐 Kiểm Tra Loài</button>
-        <button type="button" class="tab-btn-25d" data-tab="tab-3">📒 Nhật Kí Đo</button>
-        <button type="button" class="tab-btn-25d pro-only" data-tab="tab-4">📊 Hiệu Chuẩn</button>
-        <button type="button" class="tab-btn-25d pro-only" data-tab="tab-5">📐 Mô Phỏng</button>
-        <button type="button" class="tab-btn-25d pro-only" data-tab="tab-6">⚖️ Đối Chứng</button>
+        <button type="button" class="tab-btn-25d active" data-tab="tab-1">Đo Nước</button>
+        <button type="button" class="tab-btn-25d" data-tab="tab-2">Kiểm Tra Loài</button>
+        <button type="button" class="tab-btn-25d" data-tab="tab-3">Nhật Kí Đo</button>
+        <button type="button" class="tab-btn-25d pro-only" data-tab="tab-4">Hiệu Chuẩn</button>
+        <button type="button" class="tab-btn-25d pro-only" data-tab="tab-5">Mô Phỏng</button>
+        <button type="button" class="tab-btn-25d pro-only" data-tab="tab-6">Đối Chứng</button>
       </nav>
 
       <!-- ================================================================
@@ -129,9 +129,9 @@
               <div class="step-badge-title"><span class="step-num-25d">1</span> Chọn cách đưa ảnh vào</div>
 
               <div class="segmented-25d">
-                <button type="button" class="seg-btn active" data-img-mode="sim">🧪 Thử mẫu</button>
-                <button type="button" class="seg-btn" data-img-mode="upload">🖼️ Chọn ảnh</button>
-                <button type="button" class="seg-btn" data-img-mode="camera">📷 Camera</button>
+                <button type="button" class="seg-btn active" data-img-mode="sim">Thử mẫu</button>
+                <button type="button" class="seg-btn" data-img-mode="upload">Chọn ảnh</button>
+                <button type="button" class="seg-btn" data-img-mode="camera">Camera</button>
               </div>
 
               <!-- Chế độ Mô phỏng -->
@@ -169,7 +169,7 @@
                 </div>
 
                 <details class="accordion-25d pro-only">
-                  <summary>⚙️ Gây nhiễu cực đoan &amp; Bố trí ngăn</summary>
+                  <summary>Gây nhiễu cực đoan &amp; Bố trí ngăn</summary>
                   <div style="padding-top:8px;">
                     <label class="checkbox-row">
                       <input type="checkbox" id="sim-saturate" />
@@ -195,12 +195,12 @@
               <div id="t1-mode-upload" style="display:none;">
                 <div class="upload-choice-row">
                   <label class="dropzone-25d upload-choice" for="file-laser-img">
-                    <div class="upload-choice-icon">🖼️</div>
+                    <div class="upload-choice-icon">IMG</div>
                     <div class="upload-choice-title">Chọn ảnh có sẵn</div>
                     <div class="upload-choice-sub">Từ thư viện / máy tính</div>
                   </label>
                   <label class="dropzone-25d upload-choice" for="file-laser-capture">
-                    <div class="upload-choice-icon">📱</div>
+                    <div class="upload-choice-icon">CAM</div>
                     <div class="upload-choice-title">Chụp bằng điện thoại</div>
                     <div class="upload-choice-sub">Mở camera sau của máy</div>
                   </label>
@@ -208,14 +208,14 @@
                 <div class="upload-file-name" id="upload-img-name">Chưa chọn ảnh</div>
                 <div style="margin-top:6px;">
                   <label for="file-laser-multi" class="btn-25d btn-teal-25d btn-sm" style="cursor:pointer; display:inline-flex;">
-                    🎞️ Đo đa khung (nhiều ảnh / video ngắn)
+                    Đo đa khung (nhiều ảnh / video ngắn)
                   </label>
                 </div>
                 <div id="upload-preview-box" class="upload-preview-box" style="display:none;">
                   <img id="upload-preview-img" alt="Ảnh xem trước vừa chọn" decoding="async" />
                   <div class="upload-preview-actions">
-                    <button type="button" id="btn-upload-clear" class="btn-25d btn-sm">✖ Bỏ ảnh này</button>
-                    <button type="button" id="btn-upload-remeasure" class="btn-25d btn-navy-25d btn-sm">🔄 Đo lại ảnh này</button>
+                    <button type="button" id="btn-upload-clear" class="btn-25d btn-sm">Bỏ ảnh này</button>
+                    <button type="button" id="btn-upload-remeasure" class="btn-25d btn-navy-25d btn-sm">Đo lại ảnh này</button>
                   </div>
                 </div>
               </div>
@@ -224,25 +224,25 @@
               <div id="t1-mode-camera" style="display:none;">
                 <div class="media-frame-25d camera-frame" style="margin-bottom:8px;">
                   <video id="camera-video" autoplay playsinline muted></video>
-                  <div id="camera-placeholder" class="camera-placeholder">📷 Camera đang tắt</div>
+                  <div id="camera-placeholder" class="camera-placeholder">Camera đang tắt</div>
                   <div id="camera-live-dot" class="camera-live-dot" style="display:none;">● ĐANG BẬT</div>
                 </div>
                 <div class="camera-btn-row">
-                  <button type="button" id="btn-cam-start" class="btn-25d btn-navy-25d btn-sm">📷 Bật Camera</button>
-                  <button type="button" id="btn-cam-snap" class="btn-25d btn-primary-25d btn-sm" disabled>📸 Chụp &amp; Đo</button>
-                  <button type="button" id="btn-cam-burst" class="btn-25d btn-teal-25d btn-sm" disabled>🎞️ Chuỗi 5 khung</button>
-                  <button type="button" id="btn-cam-thermal" class="btn-25d btn-sm" disabled>⏱️ Chờ cân bằng nhiệt</button>
-                  <button type="button" id="btn-cam-stop" class="btn-25d btn-sm" disabled>⏹️ Tắt Camera</button>
+                  <button type="button" id="btn-cam-start" class="btn-25d btn-navy-25d btn-sm">Bật Camera</button>
+                  <button type="button" id="btn-cam-snap" class="btn-25d btn-primary-25d btn-sm" disabled>Chụp &amp; Đo</button>
+                  <button type="button" id="btn-cam-burst" class="btn-25d btn-teal-25d btn-sm" disabled>Chuỗi 5 khung</button>
+                  <button type="button" id="btn-cam-thermal" class="btn-25d btn-sm" disabled>Chờ cân bằng nhiệt</button>
+                  <button type="button" id="btn-cam-stop" class="btn-25d btn-sm" disabled>Tắt Camera</button>
                 </div>
                 <div id="cam-status" class="cam-status">
                   Nhấn <b>Bật Camera</b>, hướng vào màn hứng 2 vạch laser trong chỗ tối rồi nhấn <b>Chụp &amp; Đo</b>.
                 </div>
                 <div id="cam-fallback" class="banner-25d warn" style="display:none; margin-top:8px;">
-                  <div class="banner-icon">📱</div>
+                  <div class="banner-icon">CAM</div>
                   <div>
                     Trình duyệt chỉ cho phép camera trực tiếp khi mở bằng <b>localhost</b> hoặc <b>https</b>.
                     Bạn vẫn có thể đo bằng cách
-                    <label for="file-laser-capture" class="inline-link-btn">📸 chụp ảnh bằng camera điện thoại</label>.
+                    <label for="file-laser-capture" class="inline-link-btn">chụp ảnh bằng camera điện thoại</label>.
                   </div>
                 </div>
               </div>
@@ -269,15 +269,15 @@
                 <span>Đã khóa phơi sáng và lấy nét (AE/AF lock)</span>
               </label>
               <details id="t1-scale-details" class="accordion-25d" style="margin-top:8px;">
-                <summary>📏 Thang chuẩn theo ảnh (px/mm — tùy chọn)</summary>
+                <summary>Thang chuẩn theo ảnh (px/mm — tùy chọn)</summary>
                 <div class="accordion-body">
                   <div class="control-group">
                     <div class="control-label"><span>Khoảng cách 2 vạch chuẩn (mm)</span></div>
                     <input type="number" id="scale-mm" class="input-25d" min="0.1" step="0.5" value="10" placeholder="Ví dụ: 10 mm" />
                   </div>
                   <div class="control-row-2" style="margin-top:6px;">
-                    <button type="button" id="btn-pick-scale" class="btn-25d btn-ghost-25d">📍 Chọn 2 điểm trên ảnh</button>
-                    <button type="button" id="btn-clear-scale" class="btn-25d btn-ghost-25d">✕ Xóa thang</button>
+                    <button type="button" id="btn-pick-scale" class="btn-25d btn-ghost-25d">Chọn 2 điểm trên ảnh</button>
+                    <button type="button" id="btn-clear-scale" class="btn-25d btn-ghost-25d">Xóa thang</button>
                   </div>
                   <input type="hidden" id="scale-p1" value="" />
                   <input type="hidden" id="scale-p2" value="" />
@@ -291,7 +291,7 @@
               </div>
 
               <details class="accordion-25d pro-only">
-                <summary>⚙️ Tùy chọn nâng cao (Thuật toán, Ghi chú, ROI)</summary>
+                <summary>Tùy chọn nâng cao (Thuật toán, Ghi chú, ROI)</summary>
                 <div style="padding-top:8px;">
                   <div class="control-group">
                     <div class="control-label"><span>Thuật toán tâm</span></div>
@@ -309,8 +309,8 @@
                     <span>Bật tọa độ ROI thủ công (kéo chuột trên ảnh hoặc nhập tay)</span>
                   </label>
                   <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;">
-                    <button type="button" id="btn-draw-roi-tc" class="btn-25d btn-sm">✏️ Kéo ROI Vạch chuẩn</button>
-                    <button type="button" id="btn-draw-roi-mau" class="btn-25d btn-sm">✏️ Kéo ROI Vạch mẫu</button>
+                    <button type="button" id="btn-draw-roi-tc" class="btn-25d btn-sm">Kéo ROI Vạch chuẩn</button>
+                    <button type="button" id="btn-draw-roi-mau" class="btn-25d btn-sm">Kéo ROI Vạch mẫu</button>
                     <button type="button" id="btn-clear-roi-box" class="btn-25d btn-sm">Đặt lại tự động</button>
                   </div>
                   <div id="roi-draw-status" class="help-text" style="margin-top:4px;">Có thể kéo chọn 2 vùng trực tiếp trên ảnh khi nền sáng phức tạp.</div>
@@ -339,11 +339,11 @@
 
               <label class="checkbox-row">
                 <input type="checkbox" id="meas-live" checked />
-                <span>⚡ Tự động cập nhật khi kéo thanh trượt</span>
+                <span>Tự động cập nhật khi kéo thanh trượt</span>
               </label>
 
               <button type="button" id="btn-run-measure" class="btn-25d btn-primary-25d btn-full btn-lg-friendly" style="margin-top:10px;">
-                💧 KIỂM TRA NƯỚC NGAY
+                KIỂM TRA NƯỚC NGAY
               </button>
             </div>
           </div>
@@ -382,23 +382,23 @@
             <div class="chassis-panel-25d" style="margin-bottom:14px;">
               <div class="species-action-row">
                 <div class="control-group" style="margin-bottom:0; flex:1;">
-                  <div class="control-label"><span>🦐 Kiểm tra an toàn cho loài / cây trồng</span></div>
+                  <div class="control-label"><span>Kiểm tra an toàn cho loài / cây trồng</span></div>
                   <select id="t1-species-select" class="select-25d"></select>
                 </div>
                 <button type="button" id="btn-save-log" class="btn-25d btn-teal-25d">
-                  💾 Lưu kết quả
+                  Lưu kết quả
                 </button>
                 <button type="button" id="btn-go-logs" class="btn-25d simple-only">
-                  📒 Xem Nhật kí
+                  Xem Nhật kí
                 </button>
               </div>
               <div id="t1-species-verdict" class="banner-25d info" style="margin-top:10px;">
-                <div class="banner-icon">🔎</div>
+                <div class="banner-icon">?</div>
                 <div>Kết quả đánh giá an toàn sẽ hiển thị tại đây.</div>
               </div>
               <div id="t1-multi-summary"></div>
               <div id="t1-thermal-card" class="chassis-panel-25d" style="display:none; margin:10px 0;">
-                <div class="step-badge-title">⏱️ Theo dõi cân bằng nhiệt Δy(t) = Δy∞ + A·exp(−t/τ)</div>
+                <div class="step-badge-title">Theo dõi cân bằng nhiệt Δy(t) = Δy∞ + A·exp(−t/τ)</div>
                 <div id="t1-thermal-verdict" style="margin-bottom:8px;"></div>
                 <div class="chart-canvas-wrap">
                   <canvas id="canvas-thermal-drift"></canvas>
@@ -409,14 +409,14 @@
             </div>
 
             <div class="simple-only simple-guide-strip">
-              💡 <b>Hướng dẫn nhanh:</b> Chọn ảnh hoặc chụp camera chứa 2 vạch laser → Nhấn <b>Kiểm tra nước ngay</b> → Xem cảnh báo an toàn &amp; bấm <b>Lưu kết quả</b> để theo dõi theo từng ao nuôi.
+              <b>Hướng dẫn nhanh:</b> Chọn ảnh hoặc chụp camera chứa 2 vạch laser → Nhấn <b>Kiểm tra nước ngay</b> → Xem cảnh báo an toàn &amp; bấm <b>Lưu kết quả</b> để theo dõi theo từng ao nuôi.
             </div>
 
             <!-- Ảnh Đánh Dấu (hiện ở cả 2 chế độ) + Mặt Cắt Gauss (chỉ chế độ Kỹ thuật) -->
             <div class="grid-12" style="margin-bottom:14px;">
               <div class="col-5 t1-img-col">
                 <div class="chassis-panel-25d">
-                  <div class="step-badge-title">📸 Ảnh đã nhận diện 2 vạch laser</div>
+                  <div class="step-badge-title">Ảnh đã nhận diện 2 vạch laser</div>
                   <div class="media-frame-25d">
                     <div class="roi-stage-wrap">
                       <img id="t1-annotated-img" alt="Ảnh đánh dấu 2 vạch laser" decoding="async" />
@@ -430,7 +430,7 @@
               </div>
               <div class="col-7 pro-only">
                 <div class="chassis-panel-25d">
-                  <div class="step-badge-title">📈 Mặt cắt cường độ Gauss I(y)</div>
+                  <div class="step-badge-title">Mặt cắt cường độ Gauss I(y)</div>
                   <div class="chart-canvas-wrap">
                     <canvas id="canvas-gauss-profile"></canvas>
                     <div class="chart-tooltip" id="tip-gauss-profile"></div>
@@ -441,11 +441,11 @@
 
             <!-- Phân tích chuyên sâu (thu gọn mặc định để giao diện thoáng) -->
             <details id="t1-advanced-details" class="advanced-drawer-25d pro-only">
-              <summary>🔬 Xem phân tích chuyên sâu (Hồi quy đường tâm, Bất định GUM &amp; Bảng thông số 2 vạch)</summary>
+              <summary>Xem phân tích chuyên sâu (Hồi quy đường tâm, Bất định GUM &amp; Bảng thông số 2 vạch)</summary>
               <div class="grid-12" style="margin-top:12px;">
                 <div class="col-6">
                   <div class="chassis-panel-25d">
-                    <div class="step-badge-title">📐 Hồi quy đường tâm vạch y(x) = ax + b</div>
+                    <div class="step-badge-title">Hồi quy đường tâm vạch y(x) = ax + b</div>
                     <div class="chart-canvas-wrap">
                       <canvas id="canvas-line-fit"></canvas>
                       <div class="chart-tooltip" id="tip-line-fit"></div>
@@ -454,14 +454,14 @@
                 </div>
                 <div class="col-6">
                   <div class="chassis-panel-25d" style="margin-bottom:14px;">
-                    <div class="step-badge-title">📊 Phân rã ngân sách bất định GUM u(S)</div>
+                    <div class="step-badge-title">Phân rã ngân sách bất định GUM u(S)</div>
                     <div class="chart-canvas-wrap">
                       <canvas id="canvas-gum-bar"></canvas>
                       <div class="chart-tooltip" id="tip-gum-bar"></div>
                     </div>
                   </div>
                   <div class="chassis-panel-25d">
-                    <div class="step-badge-title">📋 Thông số chi tiết 2 vạch laser</div>
+                    <div class="step-badge-title">Thông số chi tiết 2 vạch laser</div>
                     <div class="table-scroll-25d">
                       <table class="data-table-25d">
                         <thead>
@@ -509,10 +509,10 @@
                 </div>
               </div>
               <button type="button" id="t2-use-tab1" class="btn-25d btn-navy-25d btn-full" style="margin-top:6px;">
-                📥 Lấy kết quả vừa đo từ Tab 1
+                Lấy kết quả vừa đo từ Tab 1
               </button>
               <button type="button" id="t2-eval-btn" class="btn-25d btn-primary-25d btn-full" style="margin-top:8px;">
-                🔎 Đánh giá ngưỡng sinh học
+                Đánh giá ngưỡng sinh học
               </button>
             </div>
           </div>
@@ -521,7 +521,7 @@
             <div class="chassis-panel-25d" style="margin-bottom:14px;">
               <div class="step-badge-title"><span class="step-num-25d">2</span> Kết quả phân tích &amp; Phổ thích nghi 2.5D</div>
               <div id="t2-verdict-box" class="banner-25d info">
-                <div class="banner-icon">ℹ️</div>
+                <div class="banner-icon">i</div>
                 <div>Chọn loài để xem kết quả đánh giá.</div>
               </div>
               <div id="t2-spectrum-container"></div>
@@ -565,13 +565,13 @@
             </div>
 
             <details id="t2-edit-species-drawer" class="advanced-drawer-25d" style="margin-top:14px;">
-              <summary>✏️ Thêm hoặc cập nhật ngưỡng loài trong config.yaml</summary>
+              <summary>Thêm hoặc cập nhật ngưỡng loài trong config.yaml</summary>
               <div style="padding-top:12px;">
                 <div class="control-row-2">
                   <div class="control-group">
                     <div class="control-label"><span>Chọn loài để sửa (hoặc thêm mới)</span></div>
                     <select id="t2-edit-preset" class="select-25d">
-                      <option value="__new__">➕ Thêm loài / cây trồng mới</option>
+                      <option value="__new__">+ Thêm loài / cây trồng mới</option>
                     </select>
                   </div>
                   <div class="control-group">
@@ -624,7 +624,7 @@
                   <input type="text" id="t2-sp-source" class="input-25d" placeholder="vd: TCVN / QCVN hoặc tài liệu khuyến nông" />
                 </div>
                 <button type="button" id="t2-btn-save-species" class="btn-25d btn-teal-25d btn-full">
-                  💾 Lưu ngưỡng loài vào config.yaml
+                  Lưu ngưỡng loài vào config.yaml
                 </button>
               </div>
             </details>
@@ -641,13 +641,13 @@
           <div class="step-badge-title"><span class="step-num-25d">1</span> Lọc &amp; Quản lý dữ liệu</div>
           <div class="log-filter-grid">
             <div>
-              <div class="control-label"><span>🏞️ Ao / vị trí đo</span></div>
+              <div class="control-label"><span>Ao / vị trí đo</span></div>
               <select id="t3-filter-location" class="select-25d">
                 <option value="ALL">Tất cả ao / vị trí</option>
               </select>
             </div>
             <div>
-              <div class="control-label"><span>🦐 Loài nuôi / cây trồng</span></div>
+              <div class="control-label"><span>Loài nuôi / cây trồng</span></div>
               <select id="t3-filter-species" class="select-25d">
                 <option value="ALL">Tất cả đối tượng</option>
               </select>
@@ -659,14 +659,14 @@
               </select>
             </div>
             <div>
-              <div class="control-label"><span>⚡ Ngưỡng cảnh báo tốc độ (‰/giờ, tự đặt)</span></div>
+              <div class="control-label"><span>Ngưỡng cảnh báo tốc độ (‰/giờ, tự đặt)</span></div>
               <input type="number" id="t3-rate-threshold" class="input-25d" min="0" step="0.1" placeholder="Tự nhập (để trống = tắt)" />
             </div>
             <div class="log-filter-actions">
               <button type="button" id="t3-btn-reset-filter" class="btn-25d btn-sm">↺ Bỏ lọc</button>
-              <a id="t3-btn-csv" href="/api/logs/csv" class="btn-25d btn-navy-25d btn-sm">📥 Xuất CSV</a>
-              <button type="button" id="t3-btn-sample" class="btn-25d btn-teal-25d btn-sm pro-only">🧪 Nạp 10 mẫu MP</button>
-              <button type="button" id="t3-btn-clear" class="btn-25d btn-danger-25d btn-sm">🗑️ Xóa hết</button>
+              <a id="t3-btn-csv" href="/api/logs/csv" class="btn-25d btn-navy-25d btn-sm">Xuất CSV</a>
+              <button type="button" id="t3-btn-sample" class="btn-25d btn-teal-25d btn-sm pro-only">Nạp 10 mẫu MP</button>
+              <button type="button" id="t3-btn-clear" class="btn-25d btn-danger-25d btn-sm">Xóa hết</button>
             </div>
           </div>
           <div id="t3-filter-hint" class="log-filter-hint">Đang hiển thị toàn bộ nhật kí.</div>
@@ -739,18 +739,17 @@
           <div class="col-6">
             <div class="chassis-panel-25d">
               <div class="step-badge-title"><span class="step-num-25d">1</span> Nạp tập dữ liệu dung dịch chuẩn NaCl</div>
-              <label class="dropzone-25d" for="file-calib-csv">
-                <div style="font-size:1.3rem;">📄</div>
-                <div style="font-weight:700; font-size:0.84rem; color:#0b1d3a;">Tải file CSV hiệu chuẩn (đủ 7 cột quy định)</div>
-                <div style="font-size:0.75rem; color:#64748b;" id="t4-csv-filename">Chưa chọn file CSV — đang sẵn sàng nạp dữ liệu mô phỏng</div>
+              <label class="dropzone-25d" for="file-calib-csv" style="display:block; width:100%;">
+                <span style="display:block; font-weight:700; font-size:0.84rem; color:#0b1d3a;">Tải file CSV hiệu chuẩn (đủ 7 cột quy định)</span>
+                <span style="display:block; font-size:0.75rem; color:#64748b;" id="t4-csv-filename">Chưa chọn file CSV — đang sẵn sàng nạp dữ liệu mô phỏng</span>
                 <input type="file" id="file-calib-csv" accept=".csv,text/csv" style="display:none;" />
               </label>
               <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
-                <button type="button" id="t4-btn-sim" class="btn-25d btn-teal-25d btn-sm">🧪 Nạp 72 điểm chuẩn mô phỏng</button>
-                <a href="/api/calibrate/template-csv" class="btn-25d btn-sm">📥 Tải CSV mẫu chuẩn (7 cột)</a>
+                <button type="button" id="t4-btn-sim" class="btn-25d btn-teal-25d btn-sm">Nạp 72 điểm chuẩn mô phỏng</button>
+                <a href="/api/calibrate/template-csv" class="btn-25d btn-sm">Tải CSV mẫu chuẩn (7 cột)</a>
               </div>
               <div id="t4-source-banner" class="banner-25d warn" style="margin-top:10px;">
-                <div class="banner-icon">🧪</div>
+                <div class="banner-icon">SIM</div>
                 <div>Sẵn sàng dựng đường chuẩn từ 72 điểm mô phỏng Snell.</div>
               </div>
             </div>
@@ -775,8 +774,8 @@
                 </select>
               </div>
               <div class="control-row-2" style="margin-top:10px;">
-                <button type="button" id="t4-btn-fit" class="btn-25d btn-primary-25d btn-full">⚡ Dựng đường chuẩn</button>
-                <button type="button" id="t4-btn-activate" class="btn-25d btn-navy-25d btn-full">💾 Lưu &amp; Áp dụng mặc định</button>
+                <button type="button" id="t4-btn-fit" class="btn-25d btn-primary-25d btn-full">Dựng đường chuẩn</button>
+                <button type="button" id="t4-btn-activate" class="btn-25d btn-navy-25d btn-full">Lưu &amp; Áp dụng mặc định</button>
               </div>
             </div>
           </div>
@@ -905,7 +904,7 @@
 
               <hr class="panel-divider" />
               <button type="button" id="t5-btn-save-config" class="btn-25d btn-navy-25d btn-full btn-sm">
-                💾 Lưu A, D, mm/px vào config.yaml
+                Lưu A, D, mm/px vào config.yaml
               </button>
             </div>
           </div>
@@ -998,7 +997,7 @@
                 </table>
               </div>
               <div id="t5-rss-banner" class="banner-25d ok">
-                <div class="banner-icon">🎯</div>
+                <div class="banner-icon">Σ</div>
                 <div>Tổng bất định thiết kế sẽ hiển thị tại đây.</div>
               </div>
             </div>
@@ -1016,15 +1015,14 @@
             <div class="chassis-panel-25d">
               <div class="step-badge-title"><span class="step-num-25d">1</span> Nạp số liệu đối chứng song song</div>
               <button type="button" id="t6-btn-sample" class="btn-25d btn-teal-25d btn-full" style="margin-bottom:10px;">
-                📋 Nạp 24 cặp mẫu đối chứng (Mô phỏng)
+                Nạp 24 cặp mẫu đối chứng (Mô phỏng)
               </button>
-              <label class="dropzone-25d" for="file-ba-csv">
-                <div style="font-size:1.25rem;">📄</div>
-                <div style="font-weight:700; font-size:0.83rem; color:#0b1d3a;">Hoặc tải CSV 2 cột (S_thiet_bi, S_khuc_xa_ke)</div>
+              <label class="dropzone-25d" for="file-ba-csv" style="display:block; width:100%;">
+                <span style="display:block; font-weight:700; font-size:0.83rem; color:#0b1d3a;">Hoặc tải CSV 2 cột (S_thiet_bi, S_khuc_xa_ke)</span>
                 <input type="file" id="file-ba-csv" accept=".csv,text/csv" style="display:none;" />
               </label>
               <button type="button" id="t6-btn-add-row" class="btn-25d btn-sm btn-full" style="margin-top:10px;">
-                ➕ Thêm 1 cặp đo vào bảng bên phải
+                + Thêm 1 cặp đo vào bảng bên phải
               </button>
             </div>
           </div>
@@ -1094,7 +1092,7 @@
         </div>
 
         <div id="t6-conclusion-box" class="banner-25d ok">
-          <div class="banner-icon">🎯</div>
+          <div class="banner-icon">Σ</div>
           <div>Kết luận thống kê Bland–Altman sẽ hiển thị tại đây.</div>
         </div>
       </section>
@@ -1105,8 +1103,8 @@
   <div id="guide-modal-backdrop" class="modal-backdrop">
     <div class="modal-25d">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
-        <h3 style="margin:0; font-size:1.15rem; color:#0b1d3a;">📖 Hướng Dẫn Quy Trình Đo Độ Mặn Quang Học (4 Bước)</h3>
-        <button type="button" id="btn-close-guide" class="btn-25d btn-sm">✖ Đóng</button>
+        <h3 style="margin:0; font-size:1.15rem; color:#0b1d3a;">Hướng Dẫn Quy Trình Đo Độ Mặn Quang Học (4 Bước)</h3>
+        <button type="button" id="btn-close-guide" class="btn-25d btn-sm">Đóng</button>
       </div>
       <div class="guide-cards-grid">
         <div class="guide-card">
@@ -1128,10 +1126,10 @@
       </div>
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
         <button type="button" id="btn-modal-start-tour" class="btn-25d btn-teal-25d">
-          🧭 Chạy hướng dẫn từng bước trực tiếp
+          Chạy hướng dẫn từng bước trực tiếp
         </button>
         <button type="button" id="btn-modal-quickstart" class="btn-25d btn-primary-25d">
-          ⚡ Chạy ngay mẫu thử 16.5 ‰
+          Chạy ngay mẫu thử 16.5 ‰
         </button>
       </div>
     </div>
@@ -1142,7 +1140,7 @@
   <aside id="live-tour-card" class="live-tour-card" role="dialog" aria-live="polite" aria-label="Hướng dẫn từng bước">
     <div class="tour-card-head">
       <span class="tour-step-badge" id="tour-step-badge">Bước 1/18</span>
-      <span class="tour-timer-pill" id="tour-countdown">⏳ Tự chuyển sau 10s</span>
+      <span class="tour-timer-pill" id="tour-countdown">Tự chuyển sau 10s</span>
     </div>
     <h4 class="tour-card-title" id="tour-step-title">Chọn nguồn ảnh</h4>
     <p class="tour-card-desc" id="tour-step-desc"></p>
@@ -1152,8 +1150,8 @@
     </div>
     <div class="tour-card-actions">
       <div class="tour-actions-left">
-        <button type="button" id="btn-tour-skip" class="btn-25d btn-sm">⏭️ Bỏ qua</button>
-        <button type="button" id="btn-tour-pause" class="btn-25d btn-sm" title="Tạm dừng đếm ngược để đọc kỹ">⏸️ Dừng</button>
+        <button type="button" id="btn-tour-skip" class="btn-25d btn-sm">Bỏ qua</button>
+        <button type="button" id="btn-tour-pause" class="btn-25d btn-sm" title="Tạm dừng đếm ngược để đọc kỹ">Dừng</button>
       </div>
       <div class="tour-actions-right">
         <button type="button" id="btn-tour-prev" class="btn-25d btn-sm">← Trước</button>
@@ -1164,6 +1162,6 @@
 
   <div id="toast-tray" class="toast-tray"></div>
 
-  <script src="/static/app.js" defer></script>
+  <script src="/static/app.js?v=8" defer></script>
 </body>
 </html>

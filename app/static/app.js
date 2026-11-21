@@ -509,7 +509,7 @@ function populateProfileSelect(profiles) {
   if (STATE.hoSo && !list.includes(STATE.hoSo)) list.push(STATE.hoSo);
   sel.innerHTML = list
     .map((p) => {
-      const label = p === "mac_dinh" ? "🏠 Mặc định (chung)" : `🏡 ${p}`;
+      const label = p === "mac_dinh" ? "Mặc định (chung)" : `${p}`;
       return `<option value="${esc(p)}">${esc(label)}</option>`;
     })
     .join("");
@@ -521,10 +521,10 @@ function updateNetworkPill() {
   if (!pill) return;
   if (navigator.onLine) {
     pill.className = "pill-25d pill-green";
-    pill.textContent = "🟢 Trực tuyến";
+    pill.textContent = "● Trực tuyến";
   } else {
     pill.className = "pill-25d pill-amber";
-    pill.textContent = "🟠 Ngoại tuyến (Offline)";
+    pill.textContent = "Ngoại tuyến (Offline)";
   }
 }
 
@@ -558,7 +558,7 @@ async function flushOfflineQueue(silent = false) {
   const q = getOfflineQueue();
   if (!q.length) return;
   if (!navigator.onLine) {
-    if (!silent) toast("🟠 Chưa có kết nối mạng để đồng bộ.");
+    if (!silent) toast("Chưa có kết nối mạng để đồng bộ.");
     return;
   }
   const remaining = [];
@@ -574,9 +574,9 @@ async function flushOfflineQueue(silent = false) {
   saveOfflineQueue(remaining);
   if (synced > 0) {
     await loadLogs();
-    toast(`✅ Đã đồng bộ ${synced} bản ghi ngoại tuyến lên máy chủ!`);
+    toast(`Đã đồng bộ ${synced} bản ghi ngoại tuyến lên máy chủ!`);
   } else if (!silent) {
-    toast("⚠️ Máy chủ chưa phản hồi, bản ghi vẫn được giữ an toàn trên máy.");
+    toast("Máy chủ chưa phản hồi, bản ghi vẫn được giữ an toàn trên máy.");
   }
 }
 
@@ -606,28 +606,28 @@ function updateModelBadges(mh, qh, logCount) {
   const sbBox = $("#sb-calib-status");
   if (isSim) {
     badge.className = "pill-25d pill-amber";
-    badge.textContent = "🧪 CHƯA HIỆU CHUẨN (MÔ PHỎNG)";
+    badge.textContent = "CHƯA HIỆU CHUẨN (MÔ PHỎNG)";
     sbBox.className = "sb-card-25d status-sim";
     $("#sb-calib-body").innerHTML =
       `<b>CHƯA HIỆU CHUẨN (MÔ PHỎNG)</b><br>Bậc ${mh.bac} | R² = ${fmt(mh.R2, 5)}<br>` +
       `Dải S: ${fmt(mh.S_min, 0)}–${fmt(mh.S_max, 0)} ‰ | T: ${fmt(mh.T_min, 1)}–${fmt(mh.T_max, 1)} °C`;
   } else if (isRealVerified) {
     badge.className = "pill-25d pill-green";
-    badge.textContent = "✅ ĐÃ HIỆU CHUẨN (dữ liệu đo thật)";
+    badge.textContent = "ĐÃ HIỆU CHUẨN (dữ liệu đo thật)";
     sbBox.className = "sb-card-25d status-real";
     $("#sb-calib-body").innerHTML =
       `<b>ĐÃ HIỆU CHUẨN (dữ liệu đo thật)</b><br>Bậc ${mh.bac} | R² = ${fmt(mh.R2, 5)} | ${mh.so_diem} mẫu<br>` +
       `Dải S: ${fmt(mh.S_min, 0)}–${fmt(mh.S_max, 0)} ‰`;
   } else {
     badge.className = "pill-25d pill-amber";
-    badge.textContent = "⚠️ CHƯA XÁC NHẬN NGUỒN DỮ LIỆU";
+    badge.textContent = "CHƯA XÁC NHẬN NGUỒN DỮ LIỆU";
     sbBox.className = "sb-card-25d status-sim";
     $("#sb-calib-body").innerHTML =
       `<b>CHƯA XÁC NHẬN NGUỒN DỮ LIỆU</b><br>Bậc ${mh.bac} | R² = ${fmt(mh.R2, 5)} | ${mh.so_diem} mẫu<br>` +
       `Thiếu nguon_du_lieu=THUC_TE • Dải S: ${fmt(mh.S_min, 0)}–${fmt(mh.S_max, 0)} ‰`;
   }
   if (qh) {
-    $("#badge-prism").textContent = `📐 Lăng kính A = ${Number(qh.A_do).toFixed(1)}°`;
+    $("#badge-prism").textContent = `Lăng kính A = ${Number(qh.A_do).toFixed(1)}°`;
     $("#sb-optics-specs").innerHTML =
       `• Góc đỉnh A: <b>${Number(qh.A_do).toFixed(1)}°</b><br>` +
       `• Khoảng cách màn D: <b>${Number(qh.D_m).toFixed(1)} m</b><br>` +
@@ -652,7 +652,7 @@ function populateSpeciesDropdowns(list) {
   if (editSel) {
     const curEdit = editSel.value;
     editSel.innerHTML =
-      `<option value="__new__">➕ Thêm loài / cây trồng mới</option>` + html;
+      `<option value="__new__">Thêm loài / cây trồng mới</option>` + html;
     if (curEdit && (curEdit === "__new__" || list.some((s) => s.ma_loai === curEdit))) {
       editSel.value = curEdit;
     }
@@ -672,7 +672,7 @@ function updateCoachBar() {
   if (!measured) {
     s1.classList.add("done");
     s2.classList.add("active");
-    $("#coach-icon").textContent = "📸";
+    $("#coach-icon").textContent = "";
     $("#coach-title").textContent = "Bước 2/4: Chọn nguồn ảnh & Tiến hành đo độ mặn";
     $("#coach-desc").textContent = "Kéo thanh trượt mô phỏng hoặc tải ảnh chụp thực tế rồi nhấn Tiến hành đo.";
   } else if (!saved) {
@@ -681,17 +681,17 @@ function updateCoachBar() {
     s3.classList.add("active");
     if (valid && STATE.lastMeasure.mo_hinh_man) {
       const km = STATE.lastMeasure.mo_hinh_man;
-      $("#coach-icon").textContent = "✅";
+      $("#coach-icon").textContent = "✓";
       $("#coach-title").textContent = `Bước 3/4: Đã đo xong — Độ mặn S = ${fmt(km.S_ppt, 2)} ± ${fmt(km.U_S_ppt, 2)} ‰`;
       $("#coach-desc").textContent = "Kiểm tra cảnh báo theo loài và nhấn 'Lưu kết quả vào Nhật kí SQLite'.";
     } else {
-      $("#coach-icon").textContent = "⚠️";
+      $("#coach-icon").textContent = "!";
       $("#coach-title").textContent = "Bước 3/4: Kiểm tra cảnh báo chất lượng ảnh chụp";
       $("#coach-desc").textContent = "Phát hiện ảnh bị bão hòa/mờ hoặc ngoài dải hiệu chuẩn. Điều chỉnh lại thông số trước khi lưu.";
     }
   } else {
     [s1, s2, s3, s4].forEach((el) => el.classList.add("done"));
-    $("#coach-icon").textContent = "🎉";
+    $("#coach-icon").textContent = "";
     $("#coach-title").textContent = "Hoàn thành chu trình 4 bước — Bản ghi đã được lưu vào Nhật kí SQLite!";
     $("#coach-desc").textContent = "Bạn có thể tiếp tục đo mẫu mới hoặc mở Tab 3 để xem biểu đồ chuỗi thời gian và xuất CSV.";
   }
@@ -787,12 +787,12 @@ function showMeasureError(message) {
   if (raw) {
     img.src = raw;
     img.classList.add("is-raw-error");
-    $("#t1-img-caption").textContent = "⚠️ Ảnh gốc bạn vừa đưa vào — chưa nhận diện được 2 vạch laser.";
+    $("#t1-img-caption").textContent = "Ảnh gốc bạn vừa đưa vào — chưa nhận diện được 2 vạch laser.";
   }
 
   const vBox = $("#t1-species-verdict");
   vBox.className = "banner-25d danger";
-  vBox.innerHTML = `<div class="banner-icon">📷</div><div>
+  vBox.innerHTML = `<div class="banner-icon">CAM</div><div>
     <b>Chưa đọc được ảnh.</b> ${esc(message)}
     <ul style="margin:6px 0 0; padding-left:18px;">
       <li>Che tối xung quanh, chỉ để lại 2 vạch laser sáng.</li>
@@ -823,7 +823,7 @@ async function runMeasure(opts) {
   const showBusy = STATE.imgMode !== "sim";
   if (showBusy) {
     btn.disabled = true;
-    btn.textContent = "⏳ Đang phân tích ảnh...";
+    btn.textContent = "Đang phân tích ảnh...";
   }
   try {
     const data = await apiPost("/api/measure", getTab1Payload(), "measure");
@@ -921,29 +921,29 @@ function renderMeasureResults(d) {
       : "info";
   if (d.khong_do_nhiet_do) {
     vBox.className = "banner-25d danger";
-    vBox.innerHTML = `<div class="banner-icon">🌡️</div><div><b>CHƯA ĐO NHIỆT ĐỘ — KHÔNG PHÂN LOẠI LOÀI</b><br>Chênh nhiệt độ giữa hai ngăn gây sai lệch lớn. Hãy nhập nhiệt độ mẫu (và ngăn tham chiếu nếu có) để đánh giá an toàn.</div>`;
+    vBox.innerHTML = `<div class="banner-icon">°C</div><div><b>CHƯA ĐO NHIỆT ĐỘ — KHÔNG PHÂN LOẠI LOÀI</b><br>Chênh nhiệt độ giữa hai ngăn gây sai lệch lớn. Hãy nhập nhiệt độ mẫu (và ngăn tham chiếu nếu có) để đánh giá an toàn.</div>`;
   } else if (dg) {
-    const icon = dg.trang_thai === "KHONG_DANH_GIA_DUOC" ? "⛔" : dg.trang_thai === "SAT_RANH_GIOI" ? "⚖️" : "🔎";
+    const icon = dg.trang_thai === "KHONG_DANH_GIA_DUOC" ? "" : dg.trang_thai === "SAT_RANH_GIOI" ? "~" : "?";
     vBox.className = `banner-25d ${statusToBannerCls(dg.trang_thai)}`;
     vBox.innerHTML = `<div class="banner-icon">${icon}</div><div><b>${esc(dg.tieu_de)}</b><br>${esc(dg.loi_khuyen)}</div>`;
   } else {
     vBox.className = "banner-25d neutral";
-    vBox.innerHTML = `<div class="banner-icon">⛔</div><div><b>KHÔNG ĐÁNH GIÁ ĐƯỢC</b><br>Chưa có ước lượng độ mặn hợp lệ để đối chiếu loài.</div>`;
+    vBox.innerHTML = `<div class="banner-icon"></div><div><b>KHÔNG ĐÁNH GIÁ ĐƯỢC</b><br>Chưa có ước lượng độ mặn hợp lệ để đối chiếu loài.</div>`;
   }
 
   // Cảnh báo chất lượng & mô hình (phân cấp theo thong_tin / can_than / nghiem_trong)
   const warnItems = [];
   const capCls = (cap) =>
-    cap === "nghiem_trong" ? { cls: "danger", icon: "🚨" }
-      : cap === "can_than" ? { cls: "warn", icon: "⚠️" }
-      : { cls: "info", icon: "ℹ️" };
+    cap === "nghiem_trong" ? { cls: "danger", icon: "!" }
+      : cap === "can_than" ? { cls: "warn", icon: "!" }
+      : { cls: "info", icon: "i" };
   if (Array.isArray(cq.canh_bao_chi_tiet) && cq.canh_bao_chi_tiet.length) {
     for (const item of cq.canh_bao_chi_tiet) {
       const m = capCls(item.cap);
       warnItems.push({ cls: m.cls, icon: m.icon, text: item.noi_dung });
     }
   } else {
-    for (const w of cq.canh_bao || []) warnItems.push({ cls: "warn", icon: "⚠️", text: w });
+    for (const w of cq.canh_bao || []) warnItems.push({ cls: "warn", icon: "!", text: w });
   }
   if (km) {
     if (Array.isArray(km.canh_bao_chi_tiet) && km.canh_bao_chi_tiet.length) {
@@ -954,7 +954,7 @@ function renderMeasureResults(d) {
     } else {
       for (const w of km.canh_bao || []) {
         const isErr = w.includes("NGOÀI") || w.includes("CHƯA ĐO NHIỆT ĐỘ");
-        warnItems.push({ cls: isErr ? "danger" : "warn", icon: "🚨", text: w });
+        warnItems.push({ cls: isErr ? "danger" : "warn", icon: "!", text: w });
       }
     }
   }
@@ -969,7 +969,7 @@ function renderMeasureResults(d) {
       const loiStr = (d.khung_loi && d.khung_loi.length)
         ? ` | Khung loại: ${d.khung_loi.map((e) => `#${e.khung + 1}`).join(", ")}`
         : "";
-      mBox.innerHTML = `<div class="banner-25d info"><div class="banner-icon">🎞️</div><div><b>ĐO ĐA KHUNG (${d.so_khung_hop_le}/${d.tong_so_khung} khung hợp lệ):</b> Trung vị Δy = ${fmt(d.delta_y_px, 3)} ± ${fmt(d.sai_so_delta_y_px, 3)} px | Trôi: ${fmt(d.do_doc_troi_px_moi_khung || 0, 3)} px/khung${esc(loiStr)}</div></div>`;
+      mBox.innerHTML = `<div class="banner-25d info"><div class="banner-icon">MF</div><div><b>ĐO ĐA KHUNG (${d.so_khung_hop_le}/${d.tong_so_khung} khung hợp lệ):</b> Trung vị Δy = ${fmt(d.delta_y_px, 3)} ± ${fmt(d.sai_so_delta_y_px, 3)} px | Trôi: ${fmt(d.do_doc_troi_px_moi_khung || 0, 3)} px/khung${esc(loiStr)}</div></div>`;
     } else {
       mBox.innerHTML = "";
     }
@@ -984,7 +984,7 @@ function renderMeasureResults(d) {
       const thVerd = $("#t1-thermal-verdict");
       if (thVerd) {
         const cls = cb.da_on_dinh ? "ok" : "warn";
-        const icon = cb.da_on_dinh ? "✅" : "⏳";
+        const icon = cb.da_on_dinh ? "✓" : "...";
         thVerd.innerHTML = `<div class="banner-25d ${cls}"><div class="banner-icon">${icon}</div><div>${esc(cb.khuyen_nghi)}</div></div>`;
       }
       const ptsRaw = cb.thoi_gian_hop_le_s.map((tVal, idx) => ({ x: tVal, y: cb.delta_y_hop_le_px[idx] }));
@@ -1138,7 +1138,7 @@ async function saveMeasurementToLog() {
     saveOfflineQueue(q);
     STATE.savedCurrentLog = true;
     updateCoachBar();
-    toast("🟠 Đang mất mạng — đã lưu tạm vào máy (sẽ tự đồng bộ khi có mạng)!");
+    toast("Đang mất mạng — đã lưu tạm vào máy (sẽ tự đồng bộ khi có mạng)!");
     return;
   }
 
@@ -1147,7 +1147,7 @@ async function saveMeasurementToLog() {
     STATE.savedCurrentLog = true;
     updateCoachBar();
     await loadLogs();
-    toast("✅ Đã lưu kết quả vào Nhật kí SQLite!");
+    toast("Đã lưu kết quả vào Nhật kí SQLite!");
   } catch (err) {
     const isNetErr = err instanceof TypeError || err.offline || !navigator.onLine;
     if (isNetErr) {
@@ -1156,7 +1156,7 @@ async function saveMeasurementToLog() {
       saveOfflineQueue(q);
       STATE.savedCurrentLog = true;
       updateCoachBar();
-      toast("🟠 Máy chủ tạm gián đoạn — đã lưu hàng đợi ngoại tuyến!");
+      toast("Máy chủ tạm gián đoạn — đã lưu hàng đợi ngoại tuyến!");
     } else {
       toast(`Lỗi lưu nhật kí: ${err.message}`);
     }
@@ -1323,7 +1323,7 @@ function renderSpeciesTab2Data(data, sVal, uVal = 0) {
       : ct.trang_thai === "NGUY_HIEM" ? "danger"
       : (ct.trang_thai === "SAT_RANH_GIOI" || ct.trang_thai === "KHONG_DANH_GIA_DUOC" || ct.trang_thai === "CHUA_CO_NGUON") ? "neutral"
       : "info";
-  const iconMain = ct.trang_thai === "SAT_RANH_GIOI" ? "⚖️" : "🛡️";
+  const iconMain = ct.trang_thai === "SAT_RANH_GIOI" ? "~" : "";
   $("#t2-verdict-box").className = `banner-25d ${cls}`;
   $("#t2-verdict-box").innerHTML = `<div class="banner-icon">${iconMain}</div><div><b>${esc(ct.tieu_de)}</b><br>${esc(ct.loi_khuyen)}</div>`;
 
@@ -1332,7 +1332,7 @@ function renderSpeciesTab2Data(data, sVal, uVal = 0) {
     $("#t2-spectrum-container").innerHTML = `
       <div class="bio-spectrum-25d">
         <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;">
-          <div style="font-weight:800; color:#0b1d3a;">📏 Phổ thích nghi sinh học: <span style="color:#e5383b;">${esc(info.ten_hien_thi)}</span></div>
+          <div style="font-weight:800; color:#0b1d3a;">Phổ thích nghi sinh học: <span style="color:#e5383b;">${esc(info.ten_hien_thi)}</span></div>
           <div style="font-size:0.8rem; color:#475569;">Dải tối ưu: <b>${esc(info.an_toan_str)}</b></div>
         </div>
         <div class="bio-pin-track">
@@ -1347,9 +1347,9 @@ function renderSpeciesTab2Data(data, sVal, uVal = 0) {
         </div>
         <div class="bio-ticks">
           <span>0 ‰</span>
-          <span>🟢 An toàn (${esc(info.an_toan_str)})</span>
-          <span>🟡 Cảnh báo</span>
-          <span>🔴 Nguy hiểm (&gt; ${info.nguy_hiem_tren !== null ? info.nguy_hiem_tren : p.s_max_scale} ‰)</span>
+          <span>An toàn (${esc(info.an_toan_str)})</span>
+          <span>Cảnh báo</span>
+          <span>Nguy hiểm (&gt; ${info.nguy_hiem_tren !== null ? info.nguy_hiem_tren : p.s_max_scale} ‰)</span>
           <span>${p.s_max_scale} ‰</span>
         </div>
       </div>
@@ -1358,9 +1358,9 @@ function renderSpeciesTab2Data(data, sVal, uVal = 0) {
     $("#t2-spectrum-container").innerHTML = "";
   }
 
-  $("#t2-citation-box").innerHTML = `📚 <b>Nguồn tài liệu trích dẫn:</b> ${esc(ct.nguon_tham_khao)}`;
+  $("#t2-citation-box").innerHTML = `<b>Nguồn tài liệu trích dẫn:</b> ${esc(ct.nguon_tham_khao)}`;
   $("#t2-matrix-body").innerHTML = (data.ma_tran || []).map((r) => {
-    const icon = r.trang_thai === "AN_TOAN" ? "🟢" : r.trang_thai === "CANH_BAO" ? "🟡" : r.trang_thai === "NGUY_HIEM" ? "🔴" : r.trang_thai === "SAT_RANH_GIOI" ? "⚖️" : "⚪";
+    const icon = r.trang_thai === "AN_TOAN" ? "✓" : r.trang_thai === "CANH_BAO" ? "!" : r.trang_thai === "NGUY_HIEM" ? "!" : r.trang_thai === "SAT_RANH_GIOI" ? "~" : "•";
     return `<tr>
       <td><b>${esc(r.ten_loai)}</b></td>
       <td>${icon} ${esc(r.trang_thai)}</td>
@@ -1443,7 +1443,7 @@ async function saveSpeciesConfig() {
     $("#t2-species-select").value = res.ma_loai;
     $("#t2-edit-preset").value = res.ma_loai;
     await evaluateSpeciesTab2();
-    toast("✅ Đã lưu ngưỡng loài vào config.yaml!");
+    toast("Đã lưu ngưỡng loài vào config.yaml!");
   } catch (err) {
     toast(`Lỗi lưu ngưỡng loài: ${err.message}`);
   }
@@ -1461,7 +1461,7 @@ async function saveOpticsConfig() {
       STATE.bootstrap.quang_hoc = res.quang_hoc;
       updateModelBadges(STATE.bootstrap.mo_hinh, res.quang_hoc);
     }
-    toast(`✅ Đã lưu A=${res.quang_hoc.A_do}°, D=${res.quang_hoc.D_m}m vào config.yaml!`);
+    toast(`Đã lưu A=${res.quang_hoc.A_do}°, D=${res.quang_hoc.D_m}m vào config.yaml!`);
   } catch (err) {
     toast(`Lỗi lưu cấu hình quang học: ${err.message}`);
   }
@@ -1544,7 +1544,7 @@ async function loadLogs(_retry = false) {
     if (sp !== "ALL") parts.push(`loài “${sp}”`);
     if (src !== "ALL") parts.push(`nguồn “${src}”`);
     $("#t3-filter-hint").textContent = parts.length
-      ? `🔎 Đang lọc theo ${parts.join(", ")} — ${sm.tong_so || 0}/${sm.tong_tat_ca ?? 0} bản ghi. Nút Xuất CSV sẽ chỉ xuất các bản ghi đang hiển thị.`
+      ? `Đang lọc theo ${parts.join(", ")} — ${sm.tong_so || 0}/${sm.tong_tat_ca ?? 0} bản ghi. Nút Xuất CSV sẽ chỉ xuất các bản ghi đang hiển thị.`
       : `Đang hiển thị toàn bộ ${sm.tong_tat_ca ?? 0} bản ghi.`;
     $("#t3-btn-reset-filter").disabled = parts.length === 0;
 
@@ -1553,7 +1553,7 @@ async function loadLogs(_retry = false) {
     const rateThresh = threshRaw !== "" && Number(threshRaw) > 0 ? Number(threshRaw) : null;
     if (!rows.length) {
       $("#t3-table-body").innerHTML = `<tr class="log-empty-row"><td colspan="13">
-        📭 Chưa có bản ghi nào${parts.length ? " phù hợp với bộ lọc" : ""}. Hãy đo mẫu nước ở tab <b>Đo Nước</b> rồi bấm <b>Lưu kết quả</b>.
+        Chưa có bản ghi nào${parts.length ? " phù hợp với bộ lọc" : ""}. Hãy đo mẫu nước ở tab <b>Đo Nước</b> rồi bấm <b>Lưu kết quả</b>.
       </td></tr>`;
     } else {
       $("#t3-table-body").innerHTML = rows.map((r) => {
@@ -1566,7 +1566,7 @@ async function loadLogs(_retry = false) {
           const txt = `${sign}${fmt(rNum, 2)} ± ${fmt(Number(uRate || 0), 2)}`;
           const over = rateThresh !== null && Math.abs(rNum) >= rateThresh;
           rateHtml = over
-            ? `<span style="color:#b91c1c; font-weight:700;" title="Vượt ngưỡng tự đặt (${rateThresh} ‰/giờ)">⚠️ ${txt}</span>`
+            ? `<span style="color:#b91c1c; font-weight:700;" title="Vượt ngưỡng tự đặt (${rateThresh} ‰/giờ)">${txt}</span>`
             : txt;
         }
         return `
@@ -1586,7 +1586,7 @@ async function loadLogs(_retry = false) {
           <td style="text-align:center;">
             <button type="button" class="btn-row-delete" data-delete-id="${esc(r.id)}"
               data-desc="${esc(`${r.thoi_gian} • ${r.vi_tri} • ${fmt(r.do_man_ppt, 2)} ‰`)}"
-              title="Xóa bản ghi này">🗑️</button>
+              title="Xóa bản ghi này"></button>
           </td>
         </tr>
       `;
@@ -1611,7 +1611,7 @@ async function deleteLogRow(btn) {
     const tr = btn.closest("tr");
     if (tr) tr.style.opacity = "0.35";
     await loadLogs();
-    toast(`🗑️ Đã xóa bản ghi: ${desc}`);
+    toast(`Đã xóa bản ghi: ${desc}`);
   } catch (err) {
     btn.disabled = false;
     toast(`Lỗi xóa bản ghi: ${err.message}`);
@@ -1681,11 +1681,11 @@ async function runCalibrate(activate = false) {
 
     $("#t4-equation-box").textContent = mh.phuong_trinh;
     if (mh.la_mo_phong) {
-      $("#t4-model-warning").innerHTML = `<div class="banner-25d warn"><div class="banner-icon">⚠️</div><div>Đường chuẩn này dựng từ <b>DỮ LIỆU MÔ PHỎNG</b>, không phải số đo thực nghiệm.</div></div>`;
+      $("#t4-model-warning").innerHTML = `<div class="banner-25d warn"><div class="banner-icon">!</div><div>Đường chuẩn này dựng từ <b>DỮ LIỆU MÔ PHỎNG</b>, không phải số đo thực nghiệm.</div></div>`;
     } else if (mh.da_xac_nhan_thuc_te) {
-      $("#t4-model-warning").innerHTML = `<div class="banner-25d ok"><div class="banner-icon">✅</div><div><b>ĐÃ HIỆU CHUẨN (dữ liệu đo thật)!</b></div></div>`;
+      $("#t4-model-warning").innerHTML = `<div class="banner-25d ok"><div class="banner-icon">✓</div><div><b>ĐÃ HIỆU CHUẨN (dữ liệu đo thật)!</b></div></div>`;
     } else {
-      $("#t4-model-warning").innerHTML = `<div class="banner-25d warn"><div class="banner-icon">⚠️</div><div><b>CHƯA XÁC NHẬN NGUỒN DỮ LIỆU:</b> File CSV thiếu cột <code>nguon_du_lieu=THUC_TE</code> nên KHÔNG được gắn nhãn đo thật.</div></div>`;
+      $("#t4-model-warning").innerHTML = `<div class="banner-25d warn"><div class="banner-icon">!</div><div><b>CHƯA XÁC NHẬN NGUỒN DỮ LIỆU:</b> File CSV thiếu cột <code>nguon_du_lieu=THUC_TE</code> nên KHÔNG được gắn nhãn đo thật.</div></div>`;
     }
 
     $("#t4-level-table-body").innerHTML = (data.sai_so_theo_muc || []).map((r) => `
@@ -1708,7 +1708,7 @@ async function runCalibrate(activate = false) {
         STATE.bootstrap.mo_hinh = mh;
         updateModelBadges(mh, STATE.bootstrap.quang_hoc);
       }
-      toast(`✅ Đã lưu và kích hoạt đường chuẩn (${data.saved_file})!`);
+      toast(`Đã lưu và kích hoạt đường chuẩn (${data.saved_file})!`);
       if (STATE.lastMeasure) runMeasure();
     }
   } catch (err) {
@@ -1776,7 +1776,7 @@ function renderOpticsSvg(d) {
 
   const exitRays = d.tir
     ? `<line x1="215" y1="95" x2="170" y2="155" stroke="#ef4444" stroke-width="2.6" stroke-dasharray="5,4"/>
-       <text x="235" y="100" fill="#fca5a5" font-size="12" font-weight="700">🚨 PHẢN XẠ TOÀN PHẦN (n·sinA ≥ 1)</text>`
+       <text x="235" y="100" fill="#fca5a5" font-size="12" font-weight="700">PHẢN XẠ TOÀN PHẦN (n·sinA ≥ 1)</text>`
     : `<line x1="218" y1="82" x2="430" y2="${yTc.toFixed(1)}" stroke="#34d399" stroke-width="2.2" stroke-dasharray="4,3" opacity="0.88"/>
        <line x1="218" y1="108" x2="430" y2="${yMau.toFixed(1)}" stroke="#ff4d4f" stroke-width="2.5" opacity="0.92"/>`;
 
@@ -1854,7 +1854,7 @@ async function runOpticsSim() {
     renderOpticsSvg(data);
 
     if (data.tir) {
-      $("#t5-tir-alert").innerHTML = `<div class="banner-25d danger"><div class="banner-icon">🚨</div><div><b>PHẢN XẠ TOÀN PHẦN (TIR):</b> n·sin(A) = ${fmt(data.n_sin_A, 4)} ≥ 1. Tia laser bị phản xạ ngược bên trong, hãy giảm góc đỉnh A!</div></div>`;
+      $("#t5-tir-alert").innerHTML = `<div class="banner-25d danger"><div class="banner-icon">!</div><div><b>PHẢN XẠ TOÀN PHẦN (TIR):</b> n·sin(A) = ${fmt(data.n_sin_A, 4)} ≥ 1. Tia laser bị phản xạ ngược bên trong, hãy giảm góc đỉnh A!</div></div>`;
       $("#t5-kpi-theta").textContent = "TIR";
       $("#t5-kpi-delta").textContent = "TIR";
       $("#t5-kpi-sens").textContent = "N/A";
@@ -1871,9 +1871,9 @@ async function runOpticsSim() {
     if (mAlertEl) {
       const warns = data.canh_bao_mo_hinh || [];
       if (warns.length) {
-        mAlertEl.innerHTML = `<div class="banner-25d warn" style="margin-top:8px;"><div class="banner-icon">⚠️</div><div>${warns.map(esc).join("<br>")}</div></div>`;
+        mAlertEl.innerHTML = `<div class="banner-25d warn" style="margin-top:8px;"><div class="banner-icon">!</div><div>${warns.map(esc).join("<br>")}</div></div>`;
       } else if (data.mo_hinh_chiet_suat === "quan_fry") {
-        mAlertEl.innerHTML = `<div class="banner-25d info" style="margin-top:8px;"><div class="banner-icon">ℹ️</div><div>Đang dùng công thức Quan–Fry (λ=${fmt(data.buoc_song_nm, 0)} nm, hiệu lực 0–30 °C, 0–35 ‰, 400–700 nm). Các hệ số do nhóm cung cấp và phải đối chiếu bài gốc Quan &amp; Fry (1995) trước khi đưa vào báo cáo.</div></div>`;
+        mAlertEl.innerHTML = `<div class="banner-25d info" style="margin-top:8px;"><div class="banner-icon">i</div><div>Đang dùng công thức Quan–Fry (λ=${fmt(data.buoc_song_nm, 0)} nm, hiệu lực 0–30 °C, 0–35 ‰, 400–700 nm). Các hệ số do nhóm cung cấp và phải đối chiếu bài gốc Quan &amp; Fry (1995) trước khi đưa vào báo cáo.</div></div>`;
       } else {
         mAlertEl.innerHTML = "";
       }
@@ -1889,11 +1889,11 @@ async function runOpticsSim() {
         <tr style="background:#eff6ff;"><td><b>∑ TỔNG HỢP TOÀN PHƯƠNG (RSS 1σ)</b></td><td><b>${fmt(ns.tong_RSS, 4)}</b></td></tr>
       `;
       $("#t5-rss-banner").className = "banner-25d ok";
-      $("#t5-rss-banner").innerHTML = `<div class="banner-icon">🎯</div><div>Tổng bất định chuẩn thiết kế (1σ): <b>± ${fmt(ns.tong_RSS, 3)} ‰</b> — Mở rộng U₉₅% ≈ <b>± ${fmt(2 * ns.tong_RSS, 3)} ‰</b></div>`;
+      $("#t5-rss-banner").innerHTML = `<div class="banner-icon">Σ</div><div>Tổng bất định chuẩn thiết kế (1σ): <b>± ${fmt(ns.tong_RSS, 3)} ‰</b> — Mở rộng U₉₅% ≈ <b>± ${fmt(2 * ns.tong_RSS, 3)} ‰</b></div>`;
     } else {
       $("#t5-rss-body").innerHTML = "";
       $("#t5-rss-banner").className = "banner-25d danger";
-      $("#t5-rss-banner").innerHTML = `<div class="banner-icon">🚨</div><div>Không tính được RSS do góc A vượt ngưỡng phản xạ toàn phần.</div>`;
+      $("#t5-rss-banner").innerHTML = `<div class="banner-icon">!</div><div>Không tính được RSS do góc A vượt ngưỡng phản xạ toàn phần.</div>`;
     }
 
     drawOpticsCharts(data);
@@ -1957,7 +1957,7 @@ async function runBlandAltman(mode = "custom", csvText = null) {
     $("#t6-kpi-r2").textContent = `R² = ${fmt(data.r2, 5)}`;
 
     $("#t6-conclusion-box").innerHTML =
-      `<div class="banner-icon">🎯</div><div><b>Kết luận thống kê phục vụ thuyết minh KHKT:</b> Khoảng 95% sai khác giữa thiết bị của dự án và khúc xạ kế nằm trong dải <b>[${fmt(data.loa_lower, 2)} ‰, ${fmt(data.loa_upper, 2)} ‰]</b> với độ lệch trung bình Bias = <b>${data.mean_diff >= 0 ? "+" : ""}${fmt(data.mean_diff, 3)} ‰</b> (r = ${fmt(data.r_corr, 4)}).</div>`;
+      `<div class="banner-icon">Σ</div><div><b>Kết luận thống kê phục vụ thuyết minh KHKT:</b> Khoảng 95% sai khác giữa thiết bị của dự án và khúc xạ kế nằm trong dải <b>[${fmt(data.loa_lower, 2)} ‰, ${fmt(data.loa_upper, 2)} ‰]</b> với độ lệch trung bình Bias = <b>${data.mean_diff >= 0 ? "+" : ""}${fmt(data.mean_diff, 3)} ‰</b> (r = ${fmt(data.r_corr, 4)}).</div>`;
 
     drawBaCharts(data);
   } catch (err) {
@@ -2091,16 +2091,16 @@ async function startCamera() {
     }
     $("#camera-video").srcObject = STATE.cameraStream;
     setCameraUi(true);
-    $("#cam-status").innerHTML = "✅ Camera đã bật — hướng vào màn hứng 2 vạch laser rồi nhấn <b>Chụp &amp; Đo</b>.";
+    $("#cam-status").innerHTML = "Camera đã bật — hướng vào màn hứng 2 vạch laser rồi nhấn <b>Chụp &amp; Đo</b>.";
   } catch (err) {
     STATE.cameraStream = null;
     setCameraUi(false);
     const name = err && err.name;
     let msg = `Không mở được Camera: ${err.message || err}`;
     if (name === "NotAllowedError" || name === "SecurityError") {
-      msg = "Bạn đã từ chối quyền dùng camera. Hãy bấm biểu tượng 🔒 trên thanh địa chỉ → cho phép Camera rồi thử lại.";
+      msg = "Bạn đã từ chối quyền dùng camera. Hãy bấm biểu tượng trên thanh địa chỉ → cho phép Camera rồi thử lại.";
     } else if (name === "NotFoundError" || name === "OverconstrainedError") {
-      msg = "Không tìm thấy camera trên thiết bị này. Bạn có thể dùng mục 🖼️ Chọn ảnh thay thế.";
+      msg = "Không tìm thấy camera trên thiết bị này. Bạn có thể dùng mục Chọn ảnh thay thế.";
     } else if (name === "NotReadableError") {
       msg = "Camera đang được ứng dụng khác sử dụng. Hãy đóng ứng dụng đó rồi thử lại.";
     }
@@ -2120,7 +2120,7 @@ function snapCameraAndMeasure() {
   c.getContext("2d").drawImage(video, 0, 0);
   // JPEG chất lượng cao (0.94): giữ nguyên độ phân giải pixel nhưng giảm ~10-15x dung lượng tải lên trên di động
   STATE.cameraImageB64 = c.toDataURL("image/jpeg", 0.94);
-  $("#cam-status").textContent = `📸 Đã chụp ảnh ${c.width}×${c.height} px — đang phân tích...`;
+  $("#cam-status").textContent = `Đã chụp ảnh ${c.width}×${c.height} px — đang phân tích...`;
   runMeasure();
 }
 
@@ -2137,7 +2137,7 @@ async function runMeasureMulti(imagesB64, label, timesSec = null) {
     basePayload.thoi_gian_s = timesSec;
   }
   const seq = ++STATE.measureSeq;
-  toast(`🎞️ Đang phân tích chuỗi ${imagesB64.length} khung (${label})...`);
+  toast(`Đang phân tích chuỗi ${imagesB64.length} khung (${label})...`);
   try {
     const data = await apiPost("/api/measure-multi", basePayload, "measure");
     if (seq !== STATE.measureSeq) return;
@@ -2170,7 +2170,7 @@ async function snapBurstAndMeasure(nFrames = 5) {
     if (i < nFrames - 1) await new Promise((r) => setTimeout(r, 120));
   }
   STATE.cameraImageB64 = frames[0];
-  $("#cam-status").textContent = `🎞️ Đã chụp chuỗi ${frames.length} khung (${c.width}×${c.height} px) — đang xử lí...`;
+  $("#cam-status").textContent = `Đã chụp chuỗi ${frames.length} khung (${c.width}×${c.height} px) — đang xử lí...`;
   await runMeasureMulti(frames, "Camera burst");
 }
 
@@ -2191,11 +2191,11 @@ async function snapThermalMonitor(nFrames = 8, intervalMs = 1500) {
     ctx.drawImage(video, 0, 0);
     frames.push(c.toDataURL("image/jpeg", 0.92));
     times.push(Math.round(((performance.now() - t0) / 1000.0) * 100) / 100);
-    $("#cam-status").textContent = `⏱️ Đang ghi cân bằng nhiệt khung ${i + 1}/${nFrames}...`;
+    $("#cam-status").textContent = `Đang ghi cân bằng nhiệt khung ${i + 1}/${nFrames}...`;
     if (i < nFrames - 1) await new Promise((r) => setTimeout(r, intervalMs));
   }
   STATE.cameraImageB64 = frames[frames.length - 1];
-  $("#cam-status").textContent = `⏱️ Đã thu ${frames.length} khung theo thời gian — đang khớp Δy(t)...`;
+  $("#cam-status").textContent = `Đã thu ${frames.length} khung theo thời gian — đang khớp Δy(t)...`;
   await runMeasureMulti(frames, "Cân bằng nhiệt", times);
 }
 
@@ -2274,11 +2274,11 @@ function resetUploadPreview() {
 function handleLaserFile(file, sourceLabel) {
   if (!file) return;
   if (!file.type || !file.type.startsWith("image/")) {
-    toast("⚠️ File đã chọn không phải là ảnh. Hãy chọn ảnh JPG hoặc PNG.");
+    toast("File đã chọn không phải là ảnh. Hãy chọn ảnh JPG hoặc PNG.");
     return;
   }
   if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
-    toast(`⚠️ Ảnh quá lớn (${(file.size / 1048576).toFixed(1)} MB). Giới hạn ${MAX_UPLOAD_MB} MB.`);
+    toast(`Ảnh quá lớn (${(file.size / 1048576).toFixed(1)} MB). Giới hạn ${MAX_UPLOAD_MB} MB.`);
     return;
   }
   if (STATE.imgMode !== "upload") setImgMode("upload");
@@ -2332,7 +2332,7 @@ function bindEvents() {
     await loadLogs();
     if (STATE.lastMeasure) runMeasure({ silent: true });
     const label = STATE.hoSo === "mac_dinh" ? "Mặc định (chung)" : STATE.hoSo;
-    toast(`🏠 Đang dùng hồ sơ: ${label}`);
+    toast(`Đang dùng hồ sơ: ${label}`);
   };
   $("#sb-profile-select").addEventListener("change", (ev) => switchProfile(ev.target.value));
   $("#btn-add-profile").addEventListener("click", () => {
@@ -2422,7 +2422,7 @@ function bindEvents() {
     $("#sim-drift").value = "4"; $("#val-sim-drift").textContent = "+4.0 px";
     switchTab("tab-1");
     runMeasure();
-    toast("⚡ Đã chạy mẫu thử 16.5 ‰!");
+    toast("Đã chạy mẫu thử 16.5 ‰!");
   };
   $("#btn-coach-quickstart").addEventListener("click", runQuickDemo);
   $("#btn-modal-quickstart").addEventListener("click", runQuickDemo);
@@ -2652,7 +2652,7 @@ function bindEvents() {
         const cls = dg.trang_thai === "AN_TOAN" ? "ok" : dg.trang_thai === "CANH_BAO" ? "warn" : dg.trang_thai === "NGUY_HIEM" ? "danger" : (dg.trang_thai === "SAT_RANH_GIOI" || dg.trang_thai === "KHONG_DANH_GIA_DUOC" || dg.trang_thai === "CHUA_CO_NGUON") ? "neutral" : "info";
         const vBox = $("#t1-species-verdict");
         vBox.className = `banner-25d ${cls}`;
-        vBox.innerHTML = `<div class="banner-icon">${dg.trang_thai === "SAT_RANH_GIOI" ? "⚖️" : "🔎"}</div><div><b>${esc(dg.tieu_de)}</b><br>${esc(dg.loi_khuyen)}</div>`;
+        vBox.innerHTML = `<div class="banner-icon">${dg.trang_thai === "SAT_RANH_GIOI" ? "~" : "?"}</div><div><b>${esc(dg.tieu_de)}</b><br>${esc(dg.loi_khuyen)}</div>`;
         return;
       }
     }
@@ -2757,7 +2757,7 @@ function bindEvents() {
   $("#t3-btn-sample").addEventListener("click", async () => {
     await apiPost("/api/logs/sample", {});
     await loadLogs();
-    toast("✅ Đã nạp 10 bản ghi mô phỏng vào Nhật kí!");
+    toast("Đã nạp 10 bản ghi mô phỏng vào Nhật kí!");
   });
   $("#t3-btn-clear").addEventListener("click", async () => {
     const total = STATE.logLast?.summary?.tong_tat_ca ?? 0;
@@ -2765,11 +2765,11 @@ function bindEvents() {
       toast("Nhật kí đang trống, không có gì để xóa.");
       return;
     }
-    if (!window.confirm(`⚠️ Xóa TOÀN BỘ ${total} bản ghi trong Nhật kí (mọi ao, mọi loài)?\n\nThao tác này không thể hoàn tác. Nên bấm "Xuất CSV" để sao lưu trước.`)) return;
+    if (!window.confirm(`Xóa TOÀN BỘ ${total} bản ghi trong Nhật kí (mọi ao, mọi loài)?\n\nThao tác này không thể hoàn tác. Nên bấm "Xuất CSV" để sao lưu trước.`)) return;
     try {
       await apiPost("/api/logs/clear", {});
       await loadLogs();
-      toast("🗑️ Đã xóa sạch Nhật kí đo!");
+      toast("Đã xóa sạch Nhật kí đo!");
     } catch (err) {
       toast(`Lỗi xóa nhật kí: ${err.message}`);
     }
@@ -2786,7 +2786,7 @@ function bindEvents() {
     reader.onload = () => {
       STATE.calibCsvText = String(reader.result || "");
       $("#t4-source-banner").className = "banner-25d ok";
-      $("#t4-source-banner").innerHTML = `<div class="banner-icon">📄</div><div>Đã nạp file <b>${esc(f.name)}</b>. Nhấn <b>Dựng đường chuẩn</b> để phân tích.</div>`;
+      $("#t4-source-banner").innerHTML = `<div class="banner-icon">CSV</div><div>Đã nạp file <b>${esc(f.name)}</b>. Nhấn <b>Dựng đường chuẩn</b> để phân tích.</div>`;
       runCalibrate(false);
     };
     reader.readAsText(f, "utf-8");
@@ -2795,7 +2795,7 @@ function bindEvents() {
     STATE.calibMode = "sim";
     STATE.calibCsvText = null;
     $("#t4-source-banner").className = "banner-25d warn";
-    $("#t4-source-banner").innerHTML = `<div class="banner-icon">🧪</div><div>Đang dùng bộ dữ liệu mô phỏng Snell (72 điểm).</div>`;
+    $("#t4-source-banner").innerHTML = `<div class="banner-icon">SIM</div><div>Đang dùng bộ dữ liệu mô phỏng Snell (72 điểm).</div>`;
     runCalibrate(false);
   });
   $("#t4-btn-fit").addEventListener("click", () => runCalibrate(false));
@@ -2855,56 +2855,56 @@ function initLiveTour() {
       selector: "#net-status-pill",
       title: "1. Chế độ Ngoại tuyến (PWA & Đồng bộ Offline)",
       desc: "Huy hiệu này báo trạng thái Trực tuyến hoặc Ngoại tuyến. Ứng dụng có thể cài như app (PWA), lưu đệm giao diện để dùng ngay cả khi ra ao mất mạng; mọi phép đo chưa gửi sẽ xếp vào hàng đợi và tự đồng bộ khi có Internet.",
-      hint: "👉 Mẹo: Khi mất mạng, biểu tượng hàng đợi màu vàng sẽ hiện cạnh đây để bạn theo dõi.",
+      hint: "Mẹo: Khi mất mạng, biểu tượng hàng đợi màu vàng sẽ hiện cạnh đây để bạn theo dõi.",
     },
     {
       tab: "tab-1",
       selector: ".sb-profile-row",
       title: "2. Quản lý Đa hồ sơ hộ nuôi / xưởng",
       desc: "Mỗi hộ nuôi tôm, ruộng lúa hoặc phân xưởng công nghiệp có thể tạo một Hồ sơ riêng. Dữ liệu nhật kí SQLite và file đường chuẩn JSON được tách biệt hoàn toàn giữa các hồ sơ.",
-      hint: "👉 Mẹo: Đổi hồ sơ trong danh sách hoặc bấm nút + để tạo hồ sơ mới.",
+      hint: "Mẹo: Đổi hồ sơ trong danh sách hoặc bấm nút + để tạo hồ sơ mới.",
     },
     {
       tab: "tab-1",
       selector: "#sb-calib-status",
       title: "3. Trạng thái Đường chuẩn & Thông số Quang học",
       desc: "Thẻ thanh bên hiển thị máy đang dùng đường chuẩn Mô phỏng hay Thực nghiệm (kèm R², sai số dư s_res), cùng góc lăng kính A, khoảng cách màn D và độ nhạy quang học hiện tại.",
-      hint: "👉 Mẹo: Bấm Tiếp theo hoặc xem các thông số thiết bị ngay bên thanh trái.",
+      hint: "Mẹo: Bấm Tiếp theo hoặc xem các thông số thiết bị ngay bên thanh trái.",
     },
     {
       tab: "tab-1",
       selector: ".ui-mode-switch",
       title: "4. Chuyển chế độ Dễ dùng & Kỹ thuật",
-      desc: "🌾 Dễ dùng ẩn bớt các bảng chuyên sâu để nông dân thao tác nhanh ngoài ao. 🔬 Kỹ thuật mở toàn bộ đồ thị Gauss, thông số sai số, hiệu chuẩn, mô phỏng quang học và đối chứng thiết bị.",
-      hint: "👉 Mẹo: Nhấn thử nút Dễ dùng / Kỹ thuật hoặc đợi tự chuyển bước.",
+      desc: "Dễ dùng ẩn bớt các bảng chuyên sâu để nông dân thao tác nhanh ngoài ao. Kỹ thuật mở toàn bộ đồ thị Gauss, thông số sai số, hiệu chuẩn, mô phỏng quang học và đối chứng thiết bị.",
+      hint: "Mẹo: Nhấn thử nút Dễ dùng / Kỹ thuật hoặc đợi tự chuyển bước.",
     },
     {
       tab: "tab-1",
       selector: ".segmented-25d",
       title: "5. Chọn nguồn ảnh mẫu nước (3 cách)",
-      desc: "Chọn 🧪 Thử mẫu để mô phỏng nhanh bằng thanh trượt; 📁 Tải ảnh để nạp ảnh vạch laser chụp sẵn (có khung xem trước); hoặc 📷 Camera để chụp trực tiếp bằng webcam/camera sau điện thoại.",
-      hint: "👉 Mẹo: Chọn một nguồn ảnh hoặc kéo thanh độ mặn mô phỏng để chuyển bước ngay.",
+      desc: "Chọn Thử mẫu để mô phỏng nhanh bằng thanh trượt; Tải ảnh để nạp ảnh vạch laser chụp sẵn (có khung xem trước); hoặc Camera để chụp trực tiếp bằng webcam/camera sau điện thoại.",
+      hint: "Mẹo: Chọn một nguồn ảnh hoặc kéo thanh độ mặn mô phỏng để chuyển bước ngay.",
     },
     {
       tab: "tab-1",
       selector: "#meas-location",
       title: "6. Nhập tên Ao nuôi / Vị trí lấy mẫu",
       desc: "Ghi tên ao hoặc vị trí đo (ví dụ: Ao nuôi tôm số 1, Kênh cấp) để phân loại nhật kí. Hệ thống tự động ghi nhớ và gợi ý lại các tên ao bạn từng đo.",
-      hint: "👉 Mẹo: Nhập hoặc chọn tên ao của bạn rồi bấm Enter / nhấn ra ngoài.",
+      hint: "Mẹo: Nhập hoặc chọn tên ao của bạn rồi bấm Enter / nhấn ra ngoài.",
     },
     {
       tab: "tab-1",
       selector: "#meas-temp",
       title: "7. Nhập nhiệt độ mẫu nước (°C)",
       desc: "Nhập nhiệt độ nước thực tế từ nhiệt kế (mặc định 26.0 °C). Thuật toán tự động bù sai lệch chiết suất theo nhiệt độ để đảm bảo độ chính xác độ mặn.",
-      hint: "👉 Mẹo: Chỉnh nhiệt độ mẫu nước thực tế hoặc bấm Tiếp theo.",
+      hint: "Mẹo: Chỉnh nhiệt độ mẫu nước thực tế hoặc bấm Tiếp theo.",
     },
     {
       tab: "tab-1",
       selector: "#btn-run-measure",
       title: "8. Chạy phép đo Độ mặn & Độ đục",
       desc: "Khi bấm Kiểm tra nước ngay, hệ thống tự định vị 2 vạch laser (tham chiếu 0‰ và mẫu nước), tính độ lệch đứng Δy dưới mức 1 pixel, suy ra độ mặn (‰) và chỉ số độ đục.",
-      hint: "👉 Mẹo: Nhấn nút Kiểm tra nước ngay để xem hệ thống phân tích.",
+      hint: "Mẹo: Nhấn nút Kiểm tra nước ngay để xem hệ thống phân tích.",
     },
     {
       tab: "tab-1",
@@ -2912,7 +2912,7 @@ function initLiveTour() {
       selector: ".kpi-row-4",
       title: "9. Đọc 4 chỉ số: Độ mặn, Δy, Độ đục & Chất lượng",
       desc: "4 thẻ kết quả hiển thị đầy đủ: Độ mặn (‰) kèm độ bất định mở rộng ± U, độ lệch vi sai Δy (px), mức Độ đục (FWHM) và Chất lượng ảnh + tỉ lệ tín hiệu/nhiễu SNR.",
-      hint: "👉 Mẹo: Hệ thống tự cảnh báo nếu ảnh bị bão hòa lóa sáng hoặc quá mờ.",
+      hint: "Mẹo: Hệ thống tự cảnh báo nếu ảnh bị bão hòa lóa sáng hoặc quá mờ.",
     },
     {
       tab: "tab-1",
@@ -2920,42 +2920,42 @@ function initLiveTour() {
       selector: ".t1-img-col .chassis-panel-25d",
       title: "10. Ảnh nhận diện 2 vạch & Mặt cắt Gauss I(y)",
       desc: "Ảnh đánh dấu trực quan vị trí vạch chuẩn (xanh) và vạch mẫu (cam). Ở chế độ Kỹ thuật, bên cạnh còn có đồ thị Mặt cắt cường độ Gauss I(y) giúp kiểm chứng độ mượt đỉnh tia laser.",
-      hint: "👉 Mẹo: Có thể mở thêm ngăn 'Chi tiết kỹ thuật' bên dưới để xem bảng thống kê từng vạch.",
+      hint: "Mẹo: Có thể mở thêm ngăn 'Chi tiết kỹ thuật' bên dưới để xem bảng thống kê từng vạch.",
     },
     {
       tab: "tab-1",
       selector: "#t1-species-select",
       title: "11. Kiểm tra nhanh Ngưỡng an toàn cho Loài nuôi",
       desc: "Chọn tôm sú, tôm thẻ, cá tra, lúa, sầu riêng... Hệ thống đối chiếu ngay độ mặn vừa đo với ngưỡng sinh học (Xanh: An toàn, Vàng: Cảnh báo, Đỏ: Nguy hiểm) kèm khuyến cáo.",
-      hint: "👉 Mẹo: Thử đổi loài nuôi trong danh sách để xem kết quả cảnh báo đổi màu.",
+      hint: "Mẹo: Thử đổi loài nuôi trong danh sách để xem kết quả cảnh báo đổi màu.",
     },
     {
       tab: "tab-1",
       selector: "#btn-save-log",
       title: "12. Lưu kết quả vào Nhật kí (Hỗ trợ Offline)",
       desc: "Bấm Lưu kết quả để ghi phép đo vào cơ sở dữ liệu SQLite theo đúng hồ sơ và tên ao hiện tại. Nếu mất mạng, phép đo tự lưu vào hàng đợi Offline trên máy.",
-      hint: "👉 Mẹo: Nhấn Lưu kết quả để ghi lại phép đo này vào Nhật kí.",
+      hint: "Mẹo: Nhấn Lưu kết quả để ghi lại phép đo này vào Nhật kí.",
     },
     {
       tab: "tab-2",
       selector: "#t2-spectrum-container",
       title: "13. Tab 2: Dải phổ Ngưỡng sinh học & Ma trận loài",
       desc: "Tab Ngưỡng loài nuôi trực quan hóa dải độ mặn An toàn / Cảnh báo / Nguy hiểm cho từng loài, hiển thị trích dẫn nguồn khoa học và bảng ma trận so sánh toàn bộ loài cùng lúc.",
-      hint: "👉 Mẹo: Bạn có thể chọn nhanh loài khác hoặc nhập giá trị độ mặn tùy ý để mô phỏng.",
+      hint: "Mẹo: Bạn có thể chọn nhanh loài khác hoặc nhập giá trị độ mặn tùy ý để mô phỏng.",
     },
     {
       tab: "tab-2",
       selector: "#t2-edit-species-drawer",
       title: "14. Tab 2: Thêm / Sửa ngưỡng loài vào config.yaml",
       desc: "Mở ngăn kéo này để thêm loài thủy sản/cây trồng mới hoặc điều chỉnh lại các ngưỡng an toàn, cảnh báo, nguy hiểm và nguồn tham khảo. Dữ liệu được lưu thẳng vào file config.yaml.",
-      hint: "👉 Mẹo: Bấm vào tiêu đề ngăn kéo để mở biểu mẫu chỉnh sửa trực tiếp.",
+      hint: "Mẹo: Bấm vào tiêu đề ngăn kéo để mở biểu mẫu chỉnh sửa trực tiếp.",
     },
     {
       tab: "tab-3",
       selector: "#t3-filter-location",
       title: "15. Tab 3: Nhật kí theo Ao, Xuất CSV & Xóa dòng",
       desc: "Tab Nhật kí đo cho phép lọc theo từng Ao/vị trí, theo Loài hoặc Nguồn đo; xuất file CSV đúng theo bộ lọc đang chọn; nạp 10 mẫu thử nghiệm hoặc xóa từng bản ghi sai.",
-      hint: "👉 Mẹo: Thử đổi bộ lọc Ao hoặc bấm Xuất CSV để tải báo cáo.",
+      hint: "Mẹo: Thử đổi bộ lọc Ao hoặc bấm Xuất CSV để tải báo cáo.",
     },
     {
       tab: "tab-4",
@@ -2963,7 +2963,7 @@ function initLiveTour() {
       selector: "#t4-btn-fit",
       title: "16. Tab 4: Hiệu chuẩn máy từ CSV Thực nghiệm 7 cột",
       desc: "Tab Hiệu chuẩn cho phép tải file CSV đo mẫu chuẩn NaCl (hoặc dùng 72 điểm mô phỏng Snell), tự chọn bậc đa thức tối ưu qua kiểm định chéo, xem R²/RMSE và Lưu & Áp dụng riêng cho hồ sơ hiện tại.",
-      hint: "👉 Mẹo: Tải file CSV chuẩn hoặc bấm Nạp 72 điểm mô phỏng rồi bấm Dựng đường chuẩn.",
+      hint: "Mẹo: Tải file CSV chuẩn hoặc bấm Nạp 72 điểm mô phỏng rồi bấm Dựng đường chuẩn.",
     },
     {
       tab: "tab-5",
@@ -2971,7 +2971,7 @@ function initLiveTour() {
       selector: "#t5-btn-save-config",
       title: "17. Tab 5: Mô phỏng Quang học Snell & Lưu config.yaml",
       desc: "Tab Mô phỏng quang học tính góc lệch tia laser theo góc đỉnh lăng kính A, khoảng cách màn D, kích thước pixel, kiểm tra giới hạn phản xạ toàn phần (TIR) và lưu cấu hình máy vào config.yaml.",
-      hint: "👉 Mẹo: Điều chỉnh thanh trượt A, D, pixel ở bên trái để xem độ nhạy (px/‰) thay đổi.",
+      hint: "Mẹo: Điều chỉnh thanh trượt A, D, pixel ở bên trái để xem độ nhạy (px/‰) thay đổi.",
     },
     {
       tab: "tab-6",
@@ -2979,7 +2979,7 @@ function initLiveTour() {
       selector: "#t6-btn-sample",
       title: "18. Tab 6: Đối chứng Bland–Altman với Thiết bị chuẩn",
       desc: "Tab Đối chứng thiết bị giúp bạn nhập cặp số liệu đo song song giữa máy laser và khúc xạ kế thương mại chuẩn, tự động tính độ chệch Bias, giới hạn đồng thuận LoA (±1.96 SD) và hồi quy R².",
-      hint: "👉 Hoàn tất! Bấm Hoàn tất ✓ để quay lại màn hình đo chính.",
+      hint: "Hoàn tất! Bấm Hoàn tất ✓ để quay lại màn hình đo chính.",
     },
   ];
 
@@ -3029,14 +3029,14 @@ function initLiveTour() {
     const fillEl = $("#tour-progress-fill");
     const pauseBtn = $("#btn-tour-pause");
     if (tour.paused) {
-      countdownEl.textContent = `⏸️ Đang tạm dừng (${Math.ceil(remainMs / 1000)}s)`;
+      countdownEl.textContent = `Đang tạm dừng (${Math.ceil(remainMs / 1000)}s)`;
       countdownEl.classList.add("paused");
-      if (pauseBtn) pauseBtn.textContent = "▶️ Tiếp";
+      if (pauseBtn) pauseBtn.textContent = "▶ Tiếp";
     } else {
       const remainSec = Math.max(0, Math.ceil(remainMs / 1000));
-      countdownEl.textContent = `⏳ Tự chuyển sau ${remainSec}s`;
+      countdownEl.textContent = `Tự chuyển sau ${remainSec}s`;
       countdownEl.classList.remove("paused");
-      if (pauseBtn) pauseBtn.textContent = "⏸️ Dừng";
+      if (pauseBtn) pauseBtn.textContent = "Dừng";
     }
     fillEl.style.width = `${Math.max(0, Math.min(100, (remainMs / STEP_MS) * 100))}%`;
   };
@@ -3063,7 +3063,7 @@ function initLiveTour() {
       } catch (_) {}
     }
     if (showDoneToast) {
-      toast("🎉 Đã hoàn thành toàn bộ 18 bước hướng dẫn tính năng! Chúc bạn sử dụng hiệu quả.");
+      toast("Đã hoàn thành toàn bộ 18 bước hướng dẫn tính năng! Chúc bạn sử dụng hiệu quả.");
     }
   };
 
@@ -3150,7 +3150,7 @@ function initLiveTour() {
 
   $("#btn-tour-skip").addEventListener("click", () => {
     stopTour(true, false);
-    toast("⏭️ Đã bỏ qua hướng dẫn. Bạn có thể mở lại ở thanh bên bất cứ lúc nào.");
+    toast("Đã bỏ qua hướng dẫn. Bạn có thể mở lại ở thanh bên bất cứ lúc nào.");
   });
   $("#btn-tour-next").addEventListener("click", () => goToStep(tour.idx + 1));
 

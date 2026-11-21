@@ -768,6 +768,9 @@ code, pre, .mono {
 }
 
 .dropzone-25d {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
   border: 2px dashed #94a3b8;
   border-radius: 14px;
   background: #f8fafc;

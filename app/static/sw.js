@@ -1,14 +1,14 @@
 /* Service Worker hỗ trợ chế độ Offline (PWA) cho Web App Đo Độ Mặn Vi Sai */
-const CACHE_STATIC = "salinity-static-v5";
+const CACHE_STATIC = "salinity-static-v8";
 const CACHE_DATA = "salinity-data-v1";
 
 const PRECACHE_URLS = [
   "/",
   "/manifest.json",
   "/favicon.ico",
-  "/static/styles.css",
-  "/static/app.js",
-  "/static/logo.svg",
+  "/static/styles.css?v=8",
+  "/static/app.js?v=8",
+  "/static/logo.svg?v=8",
   "/static/favicon.png",
 ];
 
