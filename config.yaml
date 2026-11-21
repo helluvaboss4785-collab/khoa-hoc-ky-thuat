@@ -63,10 +63,23 @@ hieu_chuan:                      # Tham số dựng đường chuẩn (Cột m�
   nguong_bien_thien_px_per_mm_phan_tram: 2.0  # GIẢ ĐỊNH, cần thay bằng giá trị đo được (biến thiên px/mm vượt ngưỡng % này -> cảnh báo khi dựng đường chuẩn theo px)
   sai_so_dung_dich_chuan_ppt: null  # bất định chuẩn của dung dịch NaCl chuẩn (‰) - để null khi chưa khai báo
   nhiet_do_toi_thieu_phu_C: null    # dải nhiệt độ tối thiểu cần phủ khi hiệu chuẩn (°C) - để người dùng đặt
+  dai_man_muc_tieu_ppt: [0.0, 35.0]  # GIẢ ĐỊNH, cần thay bằng giá trị đo được
   nhiet_ke_cheo:
     so_cap_toi_thieu: 6             # GIẢ ĐỊNH, cần thay bằng giá trị đo được
     so_muc_nhiet_toi_thieu: 2       # GIẢ ĐỊNH, cần thay bằng giá trị đo được
   seed: 0                        # hạt giống ngẫu nhiên để chia train/test tái lập được
+
+thiet_ke_thi_nghiem:
+  so_muc_man_toi_thieu: 6          # GIẢ ĐỊNH, cần thay bằng giá trị đo được (chỉnh cùng giáo viên)
+  phai_co_muc_0: true              # GIẢ ĐỊNH, cần thay bằng giá trị đo được (chỉnh cùng giáo viên)
+  ti_le_phu_dai_man_toi_thieu: 0.8 # GIẢ ĐỊNH, cần thay bằng giá trị đo được (chỉnh cùng giáo viên)
+  so_lan_lap_toi_thieu_moi_o: 3   # GIẢ ĐỊNH, cần thay bằng giá trị đo được (chỉnh cùng giáo viên)
+  so_me_pha_toi_thieu: 2           # GIẢ ĐỊNH, cần thay bằng giá trị đo được (chỉnh cùng giáo viên)
+  so_muc_nhiet_toi_thieu: 3        # GIẢ ĐỊNH, cần thay bằng giá trị đo được (chỉnh cùng giáo viên)
+  bien_do_nhiet_toi_thieu_C: 6.0   # GIẢ ĐỊNH, cần thay bằng giá trị đo được (chỉnh cùng giáo viên)
+  so_muc_D_toi_thieu_neu_hoc_D: 2  # GIẢ ĐỊNH, cần thay bằng giá trị đo được (chỉnh cùng giáo viên)
+  chenh_D_toi_thieu_C: 1.0         # GIẢ ĐỊNH, cần thay bằng giá trị đo được (chỉnh cùng giáo viên)
+  ti_le_toi_da_moi_muc: 0.4        # GIẢ ĐỊNH, cần thay bằng giá trị đo được (chỉnh cùng giáo viên)
 
 
 # =====================================================================

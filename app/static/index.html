@@ -864,6 +864,34 @@
             </table>
           </div>
         </div>
+
+        <div class="chassis-panel-25d" id="t4-design-check-card" style="margin-top:14px;">
+          <div class="step-badge-title" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+            <span><span class="step-num-25d">6</span> Kiểm tra thiết kế thí nghiệm (không chặn dựng đường chuẩn)</span>
+            <span id="t4-design-check-summary" class="status-pill pill-wait">Chưa kiểm tra</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
+            <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;">
+              <input type="checkbox" id="t4-check-muon-hoc-D" />
+              <span>Yêu cầu đủ biến thiên chênh nhiệt D = T_mẫu − T_tc (dùng khi muốn học hệ số D)</span>
+            </label>
+            <button type="button" id="t4-btn-check-design" class="btn-25d btn-sm-25d">Kiểm tra thiết kế</button>
+          </div>
+          <div class="table-scroll-25d">
+            <table class="data-table-25d">
+              <thead>
+                <tr>
+                  <th>Hạng mục</th>
+                  <th>Trạng thái</th>
+                  <th>Đo được</th>
+                  <th>Yêu cầu</th>
+                  <th>Gợi ý khắc phục</th>
+                </tr>
+              </thead>
+              <tbody id="t4-design-check-body"></tbody>
+            </table>
+          </div>
+        </div>
       </section>
 
       <!-- ================================================================

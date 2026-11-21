@@ -41,6 +41,7 @@ if str(THU_MUC_GOC) not in sys.path:
     sys.path.insert(0, str(THU_MUC_GOC))
 
 from core import calibration as cal
+from core.kiem_tra_thiet_ke import kiem_tra_thiet_ke_thi_nghiem
 from core import nhiet_ke
 from core import ong_kinh
 from core import optics as op
@@ -2069,11 +2070,13 @@ async def api_calibrate(request: Request) -> JSONResponse:
 
         if mode == "sim":
             df_cal = sinh_du_lieu_hieu_chuan_mo_phong(cfg=cfg, seed=1)
+            df_raw_tk = df_cal
             ten_nguon = "Bộ dữ liệu mô phỏng Snell (8 mức S × 3 mức T × 3 lần lặp = 72 điểm)"
         elif mode == "csv":
             csv_text = body.get("csv_text")
             if not csv_text or not isinstance(csv_text, str):
                 return _json_err("Chưa cung cấp nội dung CSV hiệu chuẩn.")
+            df_raw_tk = pd.read_csv(io.StringIO(csv_text.lstrip("\ufeff")))
             df_cal = cal.doc_csv_hieu_chuan(io.StringIO(csv_text))
             raw_fname = body.get("file_name")
             ten_nguon = (
@@ -2134,6 +2137,13 @@ async def api_calibrate(request: Request) -> JSONResponse:
             for idx, (_, r) in enumerate(bc.df_test.iterrows())
         ]
 
+        kiem_tra_tk = kiem_tra_thiet_ke_thi_nghiem(
+            df_raw_tk,
+            config_path=CONFIG_PATH,
+            muon_hoc_D=_as_bool(body.get("muon_hoc_D"), False),
+            don_vi_y=don_vi_y,
+        )
+
         return _json_ok({
             "ten_nguon": ten_nguon,
             "activated": activate,
@@ -2146,6 +2156,7 @@ async def api_calibrate(request: Request) -> JSONResponse:
             "RMSE_test_ppt": bc.RMSE_test_ppt,
             "s_res_train_px": mh_tr.s_res_px,
             "canh_bao": bc.canh_bao,
+            "kiem_tra_thiet_ke": kiem_tra_tk,
             "sai_so_theo_muc": bc.sai_so_theo_muc.round(4).to_dict(orient="records"),
             "plot_data": {
                 "curves": curves,
@@ -2548,6 +2559,43 @@ async def api_config_species(request: Request) -> JSONResponse:
         return _json_err(f"Lỗi khi lưu ngưỡng loài: {exc}")
 
 
+def _kiem_tra_thiet_ke_tu_payload(body: dict[str, Any], don_vi_mac_dinh: str = "px") -> dict[str, Any]:
+    """Đọc DataFrame thô từ payload sim/csv và chạy kiểm tra thiết kế thí nghiệm (không chặn)."""
+    mode = str(body.get("mode") or ("csv" if body.get("csv_text") else "sim")).strip().lower()
+    don_vi_y = str(body.get("don_vi_y") or don_vi_mac_dinh or "px").strip().lower()
+    muon_hoc_D = _as_bool(body.get("muon_hoc_D"), False)
+    if mode == "csv" or body.get("csv_text"):
+        csv_text = str(body.get("csv_text") or "").strip()
+        if not csv_text:
+            raise ValueError("Chưa có dữ liệu CSV để kiểm tra thiết kế thí nghiệm.")
+        df_raw = pd.read_csv(io.StringIO(csv_text.lstrip("\ufeff")))
+    elif mode == "sim":
+        df_raw = sinh_du_lieu_hieu_chuan_mo_phong(cfg=load_config(), seed=1)
+    else:
+        raise ValueError(f"Chế độ không hợp lệ: {mode}")
+
+    return kiem_tra_thiet_ke_thi_nghiem(
+        df_raw,
+        config_path=CONFIG_PATH,
+        muon_hoc_D=muon_hoc_D,
+        don_vi_y=don_vi_y,
+    )
+
+
+async def api_kiem_tra_thiet_ke(request: Request) -> JSONResponse:
+    """Kiểm tra thiết kế thí nghiệm của tập dữ liệu hiệu chuẩn (báo cáo không chặn)."""
+    try:
+        body = await request.json()
+        if not isinstance(body, dict):
+            return _json_err("Payload JSON phải là object.", 400)
+        kq = _kiem_tra_thiet_ke_tu_payload(body)
+        return _json_ok(kq)
+    except ValueError as exc:
+        return _json_err(str(exc), 400)
+    except Exception as exc:
+        return _json_err(f"Lỗi kiểm tra thiết kế thí nghiệm: {exc}")
+
+
 class CacheHeaderMiddleware:
     """ASGI middleware nhẹ thêm Cache-Control chuẩn cho tài nguyên tĩnh và API."""
 
@@ -2601,6 +2649,7 @@ routes = [
     Route("/api/logs/delete", endpoint=api_logs_delete, methods=["POST"]),
     Route("/api/logs/csv", endpoint=api_logs_csv, methods=["GET"]),
     Route("/api/calibrate", endpoint=api_calibrate, methods=["POST"]),
+    Route("/api/kiem-tra-thiet-ke", endpoint=api_kiem_tra_thiet_ke, methods=["POST"]),
     Route("/api/calibrate/template-csv", endpoint=api_calibrate_template_csv, methods=["GET"]),
     Route("/api/optics-sim", endpoint=api_optics_sim, methods=["POST"]),
     Route("/api/bland-altman", endpoint=api_bland_altman, methods=["POST"]),

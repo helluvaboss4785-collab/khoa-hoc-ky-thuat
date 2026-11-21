@@ -19,6 +19,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from core import calibration as cal
+from core.kiem_tra_thiet_ke import kiem_tra_thiet_ke_thi_nghiem, kiem_tra_thiet_ke_tu_csv
 from core.optics import CauHinhQuangHoc, ngan_sach_sai_so
 from core.trang_thai_cau_hinh import XAC_NHAN_QF_MAC_DINH, liet_ke_tham_so_chua_xac_nhan
 from sim.synth import sinh_du_lieu_hieu_chuan_mo_phong
@@ -271,8 +272,10 @@ def xuat_bo_bao_cao(
 
     if csv_hieu_chuan is not None:
         df = cal.doc_csv_hieu_chuan(csv_hieu_chuan)
+        kq_thiet_ke = kiem_tra_thiet_ke_tu_csv(csv_hieu_chuan, config_path=cfg_path, don_vi_y=don_vi_y)
     else:
         df = sinh_du_lieu_hieu_chuan_mo_phong()
+        kq_thiet_ke = kiem_tra_thiet_ke_thi_nghiem(df, config_path=cfg_path, don_vi_y=don_vi_y)
 
     bc = cal.dung_duong_chuan(df, ch, don_vi_y=don_vi_y)
     mh = bc.mo_hinh
@@ -443,6 +446,22 @@ def xuat_bo_bao_cao(
         "",
     ])
 
+    thiet_ke_csv = out_path / "kiem_tra_thiet_ke.csv"
+    df_tk = pd.DataFrame(kq_thiet_ke["muc_kiem"])
+    df_tk.to_csv(thiet_ke_csv, index=False, encoding="utf-8-sig")
+
+    md_lines.extend([
+        "## 6. Kiểm tra thiết kế thí nghiệm hiệu chuẩn",
+        "",
+        f"- Kết luận tổng quát (chỉ khuyến nghị, không chặn đường chuẩn): "
+        f"**{'Đạt' if kq_thiet_ke['hop_le_tong_quat'] else 'Chưa đạt'}** "
+        f"(Đạt={kq_thiet_ke['so_dat']}, Chưa đạt={kq_thiet_ke['so_chua_dat']}, Cảnh báo={kq_thiet_ke['so_canh_bao']}).",
+        "- Chi tiết từng hạng mục xem [kiem_tra_thiet_ke.csv](kiem_tra_thiet_ke.csv).",
+        "",
+        _df_to_markdown_table(df_tk),
+        "",
+    ])
+
     md_path = out_path / "tong_hop_bao_cao.md"
     md_path.write_text("\n".join(md_lines), encoding="utf-8")
 
@@ -455,6 +474,12 @@ def xuat_bo_bao_cao(
         "duong_chuan_png": duong_chuan_png,
         "bang_sai_so_theo_muc_csv": bang_muc_csv,
         "bland_altman_png": bland_png,
+        "bang_bland_altman_csv": bland_csv,
+        "ngan_sach_sai_so_csv": ngan_sach_csv,
+        "tham_so_gia_dinh_csv": gia_dinh_csv,
+        "kiem_tra_thiet_ke_csv": thiet_ke_csv,
+        "kiem_tra_thiet_ke": kq_thiet_ke,
+        "tong_hop_bao_cao_md": md_path,
         "bang_bland_altman_csv": bland_csv,
         "ngan_sach_sai_so_csv": ngan_sach_csv,
         "tham_so_gia_dinh_csv": gia_dinh_csv,

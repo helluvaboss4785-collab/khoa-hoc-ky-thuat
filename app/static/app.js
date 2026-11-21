@@ -1753,6 +1753,7 @@ async function runCalibrate(activate = false) {
       file_name: STATE.calibFileName,
       bac_ep: bacEp,
       don_vi_y: $("#t4-don-vi-y")?.value || "px",
+      muon_hoc_D: Boolean($("#t4-check-muon-hoc-D")?.checked),
       activate,
     });
     STATE.calibLast = data;
@@ -1789,6 +1790,7 @@ async function runCalibrate(activate = false) {
     `).join("");
 
     drawCalibrationCharts(data);
+    renderDesignCheck(data.kiem_tra_thiet_ke);
 
     if (activate) {
       if (STATE.bootstrap) {
@@ -1800,6 +1802,63 @@ async function runCalibrate(activate = false) {
     }
   } catch (err) {
     toast(`Lỗi hiệu chuẩn: ${err.message}`);
+  }
+}
+
+function renderDesignCheck(tk) {
+  const summaryEl = $("#t4-design-check-summary");
+  const tbody = $("#t4-design-check-body");
+  if (!summaryEl || !tbody) return;
+  if (!tk || !Array.isArray(tk.muc_kiem)) {
+    summaryEl.textContent = "Chưa có dữ liệu";
+    summaryEl.className = "status-pill pill-wait";
+    tbody.innerHTML = "";
+    return;
+  }
+  const soChuaDat = Number(tk.so_chua_dat || 0);
+  const soCanhBao = Number(tk.so_canh_bao || 0);
+  const soDat = Number(tk.so_dat || 0);
+  if (soChuaDat === 0 && soCanhBao === 0) {
+    summaryEl.textContent = `Đạt ${soDat}/${tk.tong_hang_muc || tk.muc_kiem.length} hạng mục`;
+    summaryEl.className = "status-pill pill-ok";
+  } else if (soChuaDat === 0) {
+    summaryEl.textContent = `Đạt (${soCanhBao} cảnh báo nhẹ)`;
+    summaryEl.className = "status-pill pill-warn";
+  } else {
+    summaryEl.textContent = `Chưa đạt: ${soChuaDat} mục, cảnh báo: ${soCanhBao}`;
+    summaryEl.className = "status-pill pill-bad";
+  }
+  const nhanMap = {
+    dat: ["ĐẠT", "pill-ok"],
+    chua_dat: ["CHƯA ĐẠT", "pill-bad"],
+    canh_bao: ["CẢNH BÁO", "pill-warn"],
+    bo_qua: ["BỎ QUA", "pill-wait"],
+  };
+  tbody.innerHTML = tk.muc_kiem.map((m) => {
+    const [lbl, cls] = nhanMap[m.trang_thai] || [String(m.trang_thai || ""), "pill-wait"];
+    return `
+      <tr>
+        <td><b>${escapeHtml(m.ten || m.ma || "")}</b></td>
+        <td><span class="status-pill ${cls}">${lbl}</span></td>
+        <td>${escapeHtml(m.gia_tri_do || "")}</td>
+        <td>${escapeHtml(m.yeu_cau || "")}</td>
+        <td>${escapeHtml(m.goi_y || "—")}</td>
+      </tr>
+    `;
+  }).join("");
+}
+
+async function runDesignCheck() {
+  try {
+    const tk = await apiPost("/api/kiem-tra-thiet-ke", {
+      mode: STATE.calibMode,
+      csv_text: STATE.calibCsvText,
+      don_vi_y: $("#t4-don-vi-y")?.value || "px",
+      muon_hoc_D: Boolean($("#t4-check-muon-hoc-D")?.checked),
+    });
+    renderDesignCheck(tk);
+  } catch (err) {
+    toast(`Lỗi kiểm tra thiết kế: ${err.message}`);
   }
 }
 
@@ -2912,6 +2971,9 @@ function bindEvents() {
     $(`#${id}`)?.addEventListener("change", runOpticsSim);
   });
   $("#t5-btn-save-config").addEventListener("click", saveOpticsConfig);
+
+  $("#t4-btn-check-design")?.addEventListener("click", () => runDesignCheck());
+  $("#t4-check-muon-hoc-D")?.addEventListener("change", () => runDesignCheck());
 
   // Tab 6
   $("#t6-btn-sample").addEventListener("click", () => runBlandAltman("sample"));
