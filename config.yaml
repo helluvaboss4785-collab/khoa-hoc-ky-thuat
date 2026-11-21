@@ -57,6 +57,9 @@ hieu_chuan:                      # Tham số dựng đường chuẩn (Cột m�
   nguong_lech_T_hai_ngan_C: 0.5  # cảnh báo nếu |T_mau - T_tham_chieu| vượt ngưỡng này (°C)
   sigma_D_khi_chua_do_C: 2.0     # GIẢ ĐỊNH thận trọng cho chênh nhiệt hai ngăn khi chưa đo; thay bằng giá trị đo được sau khi khảo sát ΔT điển hình giữa hai ngăn
   ap_dung_hieu_chinh_ly_thuyet_D: false  # GIẢ ĐỊNH, cần thay bằng giá trị đo được (mặc định TẮT: chỉ bật nếu chấp nhận hiệu chỉnh S bằng ∂S/∂D lí thuyết khi mô hình chưa học D)
+  cho_phep_giam_sigma_D_khi_on_dinh: false  # GIẢ ĐỊNH, cần thay bằng giá trị đo được (mặc định TẮT: chỉ bật khi chấp nhận giả định cân bằng nhiệt giúp giảm σ_D)
+  sigma_D_khi_da_on_dinh_C: 1.0  # GIẢ ĐỊNH, cần thay bằng giá trị đo được (°C khi chuỗi Δy(t) đã ổn định đủ lâu)
+  thoi_gian_on_dinh_toi_thieu_phut: 5.0  # GIẢ ĐỊNH, cần thay bằng giá trị đo được (số phút theo dõi ổn định tối thiểu để giảm σ_D)
   sai_so_dung_dich_chuan_ppt: null  # bất định chuẩn của dung dịch NaCl chuẩn (‰) - để null khi chưa khai báo
   nhiet_do_toi_thieu_phu_C: null    # dải nhiệt độ tối thiểu cần phủ khi hiệu chuẩn (°C) - để người dùng đặt
   seed: 0                        # hạt giống ngẫu nhiên để chia train/test tái lập được

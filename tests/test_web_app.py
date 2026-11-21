@@ -470,4 +470,112 @@ def test_q8_gioi_han_dau_vao_413_va_lam_sach_ten_file(monkeypatch):
     assert json.loads(r_mp.body.decode("utf-8"))["loai_loi"] == "ANH_QUA_LON"
 
 
+def test_r1_can_bang_nhiet_giam_sigma_D_ba_nhanh(monkeypatch):
+    """R1: Cờ tắt -> U giữ nguyên; cờ bật + ổn định >=5 phút -> U giảm & có cờ cảnh báo; chưa ổn định/ngắn -> giữ nguyên."""
+    import base64
+    import math
+    import cv2
+    import pytest
+    from core import calibration as cal, optics as op
+    from sim.synth import ThamSoMoPhong, sinh_anh_hai_vach_mo_phong
+
+    cfg_op = op.CauHinhQuangHoc.tu_yaml()
+
+    def _tao_chuoi(times_s, decaying: bool) -> list[str]:
+        out = []
+        for i, t_sec in enumerate(times_s):
+            t_mau = (25.0 + 8.0 * math.exp(-t_sec / 300.0)) if decaying else 25.0
+            obj = sinh_anh_hai_vach_mo_phong(
+                ThamSoMoPhong(S_ppt=20.0, T_C=t_mau, T_tham_chieu_C=25.0, sigma_nhieu_doc=0.5, he_so_poisson=0.0, seed=100 + i),
+                cfg=cfg_op,
+                gan_watermark=False,
+            )
+            ok, buf = cv2.imencode(".png", obj.anh)
+            assert ok
+            out.append("data:image/png;base64," + base64.b64encode(buf.tobytes()).decode("ascii"))
+        return out
+
+    times_long = [0.0, 90.0, 180.0, 270.0, 360.0]  # 6 phút >= 5 phút
+    times_short = [0.0, 30.0, 60.0, 90.0, 120.0]     # 2 phút < 5 phút
+    imgs_flat_long = _tao_chuoi(times_long, decaying=False)
+    imgs_flat_short = _tao_chuoi(times_short, decaying=False)
+    imgs_decay_long = _tao_chuoi(times_long, decaying=True)
+
+    # 1. Cờ tắt (mặc định) -> không giảm σ_D và có ghi chú rõ
+    cfg_off = cal.CauHinhHieuChuan(cho_phep_giam_sigma_D_khi_on_dinh=False, sigma_D_khi_chua_do_C=2.0)
+    monkeypatch.setattr(web_app, "load_calib_config", lambda: cfg_off)
+    r_off = _run_coro(
+        web_app.api_measure_multi(
+            _make_request(
+                "POST",
+                "/api/measure-multi",
+                {"mode": "upload", "images_base64": imgs_flat_long, "thoi_gian_s": times_long, "nhiet_do_do": 25.0},
+            )
+        )
+    )
+    assert r_off.status_code == 200
+    d_off = json.loads(r_off.body.decode("utf-8"))
+    assert d_off["can_bang_nhiet"]["da_on_dinh"] is True
+    assert d_off["can_bang_nhiet"]["da_ap_dung_giam_sigma_D"] is False
+    assert "chưa áp dụng giảm bất định" in d_off["can_bang_nhiet"]["ghi_chu_giam_bat_dinh"].lower()
+    u_off = d_off["mo_hinh_man"]["U_S_ppt"]
+
+    # 2. Cờ bật + chuỗi phẳng >= 5 phút + không nhập T_tc -> giảm σ_D còn 1.0°C và có cờ chenh_nhiet_gia_dinh_on_dinh
+    cfg_on = cal.CauHinhHieuChuan(
+        cho_phep_giam_sigma_D_khi_on_dinh=True,
+        sigma_D_khi_chua_do_C=2.0,
+        sigma_D_khi_da_on_dinh_C=1.0,
+        thoi_gian_on_dinh_toi_thieu_phut=5.0,
+    )
+    monkeypatch.setattr(web_app, "load_calib_config", lambda: cfg_on)
+    r_on = _run_coro(
+        web_app.api_measure_multi(
+            _make_request(
+                "POST",
+                "/api/measure-multi",
+                {"mode": "upload", "images_base64": imgs_flat_long, "thoi_gian_s": times_long, "nhiet_do_do": 25.0},
+            )
+        )
+    )
+    assert r_on.status_code == 200
+    d_on = json.loads(r_on.body.decode("utf-8"))
+    assert d_on["can_bang_nhiet"]["da_ap_dung_giam_sigma_D"] is True
+    assert d_on["mo_hinh_man"]["U_S_ppt"] < u_off * 0.7
+    assert any(
+        c["ma"] == "chenh_nhiet_gia_dinh_on_dinh" and c["cap"] == "can_than"
+        for c in d_on["mo_hinh_man"]["canh_bao_chi_tiet"]
+    )
+
+    # 3. Cờ bật nhưng chuỗi quá ngắn (< 5 phút) hoặc chưa ổn định -> σ_D không đổi
+    r_short = _run_coro(
+        web_app.api_measure_multi(
+            _make_request(
+                "POST",
+                "/api/measure-multi",
+                {"mode": "upload", "images_base64": imgs_flat_short, "thoi_gian_s": times_short, "nhiet_do_do": 25.0},
+            )
+        )
+    )
+    d_short = json.loads(r_short.body.decode("utf-8"))
+    assert d_short["can_bang_nhiet"]["da_ap_dung_giam_sigma_D"] is False
+    assert d_short["mo_hinh_man"]["thanh_phan_bat_dinh"]["chenh_nhiet_chua_do"] == pytest.approx(
+        d_off["mo_hinh_man"]["thanh_phan_bat_dinh"]["chenh_nhiet_chua_do"], rel=0.05
+    )
+
+    r_decay = _run_coro(
+        web_app.api_measure_multi(
+            _make_request(
+                "POST",
+                "/api/measure-multi",
+                {"mode": "upload", "images_base64": imgs_decay_long, "thoi_gian_s": times_long, "nhiet_do_do": 25.0},
+            )
+        )
+    )
+    d_decay = json.loads(r_decay.body.decode("utf-8"))
+    assert d_decay["can_bang_nhiet"]["da_on_dinh"] is False
+    assert d_decay["can_bang_nhiet"]["da_ap_dung_giam_sigma_D"] is False
+    assert d_decay["mo_hinh_man"]["U_S_ppt"] >= u_off * 0.95
+
+
+
 

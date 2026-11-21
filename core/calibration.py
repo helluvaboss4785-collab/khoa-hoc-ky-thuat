@@ -111,6 +111,9 @@ class CauHinhHieuChuan:
     nguong_lech_T_hai_ngan_C: float = 0.5
     sigma_D_khi_chua_do_C: float = 2.0
     ap_dung_hieu_chinh_ly_thuyet_D: bool = False
+    cho_phep_giam_sigma_D_khi_on_dinh: bool = False
+    sigma_D_khi_da_on_dinh_C: float = 1.0
+    thoi_gian_on_dinh_toi_thieu_phut: float = 5.0
     sai_so_dung_dich_chuan_ppt: float | None = None
     nhiet_do_toi_thieu_phu_C: float | None = None
     seed: int = 0
@@ -134,6 +137,15 @@ class CauHinhHieuChuan:
             sigma_D_khi_chua_do_C=float(c.get("sigma_D_khi_chua_do_C", mac_dinh.sigma_D_khi_chua_do_C)),
             ap_dung_hieu_chinh_ly_thuyet_D=bool(
                 c.get("ap_dung_hieu_chinh_ly_thuyet_D", mac_dinh.ap_dung_hieu_chinh_ly_thuyet_D)
+            ),
+            cho_phep_giam_sigma_D_khi_on_dinh=bool(
+                c.get("cho_phep_giam_sigma_D_khi_on_dinh", mac_dinh.cho_phep_giam_sigma_D_khi_on_dinh)
+            ),
+            sigma_D_khi_da_on_dinh_C=float(
+                c.get("sigma_D_khi_da_on_dinh_C", mac_dinh.sigma_D_khi_da_on_dinh_C)
+            ),
+            thoi_gian_on_dinh_toi_thieu_phut=float(
+                c.get("thoi_gian_on_dinh_toi_thieu_phut", mac_dinh.thoi_gian_on_dinh_toi_thieu_phut)
             ),
             sai_so_dung_dich_chuan_ppt=float(raw_dd) if raw_dd is not None else None,
             nhiet_do_toi_thieu_phu_C=float(raw_t_phu) if raw_t_phu is not None else None,
@@ -723,6 +735,7 @@ def uoc_luong_do_man(
     sigma_dung_dich_chuan_ppt: float | None = None,
     sigma_D_khi_chua_do_C: float = 2.0,
     ap_dung_hieu_chinh_ly_thuyet_D: bool = False,
+    da_on_dinh_nhiet_gia_dinh: bool = False,
 ) -> KetQuaDoMan:
     """Ước lượng độ mặn từ Δy và nhiệt độ hai ngăn, kèm bất định và cờ cảnh báo.
 
@@ -824,13 +837,25 @@ def uoc_luong_do_man(
         sig_d = max(float(sigma_D_khi_chua_do_C), 0.0)
         u_chua_do = sig_d * he_so_d
         thanh_phan["chenh_nhiet_chua_do"] = u_chua_do
-        mo_ta_thanh_phan["chenh_nhiet_chua_do"] = f"Bất định chênh nhiệt chưa đo (σ_D={sig_d:g} °C, {nguon_d})"
-        _them_canh_bao(
-            "THIEU_T_THAM_CHIEU",
-            "can_than",
-            f"Chưa đo nhiệt độ ngăn tham chiếu (giả định cân bằng nhiệt, σ_D={sig_d:g} °C): "
-            f"chênh nhiệt hai ngăn có thể làm lệch tới ±{k * u_chua_do:.2f} ‰ ({nguon_d}).",
-        )
+        if da_on_dinh_nhiet_gia_dinh:
+            mo_ta_thanh_phan["chenh_nhiet_chua_do"] = (
+                f"Giả định giảm σ_D={sig_d:g} °C nhờ Δy(t) ổn định ({nguon_d}; "
+                "LƯU Ý: ổn định Δy không chứng minh D = 0)"
+            )
+            _them_canh_bao(
+                "chenh_nhiet_gia_dinh_on_dinh",
+                "can_than",
+                f"Đã áp dụng giả định giảm bất định chênh nhiệt còn σ_D={sig_d:g} °C do chuỗi Δy(t) đã ổn định: "
+                f"đây chỉ là GIẢ ĐỊNH (ổn định Δy không chứng minh chênh nhiệt hai ngăn D = 0; ±{k * u_chua_do:.2f} ‰ theo {nguon_d}).",
+            )
+        else:
+            mo_ta_thanh_phan["chenh_nhiet_chua_do"] = f"Bất định chênh nhiệt chưa đo (σ_D={sig_d:g} °C, {nguon_d})"
+            _them_canh_bao(
+                "THIEU_T_THAM_CHIEU",
+                "can_than",
+                f"Chưa đo nhiệt độ ngăn tham chiếu (giả định cân bằng nhiệt, σ_D={sig_d:g} °C): "
+                f"chênh nhiệt hai ngăn có thể làm lệch tới ±{k * u_chua_do:.2f} ‰ ({nguon_d}).",
+            )
     else:
         chenh_T = T_C - T_tham_chieu_C
         if not mh.co_bu_chenh_T:

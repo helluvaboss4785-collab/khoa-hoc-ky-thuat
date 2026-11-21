@@ -988,7 +988,10 @@ function renderMeasureResults(d) {
       if (thVerd) {
         const cls = cb.da_on_dinh ? "ok" : "warn";
         const icon = cb.da_on_dinh ? "✓" : "...";
-        thVerd.innerHTML = `<div class="banner-25d ${cls}"><div class="banner-icon">${icon}</div><div>${esc(cb.khuyen_nghi)}</div></div>`;
+        const tgSec = Number(cb.thoi_gian_da_cho_s || 0);
+        const tgStr = `Thời gian theo dõi: ${fmt(tgSec, 0)} s (${fmt(tgSec / 60, 1)} phút) • Trạng thái: ${cb.da_on_dinh ? "Đã ổn định" : "Chưa ổn định"}`;
+        const noteStr = cb.ghi_chu_giam_bat_dinh ? `<br><span style="font-size:0.78rem; color:#475569;">${esc(cb.ghi_chu_giam_bat_dinh)}</span>` : "";
+        thVerd.innerHTML = `<div class="banner-25d ${cls}"><div class="banner-icon">${icon}</div><div><b>${esc(tgStr)}</b><br>${esc(cb.khuyen_nghi)}${noteStr}</div></div>`;
       }
       const ptsRaw = cb.thoi_gian_hop_le_s.map((tVal, idx) => ({ x: tVal, y: cb.delta_y_hop_le_px[idx] }));
       const ptsFit = (cb.duong_khop_t_s || []).map((tVal, idx) => ({ x: tVal, y: cb.duong_khop_dy_px[idx] }));

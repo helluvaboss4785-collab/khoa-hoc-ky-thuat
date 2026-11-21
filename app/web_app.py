@@ -1258,6 +1258,8 @@ def _solve_and_gate_measurement(
     chat_luong_hop_le: bool,
     la_anh_mo_phong: bool,
     ma_loai_req: str,
+    sigma_D_override: float | None = None,
+    da_on_dinh_nhiet_gia_dinh: bool = False,
 ) -> tuple[dict[str, Any] | None, str | None, str | None, bool, list[str], dict[str, Any] | None]:
     """Giải ngược độ mặn từ Δy và áp dụng cổng chất lượng + phân loại loài theo [S-U, S+U]."""
     cfg_cal = load_calib_config()
@@ -1280,8 +1282,9 @@ def _solve_and_gate_measurement(
                 px_per_mm=px_per_mm_val,
                 u_px_per_mm=u_px_per_mm_val,
                 sigma_dung_dich_chuan_ppt=cfg_cal.sai_so_dung_dich_chuan_ppt,
-                sigma_D_khi_chua_do_C=cfg_cal.sigma_D_khi_chua_do_C,
+                sigma_D_khi_chua_do_C=sigma_D_override if sigma_D_override is not None else cfg_cal.sigma_D_khi_chua_do_C,
                 ap_dung_hieu_chinh_ly_thuyet_D=cfg_cal.ap_dung_hieu_chinh_ly_thuyet_D,
+                da_on_dinh_nhiet_gia_dinh=da_on_dinh_nhiet_gia_dinh,
             )
             canh_bao_man = list(kq_man.canh_bao)
             canh_bao_chi_tiet = list(kq_man.canh_bao_chi_tiet)
@@ -1545,52 +1548,6 @@ async def api_measure_multi(request: Request) -> JSONResponse:
         cq_chung = kq_da.chat_luong_chung
         tong_hop_le_cuoi = cq_chung.hop_le and (not pre_errors)
 
-        (
-            kq_man_dict,
-            error_man,
-            loai_loi_man,
-            khong_danh_gia_duoc,
-            ly_do_khong_danh_gia,
-            danh_gia_loai,
-        ) = _solve_and_gate_measurement(
-            mh=mh,
-            delta_y_px=kq_da.delta_y_trung_vi_px,
-            sigma_delta_y_px=sigma_dy_use,
-            nhiet_do_do=nhiet_do_do,
-            nhiet_do_tham_chieu=nhiet_do_tham_chieu,
-            khong_do_nhiet_do=khong_do_nhiet_do,
-            px_per_mm_val=px_per_mm_val,
-            u_px_per_mm_val=u_px_per_mm_val,
-            chat_luong_hop_le=tong_hop_le_cuoi,
-            la_anh_mo_phong=la_anh_mo_phong,
-            ma_loai_req=str(body.get("ma_loai") or "").strip(),
-        )
-
-        extra_multi: list[tuple[str, str, str]] = []
-        if pre_errors:
-            extra_multi.append((
-                "KHUNG_KHONG_GIAI_MA",
-                "can_than",
-                f"Có {len(pre_errors)}/{tong_so_gui} khung ảnh không giải mã được.",
-            ))
-        if mode != "sim" and not khoa_ae_af:
-            extra_multi.append((
-                "CHUA_KHOA_AE_AF",
-                "can_than",
-                "Chưa khóa phơi sáng và lấy nét (AE/AF lock): độ sáng/độ nét vạch có thể thay đổi giữa các lần chụp.",
-            ))
-        chat_luong_multi_dict = _serialize_chat_luong(cq_chung, tong_hop_le_cuoi, extra_multi)
-
-        delta_y_mm_val = None
-        sai_so_delta_y_mm_val = None
-        if px_per_mm_val is not None:
-            delta_y_mm_val, sai_so_delta_y_mm_val = thang.quy_doi_delta_y_sang_mm(
-                kq_da.delta_y_trung_vi_px, px_per_mm_val, sigma_dy_use, u_px_per_mm_val
-            )
-
-        anh_b64 = _encode_preview_b64(kq_rep.anh_danh_dau if kq_rep.anh_danh_dau is not None else anh_rep)
-        h_img, w_img = anh_rep.shape[:2]
-
         can_bang_nhiet_dict: dict[str, Any] | None = None
         raw_times = body.get("thoi_gian_s")
         if isinstance(raw_times, list) and len(raw_times) == tong_so_gui:
@@ -1622,6 +1579,85 @@ async def api_measure_multi(request: Request) -> JSONResponse:
                     }
             except (ValueError, TypeError):
                 can_bang_nhiet_dict = None
+
+        cfg_cal_r1 = load_calib_config()
+        sigma_D_override: float | None = None
+        da_ap_dung_giam_sigma_D = False
+        if can_bang_nhiet_dict is not None:
+            cho_phep_giam = bool(cfg_cal_r1.cho_phep_giam_sigma_D_khi_on_dinh)
+            toi_thieu_phut = float(cfg_cal_r1.thoi_gian_on_dinh_toi_thieu_phut)
+            du_thoi_gian = float(can_bang_nhiet_dict["thoi_gian_da_cho_s"]) >= (toi_thieu_phut * 60.0)
+            if not cho_phep_giam:
+                ghi_chu_giam = "Chưa áp dụng giảm bất định, cần khảo sát ΔT điển hình giữa hai ngăn."
+            elif nhiet_do_tham_chieu is not None:
+                ghi_chu_giam = "Đã nhập nhiệt độ ngăn tham chiếu nên không áp dụng giảm σ_D theo giả định ổn định nhiệt."
+            elif not bool(can_bang_nhiet_dict["da_on_dinh"]):
+                ghi_chu_giam = "Chuỗi Δy(t) chưa đạt ngưỡng ổn định nên chưa áp dụng giảm σ_D."
+            elif not du_thoi_gian:
+                ghi_chu_giam = (
+                    f"Thời gian theo dõi ({can_bang_nhiet_dict['thoi_gian_da_cho_s'] / 60.0:.1f} phút) "
+                    f"ngắn hơn ngưỡng tối thiểu {toi_thieu_phut:g} phút nên chưa giảm σ_D."
+                )
+            else:
+                da_ap_dung_giam_sigma_D = True
+                sigma_D_override = float(cfg_cal_r1.sigma_D_khi_da_on_dinh_C)
+                ghi_chu_giam = (
+                    f"Đã giảm giả định σ_D xuống {sigma_D_override:g} °C nhờ chuỗi ổn định "
+                    f"{can_bang_nhiet_dict['thoi_gian_da_cho_s'] / 60.0:.1f} phút "
+                    "(GIẢ ĐỊNH: ổn định Δy không chứng minh D = 0)."
+                )
+            can_bang_nhiet_dict["cho_phep_giam_sigma_D"] = cho_phep_giam
+            can_bang_nhiet_dict["da_ap_dung_giam_sigma_D"] = da_ap_dung_giam_sigma_D
+            can_bang_nhiet_dict["thoi_gian_on_dinh_toi_thieu_phut"] = toi_thieu_phut
+            can_bang_nhiet_dict["ghi_chu_giam_bat_dinh"] = ghi_chu_giam
+
+        (
+            kq_man_dict,
+            error_man,
+            loai_loi_man,
+            khong_danh_gia_duoc,
+            ly_do_khong_danh_gia,
+            danh_gia_loai,
+        ) = _solve_and_gate_measurement(
+            mh=mh,
+            delta_y_px=kq_da.delta_y_trung_vi_px,
+            sigma_delta_y_px=sigma_dy_use,
+            nhiet_do_do=nhiet_do_do,
+            nhiet_do_tham_chieu=nhiet_do_tham_chieu,
+            khong_do_nhiet_do=khong_do_nhiet_do,
+            px_per_mm_val=px_per_mm_val,
+            u_px_per_mm_val=u_px_per_mm_val,
+            chat_luong_hop_le=tong_hop_le_cuoi,
+            la_anh_mo_phong=la_anh_mo_phong,
+            ma_loai_req=str(body.get("ma_loai") or "").strip(),
+            sigma_D_override=sigma_D_override,
+            da_on_dinh_nhiet_gia_dinh=da_ap_dung_giam_sigma_D,
+        )
+
+        extra_multi: list[tuple[str, str, str]] = []
+        if pre_errors:
+            extra_multi.append((
+                "KHUNG_KHONG_GIAI_MA",
+                "can_than",
+                f"Có {len(pre_errors)}/{tong_so_gui} khung ảnh không giải mã được.",
+            ))
+        if mode != "sim" and not khoa_ae_af:
+            extra_multi.append((
+                "CHUA_KHOA_AE_AF",
+                "can_than",
+                "Chưa khóa phơi sáng và lấy nét (AE/AF lock): độ sáng/độ nét vạch có thể thay đổi giữa các lần chụp.",
+            ))
+        chat_luong_multi_dict = _serialize_chat_luong(cq_chung, tong_hop_le_cuoi, extra_multi)
+
+        delta_y_mm_val = None
+        sai_so_delta_y_mm_val = None
+        if px_per_mm_val is not None:
+            delta_y_mm_val, sai_so_delta_y_mm_val = thang.quy_doi_delta_y_sang_mm(
+                kq_da.delta_y_trung_vi_px, px_per_mm_val, sigma_dy_use, u_px_per_mm_val
+            )
+
+        anh_b64 = _encode_preview_b64(kq_rep.anh_danh_dau if kq_rep.anh_danh_dau is not None else anh_rep)
+        h_img, w_img = anh_rep.shape[:2]
 
         return _json_ok({
             "da_khung_hinh": True,
