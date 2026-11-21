@@ -317,3 +317,66 @@ def test_q3_nen_sang_khong_deu_gradient_40_va_90():
             assert sai_so < 0.2, f"grad={grad}, seed={s}: sai số lớn {sai_so:.3f} px"
 
 
+def test_r5_kenh_Y_jpeg_va_script_so_sanh_kenh(tmp_path):
+    """R5: kenh_laser='Y' sai số < 0.05 px trên JPEG 4:2:0 mô phỏng sạch; 'auto' không đổi; CLI so_sanh_kenh chạy đúng."""
+    import subprocess
+    import sys
+    from pathlib import Path
+    import cv2
+    import pandas as pd
+
+    mp = sinh_anh_mau_mo_phong(
+        ThamSoMoPhong(chieu_cao=320, chieu_rong=440, y_tham_chieu_goc=90.0, S_ppt=20.0, T_C=25.0, seed=5001),
+        cfg=CFG,
+        ty_le_kenh=(1.0, 0.35, 0.35),
+        gan_watermark=False,
+    )
+    params = [cv2.IMWRITE_JPEG_QUALITY, 90]
+    if hasattr(cv2, "IMWRITE_JPEG_SAMPLING_FACTOR"):
+        params.extend([cv2.IMWRITE_JPEG_SAMPLING_FACTOR, int(getattr(cv2, "IMWRITE_JPEG_SAMPLING_FACTOR_420"))])
+    ok, buf = cv2.imencode(".jpg", mp.anh, params)
+    assert ok
+    img_jpg = cv2.imdecode(buf, cv2.IMREAD_COLOR)
+    assert img_jpg is not None
+
+    kq_y = do_delta_y_tu_anh(img_jpg, x_ref=mp.x_ref, kenh_laser="Y", tao_anh_ve=False)
+    assert kq_y.kenh_su_dung == "Y"
+    assert kq_y.chat_luong.hop_le is True
+    assert abs(kq_y.delta_y_px - mp.delta_y_ly_thuyet_px) < 0.05
+
+    kq_auto = do_delta_y_tu_anh(img_jpg, x_ref=mp.x_ref, kenh_laser="auto", tao_anh_ve=False)
+    assert kq_auto.kenh_su_dung == "R"
+    assert abs(kq_auto.delta_y_px - mp.delta_y_ly_thuyet_px) < 0.05
+
+    root = Path(__file__).resolve().parents[1]
+    script_p = root / "scripts" / "so_sanh_kenh.py"
+
+    proc_missing = subprocess.run([sys.executable, str(script_p)], capture_output=True, text=True)
+    assert proc_missing.returncode != 0
+
+    out_csv = tmp_path / "so_sanh_r5.csv"
+    proc_ok = subprocess.run(
+        [sys.executable, str(script_p), "--nguon", "MO_PHONG", "--so-anh", "2", "--out-csv", str(out_csv)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert proc_ok.returncode == 0, proc_ok.stderr
+    assert out_csv.exists()
+    df_out = pd.read_csv(out_csv, encoding="utf-8-sig")
+    assert (df_out["nguon_du_lieu"] == "MO_PHONG").all()
+    assert set(df_out["kenh"].unique()) == {"R", "G", "B", "xam", "Y", "auto"}
+    assert {
+        "nguon_du_lieu",
+        "dieu_kien",
+        "kenh",
+        "so_anh",
+        "so_hop_le",
+        "ti_le_hop_le",
+        "do_lap_lai_std_px",
+        "ti_le_cot_bao_hoa_tb",
+        "snr_tb",
+    }.issubset(df_out.columns)
+
+
+

@@ -76,7 +76,7 @@ class KetQuaDoDeltaY:
     chi_so_do_duc_tuong_doi: float       # Chỉ số độ đục tương đối (0.0: trong suốt, 1.0: rất đục)
     chat_luong: ChatLuongAnh             # Đánh giá chất lượng và cảnh báo lỗi
     anh_danh_dau: np.ndarray | None = None  # Ảnh đã vẽ vị trí vạch và tâm để hiển thị UI
-    kenh_su_dung: str = "xam_2d"         # Kênh màu đã trích xuất để định vị vạch ("R"|"G"|"B"|"xam"|"xam_2d")
+    kenh_su_dung: str = "xam_2d"         # Kênh màu đã trích xuất để định vị vạch ("R"|"G"|"B"|"Y"|"xam"|"xam_2d")
 
 
 @dataclass(frozen=True)
@@ -141,7 +141,7 @@ def chon_kenh_laser(
 
     - Ảnh 2D xám: giữ nguyên và trả nhãn 'xam_2d' (hồi quy tuyệt đối với bản cũ).
     - 'auto' trên ảnh màu: tính tương phản (p99.9 - median) từng kênh R, G, B (ưu tiên R nếu hòa).
-    - 'R' | 'G' | 'B' | 'xam': lấy đúng kênh chỉ định.
+    - 'R' | 'G' | 'B' | 'xam' | 'Y': lấy đúng kênh chỉ định ('Y' là kênh sáng trong không gian YCrCb).
     """
     if anh is None or not hasattr(anh, "ndim") or anh.size == 0:
         raise AnhKhongHopLeError("Ảnh đầu vào rỗng hoặc không hợp lệ.")
@@ -154,6 +154,10 @@ def chon_kenh_laser(
     che_do_lower = che_do.lower()
     if che_do_lower == "xam":
         return chuyen_anh_xam(anh), "xam"
+    if che_do.upper() == "Y":
+        bgr = anh[:, :, :3] if anh.shape[2] == 4 else anh
+        ycrcb = cv2.cvtColor(bgr.astype(np.uint8) if bgr.dtype != np.uint8 else bgr, cv2.COLOR_BGR2YCrCb)
+        return ycrcb[:, :, 0], "Y"
 
     kenh_map = {"B": 0, "G": 1, "R": 2}
     if che_do.upper() in kenh_map:
@@ -161,7 +165,7 @@ def chon_kenh_laser(
         return (ch.astype(np.uint8) if ch.dtype != np.uint8 else ch), che_do.upper()
 
     if che_do_lower != "auto":
-        raise ValueError(f"Tham số kenh_laser '{kenh_laser}' không hợp lệ (chỉ nhận auto|R|G|B|xam).")
+        raise ValueError(f"Tham số kenh_laser '{kenh_laser}' không hợp lệ (chỉ nhận auto|R|G|B|xam|Y).")
 
     if roi_goi_y is not None:
         y1, y2, x1, x2 = roi_goi_y
