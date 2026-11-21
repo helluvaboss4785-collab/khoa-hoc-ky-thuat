@@ -180,3 +180,108 @@ Các công việc sau liên quan trực tiếp đến **tài liệu gốc, thi�
 6. **Đối chiếu hệ số Quan–Fry với bài gốc (`Q7`, `T10`):** Đối chiếu trực tiếp 10 hệ số $a_0 \dots a_9$ trong `core/optics.py` với bài báo **Quan & Fry, *Applied Optics*, 1995** trước khi trích dẫn vào báo cáo khoa học.
 7. **(Tùy chọn) Hiệu chuẩn méo ống kính riêng cho từng điện thoại (`Q6`):** Chụp chuỗi ảnh bàn cờ qua camera của từng điện thoại và chạy `scripts/hieu_chuan_ong_kinh.py --nguon THUC_TE` nếu có nhu cầu bật `bat_sua_meo_ong_kinh: true`.
 
+---
+
+# VÒNG 3 (R0–R10): SỬA CÁC LỖI CÒN SÓT SAU RÀ SOÁT ĐỘC LẬP
+
+> **Ghi nhận trung thực về nguồn dữ liệu:** Toàn bộ số liệu định lượng trong mục này được đo trên dữ liệu và ảnh **MÔ PHỎNG** (`sim/synth.py`, `outputs/kiem_tra_chap_nhan_vong3.csv`, `outputs/do_ben_vung_nhieu_seed_MO_PHONG.csv`, `outputs/so_sanh_kenh_MO_PHONG.csv`). Phần mềm **chưa có ảnh thật hoặc dữ liệu hiệu chuẩn thực nghiệm**.
+
+## 1. Kết quả kiểm thử cơ sở (trước Vòng 3) và cuối Vòng 3
+
+- **Cơ sở trước R0:**
+  - `.\.venv\Scripts\python.exe -m pytest tests -q` → `94 passed, 1 skipped in 89.92s` (`test_hoi_quy_anh_that` skip với lí do `"chưa có ảnh thật"`).
+  - `.\.venv\Scripts\python.exe scripts/kiem_tra_chap_nhan_vong2.py` → `13/13 TIEU CHI DAT.` (`Q3_anh_12MP_4000x3000`: `time=0.465s, |err|=0.0009px`).
+  - Baseline R0 Kịch bản C (`300` phép đo mô phỏng, `seed = 3003`, `D ∈ [-2, 2]`, mô hình có học `D`):
+    - `σ_T = 0.0 °C`: `cov = 99.3%`, `RMS = 0.0099‰`, `U_tb = 0.0280‰`
+    - `σ_T = 0.1 °C`: `cov = 96.0%`, `RMS = 0.0860‰`, `U_tb = 0.1743‰`
+    - `σ_T = 0.2 °C`: `cov = 96.0%`, `RMS = 0.1698‰`, `U_tb = 0.3453‰`
+- **Kết quả kiểm thử cuối Vòng 3:**
+  - `.\.venv\Scripts\python.exe -m pytest tests -q` → `111 passed, 1 skipped` (`test_hoi_quy_anh_that` vẫn skip có lí do `"chưa có ảnh thật"`).
+  - `node --check app/static/app.js` → thoát mã `0`.
+  - `.\.venv\Scripts\python.exe scripts/dong_goi.py --kiem-tra` → đạt (`< 20 MB`, không chứa `.venv`, `.git`, `__pycache__`, `.pytest_cache`, `*.db*`).
+  - `.\.venv\Scripts\python.exe scripts/kiem_tra_chap_nhan_vong3.py` → `16/17` tiêu chí `DAT`, `1/17` tiêu chí `KHONG_DAT` (giữ nguyên tiêu chí, báo thẳng ở mục 3 bên dưới).
+
+---
+
+## 2. Bảng tóm tắt R0–R10 kèm commit git
+
+| Mã | Mục tiêu | Thay đổi chính | Commit |
+| :---: | :--- | :--- | :---: |
+| **R0** | Bất định chênh nhiệt & nhiệt kế khi đã nhập `T_tc` trên mô hình chưa học `D` | Cộng `chenh_nhiet_con_lai = \|∂S/∂D\|_LT · √(D_đo² + σ_Dđo²)` vào `u²`; thêm `ap_dung_hieu_chinh_ly_thuyet_D` (`false`); hiển thị `giai_thich_bat_dinh` khi chiếm `> 50% u²` | `e5069db` |
+| **R1** | Nối trạng thái chờ cân bằng nhiệt với `σ_D` (mặc định tắt) | Thêm `cho_phep_giam_sigma_D_khi_on_dinh: false`, `sigma_D_khi_da_on_dinh_C: 1.0`, `thoi_gian_on_dinh_toi_thieu_phut: 5.0`; gắn cờ `chenh_nhiet_gia_dinh_on_dinh (can_than)` khi giảm; giao diện nêu rõ khi tắt | `6ebdefe` |
+| **R2** | Báo cáo độ bền vững đa seed không chọn seed (`N ≥ 100`) & kiểm thử Huber/Biweight | Mở rộng `danh_gia_do_ben_vung.py` + `kiem_tra_chap_nhan_vong2.py` + `test_synth.py` lên `100` seed cố định `1000..1099` kèm Wilson 95% CI, xuất `outputs/do_ben_vung_nhieu_seed_MO_PHONG.csv`; kiểm chứng Huber/Biweight kém hơn WLS nên giữ nguyên WLS | `2c6f8d8` |
+| **R3** | Không tự phát cảnh báo méo ống kính rìa nếu chưa khai báo `k1` / hiệu chuẩn | Phân tách `MEO_ONG_KINH_THONG_TIN` (`thong_tin_bo_sung`) mặc định và `MEO_ONG_KINH` (`canh_bao_chi_tiet` kèm ước lượng `px` chỉ khi có `k1` / file hiệu chuẩn); thêm nút gạt `#toggle-extra-info` | `75eece3` |
+| **R4** | Đổi tên `nhiet_do_tham_chieu_C` dưới `quang_hoc` tránh nhầm với `T_tc` | Đổi sang `quang_hoc.nhiet_do_chuan_chiet_suat_C: 20.0`, giữ alias cũ kèm `DeprecationWarning` & log | `a5491a1` |
+| **R5** | Thêm kênh `Y` (`YCrCb`) & công cụ so sánh kênh trên JPEG 4:2:0 | Hỗ trợ `kenh_laser: "Y"`; tạo `scripts/so_sanh_kenh.py` đánh giá `R/G/B/xam/Y/auto` qua `Q95/80/60 × 444/422/420` | `bd82558` |
+| **R6** | Siết đơn vị `mm`, cảnh báo trộn `px_per_mm` và biến thiên thước chuẩn | Liệt kê số dòng thiếu `px_per_mm`; thêm `TRON_PX_PER_MM` và `BIEN_THIEN_PX_PER_MM` vượt `nguong_bien_thien_px_per_mm_phan_tram: 2.0` | `881cb63` |
+| **R7** | Bảng liệt kê tham số giả định / `null` / chưa đối chiếu trên web & API | Tạo `core/trang_thai_cau_hinh.py`, endpoint `GET /api/trang-thai-cau-hinh`, modal `#assumptions-modal-backdrop` và liên kết `"Còn N tham số chưa xác nhận"` | `66539c3` |
+| **R8** | Công cụ đối chiếu 10 hệ số Quan–Fry (tuyệt đối không tự xác nhận) | Tách `HE_SO_QUAN_FRY_TRONG_MA` giữ nguyên số trong `core/optics.py`; tạo `docs/DOI_CHIEU_QUAN_FRY.md` và `scripts/kiem_tra_quan_fry.py`; không tạo sẵn file xác nhận trong repo | `0d71cd7` |
+| **R9** | Bộ xuất tài liệu cho báo cáo và poster kèm dấu mô phỏng không thể tắt | Tạo `scripts/xuat_bao_cao.py` xuất 6 đầu ra vào `outputs/bao_cao/`; luôn đóng dấu `DỮ LIỆU MÔ PHỎNG / CHƯA XÁC NHẬN` khi chưa đủ nhãn `THUC_TE` | `5ad58c6` |
+| **R10** | Test API, checklist điện thoại, `dong_goi --kiem-tra`, nghiệm thu Vòng 3 & báo cáo | Bổ sung test R0/R3/R7 (`tests/test_web_app.py`), `docs/KIEM_TRA_THU_CONG_TREN_DIEN_THOAI.md`, `--kiem-tra` (`scripts/dong_goi.py`), cache `v9`, `scripts/kiem_tra_chap_nhan_vong3.py`, cập nhật `README.md` & `BAO_CAO_THAY_DOI.md` | (commit cuối Vòng 3) |
+
+---
+
+## 3. Bảng nghiệm thu Vòng 3 trên số đo MÔ PHỎNG (`scripts/kiem_tra_chap_nhan_vong3.py`)
+
+> Lệnh tái lập: `.\.venv\Scripts\python.exe scripts/kiem_tra_chap_nhan_vong3.py` (xuất `outputs/kiem_tra_chap_nhan_vong3.csv`).
+
+| Nhóm | Tiêu chí kiểm chứng | Số đo thực tế (MÔ PHỎNG) | Khoảng Wilson 95% / Phân bố | Kết luận |
+| :---: | :--- | :--- | :--- | :---: |
+| **R0** | Kịch bản A (`D ∈ ±0,5 °C`, không `D`, tắt hiệu chỉnh LT, `σ_T = 0,2 °C`) | `n_ok = 225/300`, `cov = 100.0%` (`≥ 95%`), `U_tb = 0.4646‰` | `[98.3%–100.0%]`, `RMS_ok = 0.1595‰`, `RMS_all = 0.1767‰` | **Đạt** |
+| **R0** | Kịch bản B (`D ∈ ±1,5 °C`, không `D`, tắt hiệu chỉnh LT, `σ_T = 0,2 °C`) | `n_ok = 102/300`, `cov = 98.0%` (`≥ 95%`), `U_tb = 0.4905‰` | `[93.1%–99.5%]`, `RMS_ok = 0.2276‰`, `RMS_all = 0.5343‰` | **Đạt** |
+| **R0** | Đơn điệu theo `σ_T` tại `D_đo = 0` (`0,1 < 0,2 < 0,5 °C`) | `U(0.1) = 0.1841‰ < U(0.2) = 0.3488‰ < U(0.5) = 0.8579‰` | Tăng nghiêm ngặt | **Đạt** |
+| **R0** | Kịch bản C (có học `D`, so với cơ sở trước sửa) | `σ_T=0`: `cov = 99.3%`, `RMS = 0.0094‰`, `U_tb = 0.0261‰` (cơ sở `0.0280‰`); `σ_T=0,2`: `cov = 95.3%`, `U_tb = 0.3453‰` | `[97.6%–99.8%]` (`σ_T=0`), `[92.3%–97.2%]` (`σ_T=0,2`) | **Đạt** |
+| **R0** | Kịch bản D (hồi quy khi không nhập `T_tc`) | `n_ok = 0/300` bị chặn, `σ_D = 2.0 °C`, `RMS_all = 0.1721‰` | Y hệt hành vi trước khi sửa | **Đạt** |
+| **R0** | Kịch bản E (`cov` khi bật hiệu chỉnh LT, `D ∈ ±1,5 °C`, `σ_T = 0,2 °C`) | `n_ok = 300/300`, `cov = 96.3%` (`≥ 95%`), `U_tb = 0.3491‰` | `[93.6%–97.9%]`, `RMS_E = 0.1671‰` | **Đạt** |
+| **R0** | Kịch bản E: giảm RMS so với B trên **toàn bộ 300 phép đo** (`D ∈ ±1,5 °C`) | `RMS_E = 0.1671‰` vs `RMS_B_all = 0.5343‰` → **giảm `68.7%`** (`≥ 50%`) | 300/300 mẫu (`seed=3005` vs `3002`) | **Đạt** |
+| **R0** | Kịch bản E: giảm RMS so với B trên **tập con không bị chặn** (`\|D_đo\| ≤ 0,5 °C`) | `RMS_E = 0.1671‰` vs `RMS_B_ok = 0.2276‰` → **giảm `26.6%`** (`< 50%`) | Lí do: sàn nhiễu nhiệt kế `\|k_D\|·√2·σ_T ≈ 0.171‰` khi `σ_T = 0,2 °C` không thể khử | **Không đạt**\* |
+| **R1** | 3 nhánh cân bằng nhiệt (tắt / bật+đủ dài / bật+ngắn hoặc chưa ổn định) | Tắt `U = 2.4196‰`; bật+đủ dài `U = 1.2113‰` + cờ `chenh_nhiet_gia_dinh_on_dinh (can_than)` | API `/api/measure-multi` kiểm đủ 3 nhánh | **Đạt** |
+| **R2** | Speckle `0.1` (`100` seed `1000..1099`, `600×400`, `S=20‰`) | Hợp lệ `100/100 (100.0%)`, `<0,15 px`: `100/100 (100.0%)` | Hợp lệ `[96.3%–100.0%]`; `RMS = 0.0375`, `med = 0.0272`, `p95 = 0.0729`, `max = 0.1018 px` | **Đạt** |
+| **R2** | Speckle `0.2` (`100` seed `1000..1099`, `600×400`, `S=20‰`) | Hợp lệ `96/100 (96.0%)`, `<0,15 px`: `92/96 (95.8%)` | Hợp lệ `[90.2%–98.4%]`, `<0,15`: `[89.8%–98.4%]`; `RMS = 0.0732`, `med = 0.0571`, `p95 = 0.1448`, `max = 0.1787 px` | **Đạt** |
+| **R2** | Gradient `40.0` & Speckle `0.1 + Gradient 40.0` (`100` seed) | Grad `40`: `100/100`, `RMS = 0.0052 px`; kết hợp: `95/100`, `<0,15`: `95/95` | Kết hợp hợp lệ `[88.8%–97.8%]`; `RMS = 0.0445`, `p95 = 0.0853`, `max = 0.1045 px` | **Đạt** |
+| **R3** | Vạch vùng rìa mặc định vs có `k1 = -0,1` | Mặc định: không vào `canh_bao_chi_tiet` (`MEO_ONG_KINH_THONG_TIN` ở `thong_tin_bo_sung`); có `k1`: phát `MEO_ONG_KINH` | Cận trên `px` kèm theo | **Đạt** |
+| **R7** | Ngưỡng sinh học & panel giả định | `0` loài khác `null` thiếu nguồn; `36` tham số trong R7; `data/xac_nhan_quan_fry.json` chưa tồn tại | API `/api/trang-thai-cau-hinh` khớp | **Đạt** |
+
+*\*Giải thích thẳng mục `R0_E_giam_RMS_vs_B_khong_bi_chan` (**Không đạt**):* Trên tập con không bị chặn bởi ngưỡng `|D_đo| ≤ 0,5 °C` (`n = 102/300`), bản thân `σ_T = 0,2 °C` ở cả hai nhiệt kế gây ra độ bất định đo chênh nhiệt `σ_Dđo = √2 × 0,2 ≈ 0,2828 °C`, tương ứng với sàn nhiễu vật lí tối thiểu `|k_D|·σ_Dđo ≈ 0,171‰` mà phép hiệu chỉnh lí thuyết `-k_D·D_đo` không thể xóa bỏ. Vì vậy, sai số RMS không bị chặn giảm từ `0.2276‰` xuống sát đúng sàn nhiệt kế (`0.1671‰`, tức `-26.6%`) chứ không thể đạt `-50%`; trong khi xét trên toàn bộ `300` phép đo `D ∈ [-1,5; +1,5] °C`, phép hiệu chỉnh giảm RMS từ `0.5343‰` xuống `0.1671‰` (`-68.7%`). Tiêu chí kiểm tra được giữ nguyên, không chỉnh sửa để làm đẹp bảng.
+
+### Các thử nghiệm phụ trợ đã chạy (R2 & R5)
+- **Thử nghiệm Huber & Tukey Biweight trong `core/spot.py` (R2, `N = 200` seed `speckle = 0,2`, `191/200` hợp lệ):**
+  - WLS hiện có: `RMS = 0.0718 px`, `max = 0.2151 px`, `< 0,15 px = 97.4%`
+  - Huber: `RMS = 0.0724 px`, `max = 0.2214 px`, `< 0,15 px = 96.3%`
+  - Tukey Biweight: `RMS = 0.0726 px`, `max = 0.2216 px`, `< 0,15 px = 96.9%`
+  - Kết luận: giữ nguyên WLS trong `core/spot.py` theo tiêu chí R2.
+- **Thử nghiệm so sánh kênh màu trên nén JPEG 4:2:0 (`scripts/so_sanh_kenh.py`, R5, `5` seed/mức, `outputs/so_sanh_kenh_MO_PHONG.csv`):**
+  - Tại `JPEG_Q60_420`, kênh `R` đạt `SNR_tb = 66.95`, `std = 0.00885 px`, còn kênh `Y` (`YCrCb`) đạt `SNR_tb = 113.57`, `std = 0.00455 px`. Vẫn giữ `auto` làm mặc định và để người dùng tự chạy kiểm chứng trên ảnh thật.
+
+---
+
+## 4. Các giả định mới đã thêm ở Vòng 3 (`GIẢ ĐỊNH`, đã liệt kê đủ trong panel R7)
+
+1. `hieu_chuan.ap_dung_hieu_chinh_ly_thuyet_D = false` (**R0**): Mặc định tắt để không tự sửa `S` bằng hệ số lí thuyết chưa hiệu chuẩn khi mô hình chưa học `D`.
+2. `hieu_chuan.cho_phep_giam_sigma_D_khi_on_dinh = false`, `sigma_D_khi_da_on_dinh_C = 1.0`, `thoi_gian_on_dinh_toi_thieu_phut = 5.0` (**R1**): Giá trị `1.0 °C` và `5 phút` chỉ là giả định; cần đo thực tế xem ổn định `Δy(t)` có thực sự ứng với `|D| ≤ 1.0 °C` trên bình thật hay không.
+3. `quang_hoc.nhiet_do_chuan_chiet_suat_C = 20.0` (**R4**): Nhiệt độ ứng với hằng số `chiet_suat_nuoc_ngot` trong công thức tuyến tính (đổi tên từ `nhiet_do_tham_chieu_C` để không nhầm với ngăn tham chiếu).
+4. `hieu_chuan.nguong_bien_thien_px_per_mm_phan_tram = 2.0` (**R6**): Ngưỡng biến thiên hệ số phóng đại `px/mm` (`2%`) phát cảnh báo `BIEN_THIEN_PX_PER_MM` khi dựng đường chuẩn ở đơn vị `px`.
+
+---
+
+## 5. Các bài test cũ đã đổi ở Vòng 3, lí do và giới hạn môi trường kiểm thử
+
+1. `tests/test_synth.py::test_q2_phan_biet_speckle_va_bao_hoa_that` và `test_q3_tru_nen_khong_deu_va_hieu_nang_12mp` (**R2**): Mở rộng kiểm định từ `10` seed sang **100 seed cố định `1000..1099`** (theo đúng yêu cầu R2: không chọn lại seed; giữ nguyên ngưỡng `< 0,15 px` và `≥ 90%`).
+2. `tests/test_ong_kinh.py::test_q6_canh_bao_meo_vung_ria_co_va_khong_k1` (**R3**): Cập nhật nhánh không có `k1` kiểm chứng rằng `MEO_ONG_KINH` không nằm trong `canh_bao_chi_tiet` mà chuyển sang `thong_tin_bo_sung` (`MEO_ONG_KINH_THONG_TIN`).
+3. `scripts/kiem_tra_chap_nhan_vong2.py` (`Q0_nhap_T_tc_D0`, **R0**): Theo R0, nhánh `D_đo = 0` trên mô hình chưa học `D` nay cộng thêm bất định nhiệt kế `|k_D|·σ_Dđo` vào `U` nên không thể có tỉ số `U/U_ref ≈ 1.0` ở `σ_T = 0.5 °C`; đã căn chỉnh đầu vào kiểm thử `Q0_nhap_T_tc_D0` về `σ_T = 0.1 °C` để đo đúng tương tác nhánh không bị chặn và chênh lệch nguồn nhiệt kế.
+4. **Giới hạn môi trường `TestClient` (R10):** Thư viện `.venv` hiện tại không cài `httpx2` nên `starlette.testclient.TestClient` báo `RuntimeError: The starlette.testclient module requires the httpx package to be installed`. Toàn bộ test API mới (R0, R1, R3, R7 trong `tests/test_web_app.py`) được chạy trực tiếp qua ASGI harness `_make_request` / `_run_coro` gọi thẳng hàm endpoint thực của `app/web_app.py`.
+
+---
+
+## 6. Danh sách việc CHỈ người dùng (nhóm thực nghiệm) làm được
+
+1. **Chụp ảnh thật từ thiết bị của nhóm và chỉnh ngưỡng xử lí ảnh:** Tinh chỉnh `nguong_bao_hoa`, `ti_le_cot_bao_hoa_nghiem_trong`, `so_cot_lien_tiep_bao_hoa`, `nguong_nen_khong_deu`, `snr_toi_thieu` bằng ảnh chụp thật và đưa bộ kiểm định thật vào `tests/anh_that/`.
+2. **Thu dữ liệu hiệu chuẩn thực nghiệm thật (`--nguon THUC_TE`):** Pha ≥ 2 mẻ (`ma_me_pha`), đo ở nhiều mức nhiệt độ phủ tới nhiệt độ ao, ghi đồng thời cả hai nhiệt độ (`nhiet_do_C`, `nhiet_do_tham_chieu_C`), đặt thước `px/mm`, khóa AE/AF trên camera.
+3. **Đo thực nghiệm chênh nhiệt điển hình `ΔT` giữa hai ngăn & `he_so_triet_chung`:** Thay thế `sigma_D_khi_chua_do_C = 2.0` và các tham số mục `phan_tich_sai_so`, đồng thời xác minh thực nghiệm xem cờ R1 (`cho_phep_giam_sigma_D_khi_on_dinh`) có an toàn để bật trên bình thật không.
+4. **Khai báo bất định dụng cụ đo:** Điền `hieu_chuan.sai_so_dung_dich_chuan_ppt` và `hieu_chuan.sai_so_nhiet_ke_C` thực tế vào `config.yaml` (kiểm tra lại trong panel R7).
+5. **Điền ngưỡng sinh học có trích dẫn nguồn:** Bổ sung `an_toan`, `canh_bao`, `nguy_hiem`, `nguon_tham_khao` đầy đủ tác giả/năm/trang-DOI cho các loài trong `nguong_loai` của `config.yaml`.
+6. **Đối chiếu 10 hệ số Quan–Fry với bài gốc (`R8`):** Mở `docs/DOI_CHIEU_QUAN_FRY.md`, tự đối chiếu trực tiếp với **Quan & Fry (*Applied Optics*, 1995)**, kiểm tra lại trích dẫn và chạy `python scripts/kiem_tra_quan_fry.py --csv <file.csv> --luu-xac-nhan`.
+7. **Chạy danh sách kiểm tra thủ công trên điện thoại thật (`R10`):** Thực hiện toàn bộ 12 bước trong `docs/KIEM_TRA_THU_CONG_TREN_DIEN_THOAI.md` và ghi kết quả Đạt/Không.
+8. **So sánh kênh màu trên ảnh chụp thật (`R5`):** Chạy `python scripts/so_sanh_kenh.py --nguon THUC_TE --thu-muc <thu_muc_anh_that>` trên chính điện thoại dự thi trước khi chốt `xu_ly_anh.kenh_laser`.
+
+

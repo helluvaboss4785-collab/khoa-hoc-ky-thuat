@@ -1,12 +1,12 @@
-"""Đóng gói mã nguồn dự án thành file .zip sạch để nộp bài (T12).
+"""Đóng gói mã nguồn sạch để nộp bài / gửi giám khảo, loại trừ file tạm, .venv, .git và CSDL *.db*."""
 
-Loại trừ: .venv, .git, __pycache__, .pytest_cache, *.db*, *.pyc, *.zip.
-"""
 from __future__ import annotations
 
 import argparse
 import fnmatch
+import sys
 import zipfile
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,59 +21,110 @@ THU_MUC_LOAI_TRU = {
     ".mypy_cache",
     ".ruff_cache",
 }
-
-MAU_FILE_LOAI_TRU = (
-    "*.db",
-    "*.db-wal",
-    "*.db-shm",
-    "*.sqlite3",
-    "*.pyc",
-    "*.pyo",
-    "*.zip",
-)
+MAU_FILE_LOAI_TRU = ("*.db", "*.db-wal", "*.db-shm", "*.sqlite3", "*.sqlite", "*.pyc", "*.pyo", "*.zip")
+THU_MUC_CAM_TRONG_ZIP = {".venv", "venv", "env", ".git", "__pycache__", ".pytest_cache"}
+MAU_FILE_CAM_TRONG_ZIP = ("*.db", "*.db-wal", "*.db-shm", "*.sqlite3", "*.sqlite", "*.db-*")
 
 
-def co_nen_bo_qua(rel_path: Path) -> bool:
-    for part in rel_path.parts[:-1]:
-        if part in THU_MUC_LOAI_TRU:
-            return True
-    name = rel_path.name
-    if rel_path.parts[0] in THU_MUC_LOAI_TRU:
+def _can_loai_tru(rel_path: Path) -> bool:
+    """True nếu đường dẫn tương đối thuộc thư mục/mẫu file cần loại trừ khỏi gói nộp."""
+    if any(part in THU_MUC_LOAI_TRU for part in rel_path.parts):
         return True
+    name = rel_path.name
     return any(fnmatch.fnmatch(name, pat) for pat in MAU_FILE_LOAI_TRU)
 
 
 def tao_file_zip_nop_bai(duong_dan_zip: str | Path, goc: Path = ROOT) -> tuple[Path, int]:
+    """Tạo file zip sạch từ thư mục dự án, trả `(duong_dan_zip, so_file)`."""
     out = Path(duong_dan_zip).resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
-    goc_resolved = goc.resolve()
-
-    so_file = 0
+    goc_res = Path(goc).resolve()
+    dem = 0
     with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for item in sorted(goc_resolved.rglob("*")):
-            if not item.is_file():
+        for p in sorted(goc_res.rglob("*")):
+            if not p.is_file():
                 continue
-            if item.resolve() == out:
+            if p.resolve() == out:
                 continue
-            rel = item.relative_to(goc_resolved)
-            if co_nen_bo_qua(rel):
+            rel = p.relative_to(goc_res)
+            if _can_loai_tru(rel):
                 continue
-            zf.write(item, rel.as_posix())
-            so_file += 1
-    return out, so_file
+            zf.write(p, arcname=rel.as_posix())
+            dem += 1
+    return out, dem
 
 
-def main() -> None:
+def kiem_tra_goi_zip(
+    duong_dan_zip: str | Path,
+    gioi_han_mb: float = 20.0,
+) -> tuple[bool, list[str], float]:
+    """Kiểm tra gói zip nộp bài: không chứa .venv/.git/__pycache__/.pytest_cache/*.db* và < gioi_han_mb MB.
+
+    Trả `(dat, danh_sach_vi_pham, dung_luong_mb)`.
+    """
+    p = Path(duong_dan_zip)
+    if not p.exists():
+        return False, [f"Không tìm thấy file zip: {p}"], 0.0
+
+    size_mb = p.stat().st_size / (1024.0 * 1024.0)
+    vi_pham: list[str] = []
+    if size_mb >= gioi_han_mb:
+        vi_pham.append(f"Dung lượng {size_mb:.2f} MB >= giới hạn {gioi_han_mb:g} MB.")
+
+    with zipfile.ZipFile(p, "r") as zf:
+        for info in zf.infolist():
+            norm = info.filename.replace("\\", "/")
+            parts = [part for part in norm.split("/") if part]
+            if not parts:
+                continue
+            if any(part in THU_MUC_CAM_TRONG_ZIP for part in parts):
+                vi_pham.append(f"Chứa thư mục cấm: {info.filename}")
+                continue
+            ten = parts[-1]
+            if any(fnmatch.fnmatch(ten.lower(), pat) for pat in MAU_FILE_CAM_TRONG_ZIP):
+                vi_pham.append(f"Chứa file CSDL cấm: {info.filename}")
+
+    return len(vi_pham) == 0, vi_pham, size_mb
+
+
+def main(argv: list[str] | None = None) -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description="Tạo file zip nộp bài KHKT sạch")
+    parser.add_argument("--out", default=None, help="Đường dẫn file .zip đầu ra")
     parser.add_argument(
-        "--out",
-        default=str(ROOT / "outputs" / "du_an_khkt_nop_bai.zip"),
-        help="Đường dẫn file .zip đầu ra",
+        "--kiem-tra",
+        action="store_true",
+        help="Xác nhận gói zip sau khi đóng gói không chứa file/thư mục cấm và < 20 MB.",
     )
-    args = parser.parse_args()
-    out_path, count = tao_file_zip_nop_bai(args.out)
-    print(f"Da dong goi {count} file vao: {out_path} ({out_path.stat().st_size / 1024:.1f} KB)")
+    parser.add_argument(
+        "--gioi-han-mb",
+        type=float,
+        default=20.0,
+        help="Giới hạn dung lượng tối đa (MB) cho chế độ --kiem-tra (mặc định 20 MB).",
+    )
+    args = parser.parse_args(argv)
+
+    if args.out:
+        out_path = Path(args.out)
+    else:
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        out_path = ROOT.parent / f"khkt_do_man_vi_sai_{stamp}.zip"
+
+    out, dem = tao_file_zip_nop_bai(out_path, ROOT)
+    size_mb = out.stat().st_size / (1024.0 * 1024.0)
+    print(f"Đã đóng gói {dem} tệp vào: {out} ({size_mb:.2f} MB)")
+
+    if args.kiem_tra:
+        dat, vi_pham, _ = kiem_tra_goi_zip(out, gioi_han_mb=args.gioi_han_mb)
+        if not dat:
+            print("VI PHẠM GÓI NỘP:")
+            for v in vi_pham:
+                print(f" - {v}")
+            return 1
+        print(f"KIỂM TRA ĐẠT: Không chứa .venv/.git/__pycache__/.pytest_cache/*.db* và < {args.gioi_han_mb:g} MB.")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

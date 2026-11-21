@@ -52,7 +52,10 @@ python app/web_app.py
 Truy cập `http://127.0.0.1:8000`.
 - **Giới hạn đầu vào (`config.yaml` mục `gioi_han`):** Mặc định giới hạn mỗi ảnh tối đa `25 MB`, `60 MP` và chuỗi đa khung tối đa `60` ảnh (vượt ngưỡng trả HTTP `413` mã `ANH_QUA_LON`; file hỏng/không phải ảnh trả HTTP `400` mã `ANH_KHONG_HOP_LE`). Tên file tải lên được làm sạch, truy vấn SQLite dùng tham số hóa.
 - **Tab 5 (Mô phỏng quang học):** Cho phép chuyển đổi mô hình chiết suất **Tuyến tính** (mặc định, với `dn_dT_moi_do_C = -1.1e-4` tại `quang_hoc.nhiet_do_chuan_chiet_suat_C`) hoặc **Quan–Fry** ($\lambda$ cấu hình được) kèm cảnh báo tự động khi vượt dải hiệu lực Quan–Fry. *(Lưu ý: `quang_hoc.nhiet_do_chuan_chiet_suat_C` là nhiệt độ chuẩn của công thức chiết suất nước ngọt, khác với cột CSV `nhiet_do_tham_chieu_C` vốn là nhiệt độ ngăn nước cất tham chiếu).*
-- **Đóng gói mã nguồn sạch:** Chạy `python scripts/dong_goi.py` (tự động loại trừ `.venv`, `.git`, `__pycache__`, `.pytest_cache`, `*.db*`, `*.zip`).
+- **Đóng gói mã nguồn sạch để nộp bài (R10):** Chỉ đóng gói và nộp bài bằng lệnh dưới đây (tự động loại trừ `.venv`, `.git`, `__pycache__`, `.pytest_cache`, `*.db*`, `*.zip` và xác nhận dung lượng `< 20 MB`; **tuyệt đối không** nén thủ công cả thư mục dự án):
+  ```bash
+  python scripts/dong_goi.py --kiem-tra
+  ```
 
 ---
 
@@ -85,34 +88,49 @@ python scripts/xu_ly_thu_muc_anh.py --thu-muc data/anh_that --nguon THUC_TE --tu
 - Để hiệu chuẩn méo ống kính riêng cho từng máy điện thoại bằng ảnh bàn cờ, dùng [`scripts/hieu_chuan_ong_kinh.py`](scripts/hieu_chuan_ong_kinh.py).
 - Để kích hoạt kiểm thử hồi quy trên ảnh chụp thật của nhóm, đặt ảnh và `nhan_chuan.csv` vào `tests/anh_that/` theo hướng dẫn trong [`tests/anh_that/README.md`](tests/anh_that/README.md).
 
+### 3.4. Đối chiếu Quan–Fry, xuất báo cáo và kiểm tra thực địa (R7–R10)
+- **Bảng trạng thái giả định (`R7`):** Trên giao diện web có nút *"Các tham số còn là giả định"* (và endpoint `GET /api/trang-thai-cau-hinh`) liệt kê mọi tham số còn mang giá trị giả định, còn `null`, thiếu nguồn sinh học, hoặc chưa đối chiếu Quan–Fry.
+- **Đối chiếu 10 hệ số Quan–Fry (`R8`):** Mở [`docs/DOI_CHIEU_QUAN_FRY.md`](docs/DOI_CHIEU_QUAN_FRY.md), tự kiểm từ bài báo gốc Quan & Fry (*Applied Optics*, 1995) rồi chạy:
+  ```bash
+  python scripts/kiem_tra_quan_fry.py --csv <file_csv_cua_ban.csv> --luu-xac-nhan
+  ```
+- **Xuất tài liệu báo cáo & poster (`R9`):** Dùng [`scripts/xuat_bao_cao.py`](scripts/xuat_bao_cao.py) để xuất 6 tài liệu vào `outputs/bao_cao/` (đồ thị đường chuẩn kèm phần dư & vùng bất định, bảng sai số theo mức, Bland–Altman khi có `--so-sanh`, ngân sách sai số lí thuyết, bảng giả định R7, Markdown tổng hợp). Mọi hình/bảng tự động đóng dấu bắt buộc `DỮ LIỆU MÔ PHỎNG / CHƯA XÁC NHẬN` nếu chưa đủ nhãn `THUC_TE`:
+  ```bash
+  python scripts/xuat_bao_cao.py --csv data/hieu_chuan_cua_toi.csv --so-sanh data/so_sanh.csv
+  ```
+- **Kiểm tra thủ công trên điện thoại thật (`R10`):** Làm theo từng bước trong bảng [`docs/KIEM_TRA_THU_CONG_TREN_DIEN_THOAI.md`](docs/KIEM_TRA_THU_CONG_TREN_DIEN_THOAI.md) để nghiệm thu PWA, chạy ngoại tuyến, camera, vẽ ROI và xuất CSV trên điện thoại thật.
+
 ---
 
 ## 4. CHẠY KIỂM THỬ TỰ ĐỘNG & KẾT QUẢ MÔ PHỎNG
 
-### 4.1. Kiểm thử đơn vị và tích hợp (`pytest`)
+### 4.1. Kiểm thử đơn vị, tích hợp và nghiệm thu Vòng 3
 ```bash
 python -m pytest tests -q
+python scripts/kiem_tra_chap_nhan_vong3.py
 ```
-Kết quả thực tế sau Vòng 2 (Q0–Q8): **`94 passed, 1 skipped`** (`test_hoi_quy_anh_that` trong `tests/test_anh_that.py` chủ động skip với lí do `"chưa có ảnh thật"`). Toàn bộ các con số dưới đây đến từ ảnh/dữ liệu **MÔ PHỎNG**, chưa phải số đo thiết bị thật.
+Kết quả thực tế sau Vòng 3 (`R0–R10`): **`111 passed, 1 skipped`** (`test_hoi_quy_anh_that` trong `tests/test_anh_that.py` chủ động skip với lí do `"chưa có ảnh thật"`). Toàn bộ các con số dưới đây đến từ ảnh/dữ liệu **MÔ PHỎNG**, **KHÔNG phải độ chính xác của thiết bị thật**.
 
-### 4.2. Bảng độ bền vững thuật toán trên ảnh MÔ PHỎNG (`T9` cập nhật sau `Q1–Q7`)
-> **Lưu ý:** Bảng dưới đây đo **độ bền vững thuật toán xử lí ảnh trên dữ liệu MÔ PHỎNG** (`sim/synth.py`), **KHÔNG phải độ chính xác của thiết bị thật**.
+### 4.2. Bảng độ bền vững thuật toán trên 100 seed ảnh MÔ PHỎNG (`R2`)
+> **Lưu ý:** Bảng dưới đây đo **độ bền vững thuật toán xử lí ảnh trên dữ liệu MÔ PHỎNG** (`sim/synth.py`, ảnh `600×400`, `y_tham_chieu_goc = 100`), **KHÔNG phải độ chính xác của thiết bị thật**.
 
 Lệnh tái lập:
 ```bash
 python scripts/danh_gia_do_ben_vung.py
 ```
-Kết quả chạy thực tế tại $S = 20{,}0\,‰$, $T = 25{,}0\,^\circ\text{C}$, $N = 10$ ảnh/mức (xuất ra `outputs/danh_gia_do_ben_vung_MO_PHONG.csv`):
+Kết quả chạy thực tế tại $S = 20{,}0\,‰$, $T = 25{,}0\,^\circ\text{C}$, trên **100 seed cố định (`1000..1099`)** mỗi mức (xuất ra `outputs/do_ben_vung_nhieu_seed_MO_PHONG.csv`):
 
-| Hiệu ứng mô phỏng | Mức tham số | Đạt chất lượng | Sai lệch TB (px) | ĐLC (px) | Sai lệch TB (‰) | ĐLC (‰) |
-| :--- | :--- | :---: | :---: | :---: | :---: | :---: |
-| Cơ sở (không hiệu ứng phụ) | `0.0` | 10/10 | +0.0036 | 0.0061 | +0.0007 | 0.0012 |
-| Đốm laser (`speckle_cuong_do`) | `0.05` / `0.1` / `0.2` | 10/10, 10/10, 10/10 | +0.0011 / +0.0045 / +0.0051 | 0.0207 / 0.0383 / 0.0838 | +0.0002 / +0.0009 / +0.0010 | 0.0041 / 0.0076 / 0.0165 |
-| Méo ống kính (`meo_ong_kinh_k1`) | `-0.1` / `-0.05` / `0.05` / `0.1` | 10/10 | +0.6007 / +0.3422 / -0.3889 / -0.8211 | 0.0238 / 0.0070 / 0.0038 / 0.0073 | +0.1186 / +0.0676 / -0.0768 / -0.1622 | 0.0047 / 0.0014 / 0.0007 / 0.0014 |
-| Gradient nền (`gradient_nen_y`) | `20.0` / `50.0` / `90.0` | 10/10, 10/10, 0/10\* | -0.0013 / -0.0041 / 0.0000 | 0.0044 / 0.0088 / 0.0076 | -0.0003 / -0.0008 / 0.0000 | 0.0009 / 0.0017 / 0.0015 |
-| Độ cong vạch (`do_cong_vach` px) | `0.5` / `1.5` / `3.0` | 10/10 | +0.0075 / +0.0103 / +0.0193 | 0.0066 / 0.0061 / 0.0066 | +0.0015 / +0.0020 / +0.0038 | 0.0013 / 0.0012 / 0.0013 |
-| Chênh sáng hai nửa (`chenh_sang_hai_nua`) | `0.2` / `0.4` / `0.6` | 10/10 | +0.0001 / +0.0045 / +0.0025 | 0.0058 / 0.0085 / 0.0084 | +0.0000 / +0.0009 / +0.0005 | 0.0011 / 0.0017 / 0.0017 |
-| Phi tuyến cảm biến (`gamma_cam_bien`) | `0.7` / `1.4` / `2.0` | 10/10 | +0.0025 / +0.0032 / +0.0030 | 0.0077 / 0.0057 / 0.0042 | +0.0005 / +0.0006 / +0.0006 | 0.0015 / 0.0011 / 0.0008 |
-| Nén mất dữ liệu (`chat_luong_jpeg`) | `90` / `70` / `50` | 10/10 | +0.0035 / +0.0006 / +0.0012 | 0.0035 / 0.0039 / 0.0051 | +0.0007 / +0.0001 / +0.0002 | 0.0007 / 0.0008 / 0.0010 |
+| Hiệu ứng mô phỏng | Mức tham số | Đạt chất lượng [Wilson 95% CI] | Tỉ lệ `< 0,15 px` (trong hợp lệ) | RMS (px) | Trung vị \|err\| (px) | P95 \|err\| (px) | Tối đa \|err\| (px) |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| Cơ sở (không hiệu ứng phụ) | `0.0` | 100/100 (100% [96.3–100%]) | 100% [96.3–100%] | 0.0047 | 0.0031 | 0.0095 | 0.0127 |
+| Đốm laser (`speckle_cuong_do`) | `0.1` | 100/100 (100% [96.3–100%]) | 100% [96.3–100%] | 0.0375 | 0.0272 | 0.0729 | 0.1018 |
+| Đốm laser (`speckle_cuong_do`) | `0.2` | 96/100 (96.0% [90.2–98.4%]) | 95.8% [89.8–98.4%] | 0.0732 | 0.0571 | 0.1448 | 0.1787 |
+| Đốm laser + gradient nền | `spk=0.1, grad=40` | 95/100 (95.0% [88.8–97.8%]) | 100% [96.1–100%] | 0.0445 | 0.0353 | 0.0853 | 0.1045 |
+| Gradient nền (`gradient_nen_y`) | `40.0` / `90.0`\* | 100/100, 0/100\* | 100%, 100% | 0.0052 / 0.0052 | 0.0036 / 0.0035 | 0.0094 / 0.0102 | 0.0155 / 0.0151 |
+| Méo ống kính (`meo_ong_kinh_k1`) | `-0.1` / `0.1` | 100/100, 100/100 | 0%, 0% (lệch hệ thống) | 0.4496 / 0.7081 | 0.4497 / 0.7084 | 0.4582 / 0.7157 | 0.4645 / 0.7201 |
+| Độ cong vạch (`do_cong_vach` px) | `1.5` / `3.0` | 100/100 | 100% | 0.0075 / 0.0120 | 0.0054 / 0.0105 | 0.0146 / 0.0190 | 0.0172 / 0.0257 |
+| Chênh sáng hai nửa | `0.4` / `0.6` | 100/100 | 100% | 0.0059 / 0.0064 | 0.0043 / 0.0047 | 0.0113 / 0.0125 | 0.0138 / 0.0169 |
+| Phi tuyến cảm biến (`gamma`) | `0.7` / `2.0` | 100/100 | 100% | 0.0054 / 0.0046 | 0.0038 / 0.0034 | 0.0093 / 0.0086 | 0.0170 / 0.0121 |
+| Nén JPEG (`chat_luong_jpeg`) | `70` / `50` | 100/100 | 100% | 0.0043 / 0.0059 | 0.0029 / 0.0041 | 0.0086 / 0.0113 | 0.0119 / 0.0154 |
 
-*\*Tại `gradient_nen_y = 90.0`, phép trừ nền hình thái vẫn định vị đúng tâm hai vạch (`sai_lech_tb_px = 0.0000 px` thay vì `-185.99 px` trước đây), nhưng cộng hưởng nền cao + biên độ gốc `200` làm đỉnh vạch mẫu thực sự chạm bão hòa `255` nên cổng chất lượng bật đúng cả `NEN_KHONG_DEU` lẫn `BAO_HOA_NGHIEM_TRONG`.*
+*\*Tại `gradient_nen_y = 90.0`, phép trừ nền hình thái vẫn định vị đúng tâm hai vạch (`RMS = 0.0052 px`, `max = 0.0151 px`), nhưng cộng hưởng nền cao + biên độ gốc `200` làm đỉnh vạch mẫu thực sự chạm bão hòa `255` nên cổng chất lượng bật đúng cả `NEN_KHONG_DEU` lẫn `BAO_HOA_NGHIEM_TRONG`.*

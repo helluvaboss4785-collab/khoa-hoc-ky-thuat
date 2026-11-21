@@ -1,0 +1,18 @@
+﻿nhom,tieu_chi,chi_tiet,gia_tri_do,ket_luan,nguon_du_lieu
+R0,R0_A_D0.5_chua_hoc_D,"seed=3001, n_ok=225/300, RMS_ok=0.1595‰, RMS_all=0.1767‰, U_tb=0.4646‰",cov=100.0% [95%CI 98.3%-100.0%],DAT,MO_PHONG
+R0,R0_B_D1.5_chua_hoc_D,"seed=3002, n_ok=102/300, RMS_ok=0.2276‰, RMS_all=0.5343‰, U_tb=0.4905‰",cov=98.0% [95%CI 93.1%-99.5%],DAT,MO_PHONG
+R0,R0_C_co_D_sigT0.0,"seed=3003, n_ok=300/300, RMS_ok=0.0094‰, RMS_all=0.0094‰, U_tb=0.0261‰",cov=99.3% [95%CI 97.6%-99.8%],DAT,MO_PHONG
+R0,R0_C_co_D_sigT0.2,"seed=3003, n_ok=300/300, RMS_ok=0.1632‰, RMS_all=0.1632‰, U_tb=0.3453‰",cov=95.3% [95%CI 92.3%-97.2%],DAT,MO_PHONG
+R0,R0_E_hieu_chinh_ly_thuyet_D,"seed=3005, n_ok=300/300, RMS_ok=0.1671‰, RMS_all=0.1671‰, U_tb=0.3491‰",cov=96.3% [95%CI 93.6%-97.9%],DAT,MO_PHONG
+R0,R0_C_RMS_va_U_vs_co_so,Kich ban C sigma_T=0.0 (co so U_tb=0.0280‰) va sigma_T=0.2 (co so U_tb=0.3453‰),"RMS(sigT=0)=0.0094‰, U(sigT=0)=0.0261‰, U(sigT=0.2)=0.3453‰",DAT,MO_PHONG
+R0,R0_don_dieu_nhiet_ke_D0,U tang nghiem ngat theo sigma_T (0.1 < 0.2 < 0.5 C) tai D_do = 0,"U(0.1)=0.1841, U(0.2)=0.3488, U(0.5)=0.8579‰",DAT,MO_PHONG
+R0,R0_D_hoi_quy_khong_nhap_T_tc,Khong nhap T_tc giu nguyen sigma_D=2.0 C va chan ket luan,"n_ok=0/300, RMS_toan_bo=0.1721‰",DAT,MO_PHONG
+R0,R0_E_giam_RMS_vs_B_toan_bo,"Toan bo 300 phep do D in [-1.5, +1.5]: RMS_E=0.1671‰ vs RMS_B=0.5343‰",giam_toan_bo=68.7% (yeu cau >= 50%),DAT,MO_PHONG
+R0,R0_E_giam_RMS_vs_B_khong_bi_chan,Tap con khong bi chan (|D_do|<=0.5): RMS_E=0.1671‰ vs RMS_B=0.2276‰ (san nhiet ke |k_D|*sigma_Ddo ~ 0.171‰),giam_khong_bi_chan=26.6%,KHONG_DAT,MO_PHONG
+R1,R1_ba_nhanh_sigma_D,Co tat U_off vs co bat + chuoi on dinh du dai (sigma_D=1.0 C),"U_off=2.4196‰, U_on=1.2113‰, co_co_can_than=True",DAT,MO_PHONG
+R2,R2_speckle_0.1,"seeds=1000..1099, hop_le=100/100 (100.0% [CI 96.3%-100.0%]), <0.15px=100/100 (100.0% [CI 96.3%-100.0%])","RMS=0.0375px, med=0.0272px, p95=0.0729px, max=0.1018px",DAT,MO_PHONG
+R2,R2_speckle_0.2,"seeds=1000..1099, hop_le=96/100 (96.0% [CI 90.2%-98.4%]), <0.15px=92/96 (95.8% [CI 89.8%-98.4%])","RMS=0.0732px, med=0.0571px, p95=0.1448px, max=0.1787px",DAT,MO_PHONG
+R2,R2_gradient_40,"seeds=1000..1099, hop_le=100/100 (100.0% [CI 96.3%-100.0%]), <0.15px=100/100 (100.0% [CI 96.3%-100.0%])","RMS=0.0052px, med=0.0036px, p95=0.0094px, max=0.0155px",DAT,MO_PHONG
+R2,R2_speckle_0.1_gradient_40,"seeds=1000..1099, hop_le=95/100 (95.0% [CI 88.8%-97.8%]), <0.15px=95/95 (100.0% [CI 96.1%-100.0%])","RMS=0.0445px, med=0.0353px, p95=0.0853px, max=0.1045px",DAT,MO_PHONG
+R3,R3_meo_ong_kinh_ria,Mac dinh chi vao thong_tin_bo_sung; khi co k1 moi vao canh_bao_chi_tiet kem px,"def_cb=False, k1_cb=True",DAT,MO_PHONG
+R7,R7_nguong_loai_va_gia_dinh,"thieu_nguon=[], tong_chua_xac_nhan=36, qf_json_ton_tai=False",thieu_ma=[],DAT,MO_PHONG

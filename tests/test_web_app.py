@@ -577,5 +577,134 @@ def test_r1_can_bang_nhiet_giam_sigma_D_ba_nhanh(monkeypatch):
     assert d_decay["mo_hinh_man"]["U_S_ppt"] >= u_off * 0.95
 
 
+def test_r0_api_measure_t_tc_khi_chua_hoc_D(monkeypatch):
+    """R0 (API /api/measure qua _make_request/_run_coro vì .venv thiếu httpx2 cho TestClient):
+    nhập T_tc khi mô hình không học D phải cộng chenh_nhiet_con_lai, U tăng theo sai_so_nhiet_ke_C
+    và sinh giai_thich_bat_dinh khi thành phần này chiếm > 50% u²."""
+    import base64
+    import cv2
+    from core import calibration as cal, optics as op
+    from sim.synth import ThamSoMoPhong, sinh_anh_hai_vach_mo_phong, sinh_du_lieu_hieu_chuan_mo_phong
+
+    df_mp = sinh_du_lieu_hieu_chuan_mo_phong()
+    mh_no_d = cal.dung_duong_chuan(df_mp, cal.CauHinhHieuChuan()).mo_hinh
+    assert "D" not in mh_no_d.hang
+    monkeypatch.setitem(web_app.APP_STATE, "calib_model", mh_no_d)
+
+    cfg_op = op.CauHinhQuangHoc.tu_yaml()
+    obj = sinh_anh_hai_vach_mo_phong(
+        ThamSoMoPhong(S_ppt=20.0, T_C=25.4, T_tham_chieu_C=25.0, sigma_nhieu_doc=0.3, he_so_poisson=0.0, seed=88),
+        cfg=cfg_op,
+        gan_watermark=False,
+    )
+    ok, buf = cv2.imencode(".png", obj.anh)
+    assert ok
+    img_b64 = "data:image/png;base64," + base64.b64encode(buf.tobytes()).decode("ascii")
+
+    u_vals = []
+    res_dicts = []
+    for sig_t in (0.1, 0.5):
+        cfg_cal = cal.CauHinhHieuChuan(sai_so_nhiet_ke_C=sig_t, ap_dung_hieu_chinh_ly_thuyet_D=False)
+        monkeypatch.setattr(web_app, "load_calib_config", lambda c=cfg_cal: c)
+        resp = _run_coro(
+            web_app.api_measure(
+                _make_request(
+                    "POST",
+                    "/api/measure",
+                    {
+                        "mode": "upload",
+                        "image_base64": img_b64,
+                        "nhiet_do_do": 25.4,
+                        "nhiet_do_tham_chieu": 25.0,
+                    },
+                )
+            )
+        )
+        assert resp.status_code == 200
+        d = json.loads(resp.body.decode("utf-8"))
+        mm = d["mo_hinh_man"]
+        assert mm["thanh_phan_bat_dinh"]["chenh_nhiet_con_lai"] > 0.0
+        u_vals.append(mm["U_S_ppt"])
+        res_dicts.append(mm)
+
+    assert u_vals[1] > u_vals[0]
+    giai_thich = str(res_dicts[1].get("giai_thich_bat_dinh") or "").lower()
+    assert "chênh nhiệt hai ngăn" in giai_thich
 
 
+def test_r3_api_measure_meo_ong_kinh_mac_dinh_vs_khai_bao_k1(monkeypatch):
+    """R3 (API /api/measure qua _make_request/_run_coro vì .venv thiếu httpx2):
+    mặc định không đưa MEO_ONG_KINH vào canh_bao_chi_tiet (chỉ ở thong_tin_bo_sung);
+    khi có he_so_meo_k1_khai_bao thì đưa vào canh_bao_chi_tiet kèm ước lượng px."""
+    import base64
+    import cv2
+    from core import optics as op
+    from sim.synth import ThamSoMoPhong, sinh_anh_hai_vach_mo_phong
+
+    cfg_op = op.CauHinhQuangHoc.tu_yaml()
+    obj = sinh_anh_hai_vach_mo_phong(
+        ThamSoMoPhong(
+            S_ppt=5.0,
+            T_C=25.0,
+            T_tham_chieu_C=25.0,
+            y_tham_chieu_goc=45.0,
+            sigma_nhieu_doc=0.3,
+            he_so_poisson=0.0,
+            seed=99,
+        ),
+        cfg=cfg_op,
+        gan_watermark=False,
+    )
+    ok, buf = cv2.imencode(".png", obj.anh)
+    assert ok
+    img_b64 = "data:image/png;base64," + base64.b64encode(buf.tobytes()).decode("ascii")
+
+    base_img_cfg = web_app.load_image_config()
+    cfg_no_k1 = dict(base_img_cfg)
+    cfg_no_k1["he_so_meo_k1_khai_bao"] = None
+    monkeypatch.setattr(web_app, "load_image_config", lambda: cfg_no_k1)
+    r_def = _run_coro(
+        web_app.api_measure(
+            _make_request("POST", "/api/measure", {"mode": "upload", "image_base64": img_b64, "nhiet_do_do": 25.0})
+        )
+    )
+    assert r_def.status_code == 200
+    cq_def = json.loads(r_def.body.decode("utf-8"))["chat_luong"]
+    assert all(c["ma"] != "MEO_ONG_KINH" for c in cq_def["canh_bao_chi_tiet"])
+    assert any(x["ma"] == "MEO_ONG_KINH_THONG_TIN" for x in cq_def["thong_tin_bo_sung"])
+
+    cfg_with_k1 = dict(base_img_cfg)
+    cfg_with_k1["he_so_meo_k1_khai_bao"] = -0.1
+    monkeypatch.setattr(web_app, "load_image_config", lambda: cfg_with_k1)
+    r_k1 = _run_coro(
+        web_app.api_measure(
+            _make_request("POST", "/api/measure", {"mode": "upload", "image_base64": img_b64, "nhiet_do_do": 25.0})
+        )
+    )
+    assert r_k1.status_code == 200
+    cq_k1 = json.loads(r_k1.body.decode("utf-8"))["chat_luong"]
+    meo_items = [c for c in cq_k1["canh_bao_chi_tiet"] if c["ma"] == "MEO_ONG_KINH"]
+    assert len(meo_items) == 1
+    assert "px" in meo_items[0]["noi_dung"].lower()
+
+
+def test_r7_api_trang_thai_cau_hinh_va_measure():
+    """R7 (API qua _make_request/_run_coro vì .venv thiếu httpx2):
+    GET /api/trang-thai-cau-hinh trả đủ số lượng/danh sách và /api/measure kèm so_tham_so_chua_xac_nhan."""
+    resp = _run_coro(web_app.api_trang_thai_cau_hinh(_make_request("GET", "/api/trang-thai-cau-hinh")))
+    assert resp.status_code == 200
+    st = json.loads(resp.body.decode("utf-8"))
+    n_unconfirmed = st["so_tham_so_chua_xac_nhan"]
+    assert n_unconfirmed == len(st["danh_sach"]) > 20
+    ma_set = {item["ma"] for item in st["danh_sach"]}
+    assert "quan_fry.he_so_quan_fry_1995" in ma_set
+    assert "hieu_chuan.sai_so_dung_dich_chuan_ppt" in ma_set
+
+    r_sim = _run_coro(
+        web_app.api_measure(
+            _make_request("POST", "/api/measure", {"mode": "sim", "S_ppt": 15.0, "nhiet_do_do": 25.0})
+        )
+    )
+    assert r_sim.status_code == 200
+    d_sim = json.loads(r_sim.body.decode("utf-8"))
+    assert d_sim["so_tham_so_chua_xac_nhan"] == n_unconfirmed
