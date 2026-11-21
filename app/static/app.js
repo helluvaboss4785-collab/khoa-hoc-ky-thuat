@@ -946,6 +946,9 @@ function renderMeasureResults(d) {
     for (const w of cq.canh_bao || []) warnItems.push({ cls: "warn", icon: "!", text: w });
   }
   if (km) {
+    if (km.giai_thich_bat_dinh) {
+      warnItems.push({ cls: "info", icon: "i", text: km.giai_thich_bat_dinh });
+    }
     if (Array.isArray(km.canh_bao_chi_tiet) && km.canh_bao_chi_tiet.length) {
       for (const item of km.canh_bao_chi_tiet) {
         const m = capCls(item.cap);
@@ -1073,6 +1076,7 @@ function drawTab1Charts(d) {
       nhiet_do: "Nhiệt kế mẫu (σ_T)",
       nhiet_do_tham_chieu: "Nhiệt kế ngăn TC (σ_Ttc)",
       chenh_nhiet_chua_do: "Chênh nhiệt 2 ngăn chưa đo (σ_D)",
+      chenh_nhiet_con_lai: "Chênh nhiệt còn lại & nhiệt kế (D, σ_Dđo)",
       chenh_nhiet_ngoai_mo_hinh: "Chênh nhiệt ngoài mô hình (D)",
       ngoai_suy_chenh_nhiet: "Ngoại suy dải D",
       dung_dich_chuan: "Dung dịch chuẩn NaCl",

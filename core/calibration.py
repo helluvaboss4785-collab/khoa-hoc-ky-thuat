@@ -110,6 +110,7 @@ class CauHinhHieuChuan:
     nguong_lech_T_khong_bu_C: float = 1.0
     nguong_lech_T_hai_ngan_C: float = 0.5
     sigma_D_khi_chua_do_C: float = 2.0
+    ap_dung_hieu_chinh_ly_thuyet_D: bool = False
     sai_so_dung_dich_chuan_ppt: float | None = None
     nhiet_do_toi_thieu_phu_C: float | None = None
     seed: int = 0
@@ -131,6 +132,9 @@ class CauHinhHieuChuan:
             nguong_lech_T_khong_bu_C=float(c.get("nguong_lech_T_khong_bu_C", mac_dinh.nguong_lech_T_khong_bu_C)),
             nguong_lech_T_hai_ngan_C=float(c.get("nguong_lech_T_hai_ngan_C", mac_dinh.nguong_lech_T_hai_ngan_C)),
             sigma_D_khi_chua_do_C=float(c.get("sigma_D_khi_chua_do_C", mac_dinh.sigma_D_khi_chua_do_C)),
+            ap_dung_hieu_chinh_ly_thuyet_D=bool(
+                c.get("ap_dung_hieu_chinh_ly_thuyet_D", mac_dinh.ap_dung_hieu_chinh_ly_thuyet_D)
+            ),
             sai_so_dung_dich_chuan_ppt=float(raw_dd) if raw_dd is not None else None,
             nhiet_do_toi_thieu_phu_C=float(raw_t_phu) if raw_t_phu is not None else None,
             seed=int(c.get("seed", mac_dinh.seed)),
@@ -635,12 +639,13 @@ class KetQuaDoMan:
     khong_danh_gia_duoc: bool = False
     canh_bao_chi_tiet: list[dict[str, str]] = field(default_factory=list)
     mo_ta_thanh_phan_bat_dinh: dict[str, str] = field(default_factory=dict)
+    giai_thich_bat_dinh: str = ""
 
 
-def _do_nhay_S_theo_D_ly_thuyet(S_ppt: float, T_C: float) -> float:
-    """Độ nhạy lí thuyết |∂S/∂D| (‰/°C) lấy từ mô hình Snell trong core/optics.py.
+def _do_nhay_S_theo_D_ly_thuyet_co_dau(S_ppt: float, T_C: float) -> float:
+    """Độ nhạy lí thuyết có dấu ∂S/∂D = −(∂Δy/∂D)/(∂Δy/∂S) (‰/°C) từ core/optics.py.
 
-    Dùng khi đường chuẩn chưa học số hạng D; kết quả phản ánh xấp xỉ quang học lí thuyết,
+    Dùng khi đường chuẩn chưa học số hạng D; phản ánh xấp xỉ quang học LÍ THUYẾT,
     KHÔNG phải giá trị đã hiệu chuẩn trên thiết bị thật.
     """
     from core import optics as op
@@ -648,16 +653,23 @@ def _do_nhay_S_theo_D_ly_thuyet(S_ppt: float, T_C: float) -> float:
     cfg = op.CauHinhQuangHoc.tu_yaml()
     h = 1e-2
     try:
+        # Chú ý: khi D tăng (T_tc giảm), Δy_mẫu − Δy_tc = Δy tăng, nên để S giải ngược giữ nguyên
+        # sau khi bị lệch nhiệt +∂Δy/∂D · D, độ lệch S là (∂Δy/∂D)/(∂Δy/∂S) · D.
         dy_dD = (
             op.delta_y_vi_sai_px(S_ppt, T_C, T_C - h, cfg)
             - op.delta_y_vi_sai_px(S_ppt, T_C, T_C + h, cfg)
         ) / (2.0 * h)
         px_per_ppt = op.pixel_moi_phan_nghin(S_ppt, T_C, cfg)
         if abs(px_per_ppt) > 1e-9 and math.isfinite(dy_dD):
-            return abs(float(dy_dD / px_per_ppt))
+            return float(dy_dD / px_per_ppt)
     except Exception:
         pass
-    return abs(float(cfg.dn_dT / cfg.dn_dS))
+    return float(cfg.dn_dT / cfg.dn_dS)
+
+
+def _do_nhay_S_theo_D_ly_thuyet(S_ppt: float, T_C: float) -> float:
+    """Độ nhạy lí thuyết |∂S/∂D| (‰/°C) lấy từ mô hình Snell trong core/optics.py."""
+    return abs(_do_nhay_S_theo_D_ly_thuyet_co_dau(S_ppt, T_C))
 
 
 def _tim_nghiem_S(
@@ -710,6 +722,7 @@ def uoc_luong_do_man(
     u_px_per_mm: float = 0.0,
     sigma_dung_dich_chuan_ppt: float | None = None,
     sigma_D_khi_chua_do_C: float = 2.0,
+    ap_dung_hieu_chinh_ly_thuyet_D: bool = False,
 ) -> KetQuaDoMan:
     """Ước lượng độ mặn từ Δy và nhiệt độ hai ngăn, kèm bất định và cờ cảnh báo.
 
@@ -783,14 +796,6 @@ def uoc_luong_do_man(
             "Đường chuẩn theo pixel: chỉ đúng cho đúng một cấu hình camera và khoảng cách.",
         )
 
-    ngoai_S = not (mh.S_min <= S <= mh.S_max)
-    if ngoai_S:
-        _them_canh_bao(
-            "NGOAI_DAI_S",
-            "nghiem_trong",
-            f"Độ mặn ước lượng {S:.2f} ‰ nằm NGOÀI dải hiệu chuẩn "
-            f"({mh.S_min:g}–{mh.S_max:g} ‰): kết quả là ngoại suy, không đáng tin.",
-        )
     ngoai_T = not (mh.T_min - 0.5 <= T_C <= mh.T_max + 0.5)
     if ngoai_T:
         _them_canh_bao(
@@ -829,13 +834,34 @@ def uoc_luong_do_man(
     else:
         chenh_T = T_C - T_tham_chieu_C
         if not mh.co_bu_chenh_T:
-            if abs(chenh_T) > nguong_lech_T_hai_ngan_C:
+            sigma_D_do = math.hypot(abs(float(sigma_T_C)), abs(float(sigma_T_tham_chieu_C)))
+            k_D_signed = _do_nhay_S_theo_D_ly_thuyet_co_dau(S, T_C)
+            he_so_d_lt = abs(k_D_signed)
+            if ap_dung_hieu_chinh_ly_thuyet_D:
+                S = S - k_D_signed * chenh_T
+                thanh_phan["chenh_nhiet_con_lai"] = he_so_d_lt * sigma_D_do
+                mo_ta_thanh_phan["chenh_nhiet_con_lai"] = (
+                    f"Bất định còn lại sau hiệu chỉnh lí thuyết −k_D·D "
+                    f"(σ_Dđo={sigma_D_do:.2f} °C; dùng hệ số ∂S/∂D LÍ THUYẾT từ core/optics.py, không phải đã hiệu chuẩn)"
+                )
+                if abs(chenh_T) > 0.0:
+                    _them_canh_bao(
+                        "HIEU_CHINH_LY_THUYET_D",
+                        "can_than",
+                        f"Đã hiệu chỉnh chênh nhiệt D = {chenh_T:+.2f} °C theo hệ số ∂S/∂D LÍ THUYẾT "
+                        f"({k_D_signed:+.3f} ‰/°C từ core/optics.py, chưa hiệu chuẩn thực nghiệm).",
+                    )
+            elif abs(chenh_T) > nguong_lech_T_hai_ngan_C:
                 chenh_T_ngoai_mo_hinh = True
-                he_so_d_lt = _do_nhay_S_theo_D_ly_thuyet(S, T_C)
                 u_bias = abs(chenh_T) * he_so_d_lt
                 thanh_phan["chenh_nhiet_ngoai_mo_hinh"] = u_bias
                 mo_ta_thanh_phan["chenh_nhiet_ngoai_mo_hinh"] = (
                     "Cận trên độ chệch theo hệ số LÍ THUYẾT (core/optics.py), chưa hiệu chuẩn; KHÔNG tự hiệu chỉnh S"
+                )
+                thanh_phan["chenh_nhiet_con_lai"] = he_so_d_lt * sigma_D_do
+                mo_ta_thanh_phan["chenh_nhiet_con_lai"] = (
+                    f"Bất định đo chênh nhiệt từ độ chính xác nhiệt kế (σ_Dđo={sigma_D_do:.2f} °C; "
+                    "hệ số ∂S/∂D LÍ THUYẾT từ core/optics.py, không phải đã hiệu chuẩn)"
                 )
                 _them_canh_bao(
                     "CHENH_NHIET_NGOAI_MO_HINH",
@@ -843,6 +869,12 @@ def uoc_luong_do_man(
                     f"Chênh nhiệt độ hai ngăn |D| = {abs(chenh_T):.2f} °C > {nguong_lech_T_hai_ngan_C:g} °C "
                     f"nhưng đường chuẩn CHƯA học số hạng D (không hiệu chỉnh tự động; độ chệch ước tính theo lí thuyết tới ±{u_bias:.2f} ‰). "
                     "Hãy đợi cân bằng nhiệt hoặc hiệu chuẩn lại có biến thiên D.",
+                )
+            else:
+                thanh_phan["chenh_nhiet_con_lai"] = he_so_d_lt * math.hypot(chenh_T, sigma_D_do)
+                mo_ta_thanh_phan["chenh_nhiet_con_lai"] = (
+                    f"Chênh nhiệt hai ngăn còn lại (D={chenh_T:+.2f} °C) và độ chính xác nhiệt kế "
+                    f"(σ_Dđo={sigma_D_do:.2f} °C); dùng hệ số ∂S/∂D LÍ THUYẾT (core/optics.py), không phải đã hiệu chuẩn"
                 )
         else:
             ngoai_dai_D = not (mh.D_min - 0.2 <= chenh_T <= mh.D_max + 0.2)
@@ -865,7 +897,19 @@ def uoc_luong_do_man(
                     "đã bù bằng số hạng D của đường chuẩn, nên đợi cân bằng nhiệt để giảm bất định.",
                 )
 
+    ngoai_S = not (mh.S_min <= S <= mh.S_max)
+    if ngoai_S:
+        _them_canh_bao(
+            "NGOAI_DAI_S",
+            "nghiem_trong",
+            f"Độ mặn ước lượng {S:.2f} ‰ nằm NGOÀI dải hiệu chuẩn "
+            f"({mh.S_min:g}–{mh.S_max:g} ‰): kết quả là ngoại suy, không đáng tin.",
+        )
+
     u = math.sqrt(sum(v * v for v in thanh_phan.values()))
+    giai_thich_bat_dinh = ""
+    if u > 0.0 and (thanh_phan.get("chenh_nhiet_con_lai", 0.0) ** 2) / (u * u) > 0.5:
+        giai_thich_bat_dinh = "Bất định chủ yếu do chênh nhiệt hai ngăn và độ chính xác nhiệt kế."
 
     if mh.la_mo_phong:
         _them_canh_bao(
@@ -907,6 +951,7 @@ def uoc_luong_do_man(
         khong_danh_gia_duoc=khong_danh_gia_duoc,
         canh_bao_chi_tiet=canh_bao_chi_tiet,
         mo_ta_thanh_phan_bat_dinh=mo_ta_thanh_phan,
+        giai_thich_bat_dinh=giai_thich_bat_dinh,
     )
 
 

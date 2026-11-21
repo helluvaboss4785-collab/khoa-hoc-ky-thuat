@@ -1281,6 +1281,7 @@ def _solve_and_gate_measurement(
                 u_px_per_mm=u_px_per_mm_val,
                 sigma_dung_dich_chuan_ppt=cfg_cal.sai_so_dung_dich_chuan_ppt,
                 sigma_D_khi_chua_do_C=cfg_cal.sigma_D_khi_chua_do_C,
+                ap_dung_hieu_chinh_ly_thuyet_D=cfg_cal.ap_dung_hieu_chinh_ly_thuyet_D,
             )
             canh_bao_man = list(kq_man.canh_bao)
             canh_bao_chi_tiet = list(kq_man.canh_bao_chi_tiet)
@@ -1306,6 +1307,7 @@ def _solve_and_gate_measurement(
                 "nhan": kq_man.nhan,
                 "canh_bao": canh_bao_man,
                 "canh_bao_chi_tiet": canh_bao_chi_tiet,
+                "giai_thich_bat_dinh": kq_man.giai_thich_bat_dinh,
                 "han_che": kq_man.han_che,
             }
         except cal.LoiMoHinhHieuChuanError as ex_man:

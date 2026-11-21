@@ -440,3 +440,126 @@ def test_q0_bat_dinh_chenh_nhiet_va_canh_bao_phan_cap():
     assert est_ext.ngoai_dai_D is True
     assert any(c["ma"] == "NGOAI_DAI_D" and c["cap"] == "nghiem_trong" for c in est_ext.canh_bao_chi_tiet)
 
+
+def test_r0_bat_dinh_khi_nhap_T_tc_khong_hoc_D():
+    """R0: Đủ >=300 phép đo cho kịch bản A, B, C, D, E và tính đơn điệu U theo sai số nhiệt kế."""
+    import math
+    from core import optics as op
+
+    cfg = op.CauHinhQuangHoc.tu_yaml()
+    df_cb = sinh_du_lieu_hieu_chuan_mo_phong(
+        cfg=cfg, T_tham_chieu_C=None, sigma_delta_y_px=0.05, sigma_nhiet_ke_C=0.0, seed=7
+    )
+    mh_no_d = cal.dung_duong_chuan(df_cb, bac_ep=1).mo_hinh
+    assert mh_no_d.co_bu_chenh_T is False
+
+    # 1. Cùng D_đo = 0, U phải tăng nghiêm ngặt theo σ nhiệt kế: U(0.5) > U(0.2) > U(0.1)
+    dy0 = op.delta_y_vi_sai_px(18.0, 25.0, 25.0, cfg)
+    u_01 = cal.uoc_luong_do_man(
+        mh_no_d, dy0, 25.0, sigma_delta_y_px=0.05, sigma_T_C=0.1, T_tham_chieu_C=25.0, sigma_T_tham_chieu_C=0.1
+    )
+    u_02 = cal.uoc_luong_do_man(
+        mh_no_d, dy0, 25.0, sigma_delta_y_px=0.05, sigma_T_C=0.2, T_tham_chieu_C=25.0, sigma_T_tham_chieu_C=0.2
+    )
+    u_05 = cal.uoc_luong_do_man(
+        mh_no_d, dy0, 25.0, sigma_delta_y_px=0.05, sigma_T_C=0.5, T_tham_chieu_C=25.0, sigma_T_tham_chieu_C=0.5
+    )
+    assert u_05.U_S_ppt > u_02.U_S_ppt > u_01.U_S_ppt
+    assert "LÍ THUYẾT" in u_02.mo_ta_thanh_phan_bat_dinh["chenh_nhiet_con_lai"]
+    assert u_02.giai_thich_bat_dinh != ""
+
+    def _chay_mc(d_lim: float, seed: int, hieu_chinh_lt: bool, sig_t: float = 0.2) -> tuple[float, float, float, int]:
+        rng = np.random.default_rng(seed)
+        n = 300
+        errs_all: list[float] = []
+        errs_kept: list[float] = []
+        cov_kept = 0
+        for _ in range(n):
+            s_t = float(rng.uniform(2.0, 33.0))
+            t_m = float(rng.uniform(23.0, 27.0))
+            d_t = float(rng.uniform(-d_lim, d_lim))
+            t_tc = t_m - d_t
+            dy = op.delta_y_vi_sai_px(s_t, t_m, t_tc, cfg) + float(rng.normal(0.0, 0.05))
+            tm_m = t_m + float(rng.normal(0.0, sig_t))
+            ttc_m = t_tc + float(rng.normal(0.0, sig_t))
+            est = cal.uoc_luong_do_man(
+                mh_no_d,
+                dy,
+                tm_m,
+                sigma_delta_y_px=0.05,
+                sigma_T_C=sig_t,
+                T_tham_chieu_C=ttc_m,
+                sigma_T_tham_chieu_C=sig_t,
+                ap_dung_hieu_chinh_ly_thuyet_D=hieu_chinh_lt,
+            )
+            e = float(est.S_ppt - s_t)
+            errs_all.append(e)
+            if not est.chenh_T_ngoai_mo_hinh:
+                errs_kept.append(e)
+                if abs(e) <= est.U_S_ppt:
+                    cov_kept += 1
+        rms_all = float(np.sqrt(np.mean(np.square(errs_all))))
+        rms_kept = float(np.sqrt(np.mean(np.square(errs_kept))))
+        return cov_kept / len(errs_kept), rms_all, rms_kept, len(errs_kept)
+
+    # Kịch bản A (±0.5 °C, hiệu chỉnh tắt) & B (±1.5 °C, hiệu chỉnh tắt)
+    cov_a, _, _, n_a = _chay_mc(0.5, seed=3001, hieu_chinh_lt=False)
+    cov_b, rms_b_all, _, n_b = _chay_mc(1.5, seed=3002, hieu_chinh_lt=False)
+    assert n_a >= 150 and cov_a >= 0.95
+    assert n_b >= 50 and cov_b >= 0.95
+
+    # Kịch bản E (±1.5 °C, hiệu chỉnh lí thuyết BẬT)
+    cov_e, rms_e, _, n_e = _chay_mc(1.5, seed=3002, hieu_chinh_lt=True)
+    assert n_e == 300 and cov_e >= 0.95
+    assert rms_e <= 0.5 * rms_b_all
+
+    # Kịch bản C: mô hình có học D, kiểm cov >= 95%, RMS <= 0.1‰, U_tb không vọt bất thường
+    df_d = sinh_du_lieu_hieu_chuan_mo_phong(
+        cfg=cfg,
+        muc_S=(0.0, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 35.0),
+        muc_T=(22.0, 25.0, 28.0),
+        T_tham_chieu_C=(22.0, 25.0, 28.0),
+        so_lan_lap=3,
+        sigma_delta_y_px=0.05,
+        sigma_nhiet_ke_C=0.0,
+        seed=7,
+    )
+    mh_d = cal.dung_duong_chuan(df_d).mo_hinh
+    rng_c = np.random.default_rng(3003)
+    errs_c = []
+    u_c = []
+    cov_c = 0
+    for _ in range(300):
+        s_t = float(rng_c.uniform(2.0, 33.0))
+        t_m = float(rng_c.uniform(23.0, 27.0))
+        d_t = float(rng_c.uniform(-2.0, 2.0))
+        t_tc = t_m - d_t
+        dy = op.delta_y_vi_sai_px(s_t, t_m, t_tc, cfg) + float(rng_c.normal(0.0, 0.05))
+        tm_m = t_m + float(rng_c.normal(0.0, 0.1))
+        ttc_m = t_tc + float(rng_c.normal(0.0, 0.1))
+        est = cal.uoc_luong_do_man(
+            mh_d,
+            dy,
+            tm_m,
+            sigma_delta_y_px=0.05,
+            sigma_T_C=0.1,
+            T_tham_chieu_C=ttc_m,
+            sigma_T_tham_chieu_C=0.1,
+        )
+        assert "chenh_nhiet_con_lai" not in est.thanh_phan_bat_dinh
+        e = float(est.S_ppt - s_t)
+        errs_c.append(e)
+        u_c.append(float(est.U_S_ppt))
+        if abs(e) <= est.U_S_ppt:
+            cov_c += 1
+    assert cov_c / 300 >= 0.95
+    assert float(np.sqrt(np.mean(np.square(errs_c)))) <= 0.1
+    # Cơ sở đo trước khi sửa tại σ_T=0.1 là U_tb=0.1743 ‰ -> không vượt 1.5x
+    assert float(np.mean(u_c)) <= 1.5 * 0.1743
+
+    # Kịch bản D: không nhập T_tc -> giữ nguyên hành vi (có chenh_nhiet_chua_do, không có chenh_nhiet_con_lai)
+    est_d_none = cal.uoc_luong_do_man(mh_no_d, dy0, 25.0, sigma_delta_y_px=0.05, sigma_T_C=0.2, T_tham_chieu_C=None)
+    assert "chenh_nhiet_chua_do" in est_d_none.thanh_phan_bat_dinh
+    assert "chenh_nhiet_con_lai" not in est_d_none.thanh_phan_bat_dinh
+
+
