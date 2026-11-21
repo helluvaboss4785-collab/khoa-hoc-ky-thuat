@@ -116,3 +116,35 @@ def test_quan_fry_kiem_tinh_hop_li_va_canh_bao():
     y1 = op.delta_y_vi_sai_px(15.0 + hs, 25.0, 25.0, cfg_qf)
     y0 = op.delta_y_vi_sai_px(15.0 - hs, 25.0, 25.0, cfg_qf)
     assert op.pixel_moi_phan_nghin(15.0, 25.0, cfg_qf) == pytest.approx((y1 - y0) / (2.0 * hs), rel=1e-4)
+
+
+def test_r4_khoa_nhiet_do_chuan_chiet_suat_va_alias_cu(tmp_path, caplog):
+    """R4: config.yaml dùng nhiet_do_chuan_chiet_suat_C; YAML cũ dùng nhiet_do_tham_chieu_C vẫn chạy kèm cảnh báo."""
+    import logging
+    from pathlib import Path
+    import yaml
+
+    raw = yaml.safe_load(Path(op.CONFIG_MAC_DINH).read_text(encoding="utf-8"))
+    q = raw["quang_hoc"]
+    assert "nhiet_do_chuan_chiet_suat_C" in q
+    assert "nhiet_do_tham_chieu_C" not in q
+
+    cfg_cur = op.CauHinhQuangHoc.tu_yaml()
+    assert cfg_cur.T_chuan_chiet_suat_C == cfg_cur.T_tham_chieu_C
+
+    old_yaml = tmp_path / "old_config.yaml"
+    q_old = dict(q)
+    q_old["nhiet_do_tham_chieu_C"] = 22.5
+    q_old.pop("nhiet_do_chuan_chiet_suat_C", None)
+    old_yaml.write_text(
+        yaml.safe_dump({"quang_hoc": q_old, "anh": raw["anh"]}, allow_unicode=True),
+        encoding="utf-8",
+    )
+
+    with caplog.at_level(logging.WARNING):
+        with pytest.warns(DeprecationWarning, match="nhiet_do_chuan_chiet_suat_C"):
+            cfg_old = op.CauHinhQuangHoc.tu_yaml(old_yaml)
+    assert cfg_old.T_chuan_chiet_suat_C == pytest.approx(22.5)
+    assert cfg_old.T_tham_chieu_C == pytest.approx(22.5)
+    assert any("nhiet_do_tham_chieu_C" in rec.message for rec in caplog.records)
+

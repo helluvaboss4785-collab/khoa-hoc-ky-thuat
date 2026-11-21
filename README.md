@@ -51,7 +51,7 @@ python app/web_app.py
 ```
 Truy cập `http://127.0.0.1:8000`.
 - **Giới hạn đầu vào (`config.yaml` mục `gioi_han`):** Mặc định giới hạn mỗi ảnh tối đa `25 MB`, `60 MP` và chuỗi đa khung tối đa `60` ảnh (vượt ngưỡng trả HTTP `413` mã `ANH_QUA_LON`; file hỏng/không phải ảnh trả HTTP `400` mã `ANH_KHONG_HOP_LE`). Tên file tải lên được làm sạch, truy vấn SQLite dùng tham số hóa.
-- **Tab 5 (Mô phỏng quang học):** Cho phép chuyển đổi mô hình chiết suất **Tuyến tính** (mặc định, với `dn_dT_moi_do_C = -1.1e-4`) hoặc **Quan–Fry** ($\lambda$ cấu hình được) kèm cảnh báo tự động khi vượt dải hiệu lực Quan–Fry.
+- **Tab 5 (Mô phỏng quang học):** Cho phép chuyển đổi mô hình chiết suất **Tuyến tính** (mặc định, với `dn_dT_moi_do_C = -1.1e-4` tại `quang_hoc.nhiet_do_chuan_chiet_suat_C`) hoặc **Quan–Fry** ($\lambda$ cấu hình được) kèm cảnh báo tự động khi vượt dải hiệu lực Quan–Fry. *(Lưu ý: `quang_hoc.nhiet_do_chuan_chiet_suat_C` là nhiệt độ chuẩn của công thức chiết suất nước ngọt, khác với cột CSV `nhiet_do_tham_chieu_C` vốn là nhiệt độ ngăn nước cất tham chiếu).*
 - **Đóng gói mã nguồn sạch:** Chạy `python scripts/dong_goi.py` (tự động loại trừ `.venv`, `.git`, `__pycache__`, `.pytest_cache`, `*.db*`, `*.zip`).
 
 ---

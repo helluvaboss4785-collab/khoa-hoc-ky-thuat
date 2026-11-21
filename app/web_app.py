@@ -828,6 +828,7 @@ async def api_bootstrap(request: Request) -> JSONResponse:
             "n_nuoc_ngot": cfg.n_nuoc_ngot,
             "dn_dS": cfg.dn_dS,
             "dn_dT": cfg.dn_dT,
+            "T_chuan_chiet_suat_C": cfg.T_tham_chieu_C,
             "T_tham_chieu_C": cfg.T_tham_chieu_C,
             "bien_TIR": cfg.bien_TIR,
             "pixel_mm": cfg.pixel_mm,
@@ -2287,7 +2288,12 @@ async def api_config_optics(request: Request) -> JSONResponse:
         a_do = float(body.get("goc_dinh_A_do", cur.A_do))
         d_m = float(body.get("khoang_cach_man_D_m", cur.D_m))
         px_mm = float(body.get("kich_thuoc_pixel_mm", cur.pixel_mm))
-        t_ref = float(body.get("nhiet_do_tham_chieu_C", cur.T_tham_chieu_C))
+        t_ref = float(
+            body.get(
+                "nhiet_do_chuan_chiet_suat_C",
+                body.get("nhiet_do_tham_chieu_C", cur.T_tham_chieu_C),
+            )
+        )
 
         if not (20.0 <= a_do <= 55.0):
             return _json_err("Góc đỉnh lăng kính A phải nằm trong khoảng 20.0° – 55.0°.")
@@ -2296,13 +2302,18 @@ async def api_config_optics(request: Request) -> JSONResponse:
         if not (0.005 <= px_mm <= 1.0):
             return _json_err("Kích thước pixel phải nằm trong khoảng 0.005 – 1.0 mm/px.")
         if not (5.0 <= t_ref <= 40.0):
-            return _json_err("Nhiệt độ tham chiếu phải nằm trong khoảng 5.0 – 40.0 °C.")
+            return _json_err("Nhiệt độ chuẩn chiết suất phải nằm trong khoảng 5.0 – 40.0 °C.")
 
         text = CONFIG_PATH.read_text(encoding="utf-8")
         new_text = _replace_yaml_scalar_line(text, "goc_dinh_A_do", a_do)
         new_text = _replace_yaml_scalar_line(new_text, "khoang_cach_man_D_m", d_m)
         new_text = _replace_yaml_scalar_line(new_text, "kich_thuoc_pixel_mm", px_mm)
-        new_text = _replace_yaml_scalar_line(new_text, "nhiet_do_tham_chieu_C", t_ref)
+        key_t_yaml = (
+            "nhiet_do_chuan_chiet_suat_C"
+            if re.search(r"^\s*nhiet_do_chuan_chiet_suat_C:", new_text, re.MULTILINE)
+            else "nhiet_do_tham_chieu_C"
+        )
+        new_text = _replace_yaml_scalar_line(new_text, key_t_yaml, t_ref)
 
         CONFIG_PATH.write_text(new_text, encoding="utf-8")
         invalidate_config_cache()
@@ -2322,6 +2333,7 @@ async def api_config_optics(request: Request) -> JSONResponse:
                 "n_nuoc_ngot": cfg.n_nuoc_ngot,
                 "dn_dS": cfg.dn_dS,
                 "dn_dT": cfg.dn_dT,
+                "T_chuan_chiet_suat_C": cfg.T_tham_chieu_C,
                 "T_tham_chieu_C": cfg.T_tham_chieu_C,
                 "bien_TIR": cfg.bien_TIR,
                 "pixel_mm": cfg.pixel_mm,

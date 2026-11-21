@@ -15,6 +15,7 @@ và đường chuẩn thực nghiệm. Kết quả ở đây là DỰ BÁO LÍ T
 """
 from __future__ import annotations
 
+import logging
 import math
 import warnings
 from dataclasses import dataclass
@@ -22,6 +23,7 @@ from pathlib import Path
 
 import yaml
 
+_LOGGER = logging.getLogger(__name__)
 CONFIG_MAC_DINH = Path(__file__).resolve().parents[1] / "config.yaml"
 
 
@@ -52,19 +54,36 @@ class CauHinhQuangHoc:
     mo_hinh_chiet_suat: str = "tuyen_tinh"  # "tuyen_tinh" hoặc "quan_fry"
     buoc_song_nm: float = 650.0             # bước sóng (nm) cho công thức Quan–Fry
 
+    @property
+    def T_chuan_chiet_suat_C(self) -> float:
+        """Bí danh rõ nghĩa hơn cho nhiệt độ chuẩn chiết suất của nước ngọt."""
+        return self.T_tham_chieu_C
+
     @classmethod
     def tu_yaml(cls, duong_dan: str | Path = CONFIG_MAC_DINH) -> "CauHinhQuangHoc":
         """Đọc cấu hình từ file YAML."""
         with open(duong_dan, encoding="utf-8") as f:
             c = yaml.safe_load(f)
         q, a = c["quang_hoc"], c["anh"]
+        if "nhiet_do_chuan_chiet_suat_C" in q:
+            t_chuan = float(q["nhiet_do_chuan_chiet_suat_C"])
+        elif "nhiet_do_tham_chieu_C" in q:
+            msg = (
+                "Khóa 'quang_hoc.nhiet_do_tham_chieu_C' đã lỗi thời và dễ nhầm với nhiệt độ ngăn tham chiếu; "
+                "hãy đổi sang 'quang_hoc.nhiet_do_chuan_chiet_suat_C'."
+            )
+            warnings.warn(msg, DeprecationWarning, stacklevel=2)
+            _LOGGER.warning(msg)
+            t_chuan = float(q["nhiet_do_tham_chieu_C"])
+        else:
+            raise KeyError("Thiếu khóa 'quang_hoc.nhiet_do_chuan_chiet_suat_C' trong config.")
         return cls(
             A_do=float(q["goc_dinh_A_do"]),
             D_m=float(q["khoang_cach_man_D_m"]),
             n_nuoc_ngot=float(q["chiet_suat_nuoc_ngot"]),
             dn_dS=float(q["dn_dS_moi_phan_nghin"]),
             dn_dT=float(q["dn_dT_moi_do_C"]),
-            T_tham_chieu_C=float(q["nhiet_do_tham_chieu_C"]),
+            T_tham_chieu_C=t_chuan,
             bien_TIR=float(q["bien_an_toan_TIR"]),
             pixel_mm=float(a["kich_thuoc_pixel_mm"]),
             mo_hinh_chiet_suat=str(q.get("mo_hinh_chiet_suat", "tuyen_tinh")).strip().lower(),
