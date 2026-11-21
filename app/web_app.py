@@ -41,6 +41,7 @@ if str(THU_MUC_GOC) not in sys.path:
     sys.path.insert(0, str(THU_MUC_GOC))
 
 from core import calibration as cal
+from core import nhiet_ke
 from core import ong_kinh
 from core import optics as op
 from core import thang
@@ -68,6 +69,35 @@ CONFIG_PATH = THU_MUC_GOC / "config.yaml"
 OUTPUTS_DIR = THU_MUC_GOC / "outputs"
 HE_SO_JSON_PATH = OUTPUTS_DIR / "he_so_hieu_chuan.json"
 HE_SO_MP_PATH = OUTPUTS_DIR / "he_so_hieu_chuan_MO_PHONG.json"
+FILE_HIEU_CHUAN_NHIET_KE = THU_MUC_GOC / "data" / "hieu_chuan_nhiet_ke.json"
+
+
+def load_thermometer_cross_cal() -> tuple[nhiet_ke.HieuChuanCheoNhietKe | None, dict[str, Any]]:
+    """Đọc cấu hình hiệu chuẩn chéo hai nhiệt kế nếu tồn tại; ngược lại báo chưa hiệu chuẩn."""
+    hc = nhiet_ke.tai_hieu_chuan_cheo_nhiet_ke(FILE_HIEU_CHUAN_NHIET_KE)
+    if hc is None:
+        return None, {
+            "da_hieu_chuan": False,
+            "offset_C": None,
+            "sigma_offset_C": None,
+            "phu_thuoc_nhiet_do": False,
+            "ngay": "",
+            "nguoi_thuc_hien": "",
+            "nguon_du_lieu": "CHUA_XAC_DINH",
+            "thong_bao": "Chưa hiệu chuẩn chéo hai nhiệt kế: chênh lệch cố định giữa 2 đầu đo có thể gây chặn oan hoặc tăng U.",
+        }
+    return hc, {
+        "da_hieu_chuan": True,
+        "offset_C": hc.offset_C,
+        "sigma_offset_C": hc.sigma_offset_C,
+        "phu_thuoc_nhiet_do": hc.phu_thuoc_nhiet_do,
+        "he_so_a": hc.he_so_a,
+        "he_so_b": hc.he_so_b,
+        "ngay": hc.ngay,
+        "nguoi_thuc_hien": hc.nguoi_thuc_hien,
+        "nguon_du_lieu": hc.nguon_du_lieu,
+        "thong_bao": hc.mo_ta_ngan(),
+    }
 
 CSV_TEMPLATE_7_COT = (
     "do_man_chuan_ppt,nhiet_do_C,nhiet_do_tham_chieu_C,delta_y_px,px_per_mm,do_duc_tuong_doi,"
@@ -839,14 +869,15 @@ async def api_bootstrap(request: Request) -> JSONResponse:
         },
         "danh_sach_loai": load_serialized_species(),
         "so_ban_ghi_nhat_ki": so_ban_ghi,
-        "so_tham_so_chua_xac_nhan": trang_thai_cau_hinh.liet_ke_tham_so_chua_xac_nhan(CONFIG_PATH)["so_tham_so_chua_xac_nhan"],
+        "so_tham_so_chua_xac_nhan": trang_thai_cau_hinh.liet_ke_tham_so_chua_xac_nhan(CONFIG_PATH, hieu_chuan_nhiet_ke_path=FILE_HIEU_CHUAN_NHIET_KE)["so_tham_so_chua_xac_nhan"],
+        "hieu_chuan_nhiet_ke": load_thermometer_cross_cal()[1],
         "han_che_nacl": cal.HAN_CHE_NACL,
         "nhan_chua_hieu_chuan": cal.NHAN_CHUA_HIEU_CHUAN,
     })
 
 
 async def api_trang_thai_cau_hinh(request: Request) -> JSONResponse:
-    return _json_ok(trang_thai_cau_hinh.liet_ke_tham_so_chua_xac_nhan(CONFIG_PATH))
+    return _json_ok(trang_thai_cau_hinh.liet_ke_tham_so_chua_xac_nhan(CONFIG_PATH, hieu_chuan_nhiet_ke_path=FILE_HIEU_CHUAN_NHIET_KE))
 
 
 def _serialize_chat_luong(
@@ -1139,7 +1170,8 @@ async def api_measure(request: Request) -> JSONResponse:
             "anh_danh_dau_b64": anh_b64,
             "profile": _extract_profile_data(anh_input, kq_do),
             "danh_gia_loai": danh_gia_loai,
-            "so_tham_so_chua_xac_nhan": trang_thai_cau_hinh.liet_ke_tham_so_chua_xac_nhan(CONFIG_PATH)["so_tham_so_chua_xac_nhan"],
+            "hieu_chuan_nhiet_ke": load_thermometer_cross_cal()[1],
+            "so_tham_so_chua_xac_nhan": trang_thai_cau_hinh.liet_ke_tham_so_chua_xac_nhan(CONFIG_PATH, hieu_chuan_nhiet_ke_path=FILE_HIEU_CHUAN_NHIET_KE)["so_tham_so_chua_xac_nhan"],
         })
     except AnhQuaLonError as exc:
         return _json_err_typed(
@@ -1292,6 +1324,11 @@ def _solve_and_gate_measurement(
 ) -> tuple[dict[str, Any] | None, str | None, str | None, bool, list[str], dict[str, Any] | None]:
     """Giải ngược độ mặn từ Δy và áp dụng cổng chất lượng + phân loại loài theo [S-U, S+U]."""
     cfg_cal = load_calib_config()
+    hc_nk, _ = load_thermometer_cross_cal()
+    off_nk_c: float | None = None
+    sig_off_nk_c: float | None = None
+    if hc_nk is not None and nhiet_do_tham_chieu is not None:
+        off_nk_c, sig_off_nk_c = hc_nk.offset_va_sigma_tai(nhiet_do_do)
     kq_man_dict = None
     error_man = None
     loai_loi_man = None
@@ -1314,6 +1351,8 @@ def _solve_and_gate_measurement(
                 sigma_D_khi_chua_do_C=sigma_D_override if sigma_D_override is not None else cfg_cal.sigma_D_khi_chua_do_C,
                 ap_dung_hieu_chinh_ly_thuyet_D=cfg_cal.ap_dung_hieu_chinh_ly_thuyet_D,
                 da_on_dinh_nhiet_gia_dinh=da_on_dinh_nhiet_gia_dinh,
+                offset_nhiet_ke_C=off_nk_c,
+                sigma_offset_nhiet_ke_C=sig_off_nk_c,
             )
             canh_bao_man = list(kq_man.canh_bao)
             canh_bao_chi_tiet = list(kq_man.canh_bao_chi_tiet)
@@ -1753,7 +1792,8 @@ async def api_measure_multi(request: Request) -> JSONResponse:
             "anh_danh_dau_b64": anh_b64,
             "profile": _extract_profile_data(anh_rep, kq_rep),
             "danh_gia_loai": danh_gia_loai,
-            "so_tham_so_chua_xac_nhan": trang_thai_cau_hinh.liet_ke_tham_so_chua_xac_nhan(CONFIG_PATH)["so_tham_so_chua_xac_nhan"],
+            "hieu_chuan_nhiet_ke": load_thermometer_cross_cal()[1],
+            "so_tham_so_chua_xac_nhan": trang_thai_cau_hinh.liet_ke_tham_so_chua_xac_nhan(CONFIG_PATH, hieu_chuan_nhiet_ke_path=FILE_HIEU_CHUAN_NHIET_KE)["so_tham_so_chua_xac_nhan"],
         })
     except AnhQuaLonError as exc:
         return _json_err_typed(413, "ANH_QUA_LON", str(exc), exc)

@@ -62,6 +62,8 @@ COT_ID_THIET_BI = "id_thiet_bi"
 COT_ID_DIEN_THOAI = "id_dien_thoai"
 COT_NGUON = "nguon_du_lieu"            # (tùy chọn) "THUC_TE" hoặc "MO_PHONG"
 COT_KHOA_AE_AF = "khoa_ae_af"          # (tùy chọn) 1/0: đã khóa phơi sáng/lấy nét
+COT_OFFSET_NHIET_KE = "offset_nhiet_ke_C"  # (tùy chọn) độ lệch nhiệt kế ngăn tham chiếu − mẫu
+COT_NHIET_DO_TC_DOC = "nhiet_do_tham_chieu_doc_C"  # (tùy chọn) số đọc thô trước khi trừ offset
 
 COT_BAT_BUOC = [
     COT_DO_MAN, COT_NHIET_DO, COT_DELTA_Y, COT_DO_DUC,
@@ -211,14 +213,33 @@ def doc_csv_hieu_chuan(nguon: str | Path | IO[Any]) -> pd.DataFrame:
     df = df.dropna(subset=[COT_DO_MAN, COT_NHIET_DO, COT_DELTA_Y]).reset_index(drop=True)
     df.attrs["so_dong_bi_loai"] = n_truoc - len(df)
 
+    if COT_OFFSET_NHIET_KE in df.columns:
+        df[COT_OFFSET_NHIET_KE] = pd.to_numeric(df[COT_OFFSET_NHIET_KE], errors="coerce")
+    if COT_NHIET_DO_TC_DOC in df.columns:
+        df[COT_NHIET_DO_TC_DOC] = pd.to_numeric(df[COT_NHIET_DO_TC_DOC], errors="coerce")
+
     if COT_NHIET_DO_TC not in df.columns:
-        df[COT_NHIET_DO_TC] = df[COT_NHIET_DO]
-        df.attrs["gia_dinh_can_bang_nhiet"] = True
+        if COT_NHIET_DO_TC_DOC in df.columns:
+            df[COT_NHIET_DO_TC] = df[COT_NHIET_DO_TC_DOC]
+            thieu_tc = bool(df[COT_NHIET_DO_TC].isna().any())
+            df[COT_NHIET_DO_TC] = df[COT_NHIET_DO_TC].fillna(df[COT_NHIET_DO])
+            df.attrs["gia_dinh_can_bang_nhiet"] = thieu_tc
+        else:
+            df[COT_NHIET_DO_TC] = df[COT_NHIET_DO]
+            df.attrs["gia_dinh_can_bang_nhiet"] = True
     else:
         df[COT_NHIET_DO_TC] = pd.to_numeric(df[COT_NHIET_DO_TC], errors="coerce")
+        if COT_NHIET_DO_TC_DOC not in df.columns:
+            df[COT_NHIET_DO_TC_DOC] = df[COT_NHIET_DO_TC]
         thieu_tc = bool(df[COT_NHIET_DO_TC].isna().any())
         df[COT_NHIET_DO_TC] = df[COT_NHIET_DO_TC].fillna(df[COT_NHIET_DO])
         df.attrs["gia_dinh_can_bang_nhiet"] = thieu_tc
+
+    if COT_OFFSET_NHIET_KE in df.columns:
+        # Giữ nguyên số đọc thô trong COT_NHIET_DO_TC_DOC và hiệu chỉnh T_tc trước khi học số hạng D
+        off_vals = df[COT_OFFSET_NHIET_KE].fillna(0.0)
+        base_tc_doc = df[COT_NHIET_DO_TC_DOC].fillna(df[COT_NHIET_DO_TC]) if COT_NHIET_DO_TC_DOC in df.columns else df[COT_NHIET_DO_TC]
+        df[COT_NHIET_DO_TC] = base_tc_doc - off_vals
 
     if len(df) == 0:
         raise ValueError("Không còn dòng hợp lệ nào (thiếu S, T hoặc Δy).")
@@ -750,6 +771,8 @@ def uoc_luong_do_man(
     sigma_D_khi_chua_do_C: float = 2.0,
     ap_dung_hieu_chinh_ly_thuyet_D: bool = False,
     da_on_dinh_nhiet_gia_dinh: bool = False,
+    offset_nhiet_ke_C: float | None = None,
+    sigma_offset_nhiet_ke_C: float | None = None,
 ) -> KetQuaDoMan:
     """Ước lượng độ mặn từ Δy và nhiệt độ hai ngăn, kèm bất định và cờ cảnh báo.
 
@@ -758,12 +781,26 @@ def uoc_luong_do_man(
     - Nếu nhập `T_tham_chieu_C` mà mô hình KHÔNG có số hạng D và |D| > `nguong_lech_T_hai_ngan_C`:
       đánh dấu `chenh_T_ngoai_mo_hinh = True`, `khong_danh_gia_duoc = True`, cộng cận trên độ chệch
       `|D| × |∂S/∂D|` vào u nhưng KHÔNG tự hiệu chỉnh S.
+    - Nếu có `offset_nhiet_ke_C`: hiệu chỉnh `T_tc_eff = T_tham_chieu_C − offset` và cộng `σ_offset²`
+      vào `σ_Dđo²`; ngược lại giữ nguyên tính toán và thêm cờ `nhiet_ke_chua_hieu_chuan_cheo`.
     - Nếu mô hình có `don_vi_y == "mm"`, bắt buộc truyền `px_per_mm > 0`.
     """
     if not (math.isfinite(delta_y_px) and math.isfinite(T_C)):
         raise ValueError("Δy hoặc nhiệt độ không hợp lệ (NaN/vô cực).")
     if T_tham_chieu_C is not None and not math.isfinite(T_tham_chieu_C):
         raise ValueError("Nhiệt độ ngăn tham chiếu không hợp lệ (NaN/vô cực).")
+
+    off_nk = (
+        float(offset_nhiet_ke_C)
+        if (offset_nhiet_ke_C is not None and math.isfinite(float(offset_nhiet_ke_C)))
+        else None
+    )
+    sig_off_nk = (
+        max(float(sigma_offset_nhiet_ke_C), 0.0)
+        if (off_nk is not None and sigma_offset_nhiet_ke_C is not None and math.isfinite(float(sigma_offset_nhiet_ke_C)))
+        else 0.0
+    )
+    T_tc_eff = (float(T_tham_chieu_C) - off_nk) if (T_tham_chieu_C is not None and off_nk is not None) else T_tham_chieu_C
 
     if getattr(mh, "don_vi_y", "px") == "mm":
         if px_per_mm is None or not math.isfinite(px_per_mm) or px_per_mm <= 0.0:
@@ -778,30 +815,31 @@ def uoc_luong_do_man(
         y_do = float(delta_y_px)
         sigma_y_do = abs(float(sigma_delta_y_px))
 
-    S = _tim_nghiem_S(mh, y_do, T_C, T_tc=T_tham_chieu_C)
-    f_S = mh.dao_ham_theo_S(S, T_C, T_tc=T_tham_chieu_C)
+    S = _tim_nghiem_S(mh, y_do, T_C, T_tc=T_tc_eff)
+    f_S = mh.dao_ham_theo_S(S, T_C, T_tc=T_tc_eff)
     if abs(f_S) < 1e-9:
         raise LoiMoHinhHieuChuanError("Độ nhạy ∂Δy/∂S ≈ 0 tại điểm này – không giải ngược được.")
     f_T = (
-        mh.dao_ham_theo_T(S, T_C, T_tc=T_tham_chieu_C)
-        if (mh.co_bu_nhiet or (T_tham_chieu_C is not None and mh.co_bu_chenh_T))
+        mh.dao_ham_theo_T(S, T_C, T_tc=T_tc_eff)
+        if (mh.co_bu_nhiet or (T_tc_eff is not None and mh.co_bu_chenh_T))
         else 0.0
     )
     f_T_tc = (
-        mh.dao_ham_theo_T_tc(S, T_C, T_tc=T_tham_chieu_C)
-        if (mh.co_bu_chenh_T and T_tham_chieu_C is not None)
+        mh.dao_ham_theo_T_tc(S, T_C, T_tc=T_tc_eff)
+        if (mh.co_bu_chenh_T and T_tc_eff is not None)
         else 0.0
     )
+    sigma_T_tc_eff = math.hypot(abs(float(sigma_T_tham_chieu_C)), sig_off_nk) if off_nk is not None else sigma_T_tham_chieu_C
 
     thanh_phan = {
         "do_anh": abs(sigma_y_do / f_S),
         "lap_lai_duong_chuan": abs(mh.s_res_px / f_S),
-        "he_so_duong_chuan": math.sqrt(max(mh.phuong_sai_du_doan(S, T_C, T_tc=T_tham_chieu_C), 0.0)) / abs(f_S),
+        "he_so_duong_chuan": math.sqrt(max(mh.phuong_sai_du_doan(S, T_C, T_tc=T_tc_eff), 0.0)) / abs(f_S),
         "nhiet_do": abs(f_T * sigma_T_C / f_S),
     }
     mo_ta_thanh_phan: dict[str, str] = {}
-    if T_tham_chieu_C is not None or sigma_T_tham_chieu_C > 0 or mh.co_bu_chenh_T:
-        thanh_phan["nhiet_do_tham_chieu"] = abs(f_T_tc * sigma_T_tham_chieu_C / f_S)
+    if T_tc_eff is not None or sigma_T_tham_chieu_C > 0 or mh.co_bu_chenh_T:
+        thanh_phan["nhiet_do_tham_chieu"] = abs(f_T_tc * sigma_T_tc_eff / f_S)
     if sigma_dung_dich_chuan_ppt is not None and float(sigma_dung_dich_chuan_ppt) > 0.0:
         thanh_phan["dung_dich_chuan"] = float(sigma_dung_dich_chuan_ppt)
 
@@ -809,6 +847,13 @@ def uoc_luong_do_man(
 
     def _them_canh_bao(ma: str, cap: str, noi_dung: str) -> None:
         canh_bao_chi_tiet.append({"ma": ma, "cap": cap, "noi_dung": noi_dung})
+
+    if off_nk is None:
+        _them_canh_bao(
+            "nhiet_ke_chua_hieu_chuan_cheo",
+            "can_than",
+            "Độ lệch hệ thống giữa hai nhiệt kế chưa được xác định nên có thể bị chặn oan hoặc U lớn.",
+        )
 
     if sigma_dung_dich_chuan_ppt is None:
         _them_canh_bao(
@@ -841,7 +886,7 @@ def uoc_luong_do_man(
 
     ngoai_dai_D = False
     chenh_T_ngoai_mo_hinh = False
-    if T_tham_chieu_C is None:
+    if T_tc_eff is None:
         if mh.co_bu_chenh_T:
             he_so_d = abs(mh.dao_ham_theo_D(S, T_C, T_tc=T_C) / f_S)
             nguon_d = "từ đường chuẩn đã học D"
@@ -871,17 +916,18 @@ def uoc_luong_do_man(
                 f"chênh nhiệt hai ngăn có thể làm lệch tới ±{k * u_chua_do:.2f} ‰ ({nguon_d}).",
             )
     else:
-        chenh_T = T_C - T_tham_chieu_C
+        chenh_T = T_C - T_tc_eff
         if not mh.co_bu_chenh_T:
-            sigma_D_do = math.hypot(abs(float(sigma_T_C)), abs(float(sigma_T_tham_chieu_C)))
+            sigma_D_do = math.sqrt(float(sigma_T_C) ** 2 + float(sigma_T_tham_chieu_C) ** 2 + sig_off_nk ** 2)
             k_D_signed = _do_nhay_S_theo_D_ly_thuyet_co_dau(S, T_C)
             he_so_d_lt = abs(k_D_signed)
+            ghi_offset = f", đã trừ offset={off_nk:+.3f}±{sig_off_nk:.3f} °C" if off_nk is not None else ""
             if ap_dung_hieu_chinh_ly_thuyet_D:
                 S = S - k_D_signed * chenh_T
                 thanh_phan["chenh_nhiet_con_lai"] = he_so_d_lt * sigma_D_do
                 mo_ta_thanh_phan["chenh_nhiet_con_lai"] = (
                     f"Bất định còn lại sau hiệu chỉnh lí thuyết −k_D·D "
-                    f"(σ_Dđo={sigma_D_do:.2f} °C; dùng hệ số ∂S/∂D LÍ THUYẾT từ core/optics.py, không phải đã hiệu chuẩn)"
+                    f"(σ_Dđo={sigma_D_do:.2f} °C{ghi_offset}; dùng hệ số ∂S/∂D LÍ THUYẾT từ core/optics.py, không phải đã hiệu chuẩn)"
                 )
                 if abs(chenh_T) > 0.0:
                     _them_canh_bao(
@@ -899,7 +945,7 @@ def uoc_luong_do_man(
                 )
                 thanh_phan["chenh_nhiet_con_lai"] = he_so_d_lt * sigma_D_do
                 mo_ta_thanh_phan["chenh_nhiet_con_lai"] = (
-                    f"Bất định đo chênh nhiệt từ độ chính xác nhiệt kế (σ_Dđo={sigma_D_do:.2f} °C; "
+                    f"Bất định đo chênh nhiệt từ độ chính xác nhiệt kế (σ_Dđo={sigma_D_do:.2f} °C{ghi_offset}; "
                     "hệ số ∂S/∂D LÍ THUYẾT từ core/optics.py, không phải đã hiệu chuẩn)"
                 )
                 _them_canh_bao(
@@ -913,13 +959,13 @@ def uoc_luong_do_man(
                 thanh_phan["chenh_nhiet_con_lai"] = he_so_d_lt * math.hypot(chenh_T, sigma_D_do)
                 mo_ta_thanh_phan["chenh_nhiet_con_lai"] = (
                     f"Chênh nhiệt hai ngăn còn lại (D={chenh_T:+.2f} °C) và độ chính xác nhiệt kế "
-                    f"(σ_Dđo={sigma_D_do:.2f} °C); dùng hệ số ∂S/∂D LÍ THUYẾT (core/optics.py), không phải đã hiệu chuẩn"
+                    f"(σ_Dđo={sigma_D_do:.2f} °C{ghi_offset}); dùng hệ số ∂S/∂D LÍ THUYẾT (core/optics.py), không phải đã hiệu chuẩn"
                 )
         else:
             ngoai_dai_D = not (mh.D_min - 0.2 <= chenh_T <= mh.D_max + 0.2)
             if ngoai_dai_D:
                 vuot_d = max(mh.D_min - chenh_T, chenh_T - mh.D_max, 0.0)
-                he_so_d_mh = abs(mh.dao_ham_theo_D(S, T_C, T_tc=T_tham_chieu_C) / f_S)
+                he_so_d_mh = abs(mh.dao_ham_theo_D(S, T_C, T_tc=T_tc_eff) / f_S)
                 thanh_phan["ngoai_suy_chenh_nhiet"] = vuot_d * he_so_d_mh
                 mo_ta_thanh_phan["ngoai_suy_chenh_nhiet"] = "Ngoại suy ngoài dải D của đường chuẩn"
                 _them_canh_bao(

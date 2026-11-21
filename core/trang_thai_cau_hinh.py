@@ -15,6 +15,8 @@ from typing import Any
 
 import yaml
 
+from core.nhiet_ke import FILE_HIEU_CHUAN_NHIET_KE_MAC_DINH, tai_hieu_chuan_cheo_nhiet_ke
+
 CONFIG_MAC_DINH = Path(__file__).resolve().parents[1] / "config.yaml"
 XAC_NHAN_QF_MAC_DINH = Path(__file__).resolve().parents[1] / "data" / "xac_nhan_quan_fry.json"
 
@@ -235,7 +237,31 @@ DANH_MUC_GIA_DINH: tuple[MucGiaDinhKhaiBao, ...] = (
         trang_thai="CHUA_DIEN_NULL",
         viec_can_lam="Xác định theo biên độ nhiệt độ ao nuôi/nguồn nước thực tế cần đo và điền vào config.yaml.",
     ),
+    MucGiaDinhKhaiBao(
+        nhom="hieu_chuan",
+        khoa="nhiet_ke_cheo.so_cap_toi_thieu",
+        ten_hien_thi="Số cặp tối thiểu khi hiệu chuẩn chéo hai nhiệt kế",
+        trang_thai="GIA_DINH",
+        viec_can_lam="Điều chỉnh cùng giáo viên theo thực tế lặp nhiệt độ khi ngâm chung hai nhiệt kế.",
+    ),
+    MucGiaDinhKhaiBao(
+        nhom="hieu_chuan",
+        khoa="nhiet_ke_cheo.so_muc_nhiet_toi_thieu",
+        ten_hien_thi="Số mức nhiệt độ tối thiểu khi hiệu chuẩn chéo hai nhiệt kế",
+        trang_thai="GIA_DINH",
+        viec_can_lam="Chọn số mức nhiệt độ tối thiểu phủ hết dải nhiệt độ cần đo.",
+    ),
 )
+
+
+def _lay_gia_tri_long(section: dict[str, Any], khoa_path: str) -> tuple[bool, Any]:
+    """Đọc khóa có thể lồng nhau theo dấu chấm (vd 'nhiet_ke_cheo.so_cap_toi_thieu')."""
+    cur: Any = section
+    for part in str(khoa_path).split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            return False, None
+        cur = cur[part]
+    return True, cur
 
 
 def kiem_tra_xac_nhan_quan_fry(
@@ -260,6 +286,7 @@ def kiem_tra_xac_nhan_quan_fry(
 def liet_ke_tham_so_chua_xac_nhan(
     config_path: str | Path = CONFIG_MAC_DINH,
     xac_nhan_quan_fry_path: str | Path | None = XAC_NHAN_QF_MAC_DINH,
+    hieu_chuan_nhiet_ke_path: str | Path | None = FILE_HIEU_CHUAN_NHIET_KE_MAC_DINH,
 ) -> dict[str, Any]:
     """Trả danh sách các tham số còn là giả định hoặc để trống cần người dùng xác nhận."""
     cfg_path = Path(config_path)
@@ -269,8 +296,7 @@ def liet_ke_tham_so_chua_xac_nhan(
     danh_sach: list[dict[str, Any]] = []
     for item in DANH_MUC_GIA_DINH:
         section = raw.get(item.nhom, {}) or {}
-        has_key = item.khoa in section
-        val = section.get(item.khoa)
+        has_key, val = _lay_gia_tri_long(section, item.khoa)
         if item.trang_thai == "CHUA_DIEN_NULL":
             # Chỉ rời danh sách khi người dùng đã điền giá trị số / non-null hợp lệ
             if has_key and val is not None and str(val).strip() != "":
@@ -282,6 +308,21 @@ def liet_ke_tham_so_chua_xac_nhan(
             "gia_tri_hien_tai": "null" if val is None else str(val),
             "trang_thai": "CHƯA ĐIỀN (null)" if val is None else "GIẢ ĐỊNH",
             "viec_can_lam": item.viec_can_lam,
+        })
+
+    # Kiểm tra hiệu chuẩn chéo hai nhiệt kế (V1)
+    hc_nk = tai_hieu_chuan_cheo_nhiet_ke(hieu_chuan_nhiet_ke_path)
+    if hc_nk is None:
+        danh_sach.append({
+            "ma": "hieu_chuan.hieu_chuan_cheo_nhiet_ke",
+            "nhom": "hieu_chuan",
+            "ten_tham_so": "Hiệu chuẩn chéo độ lệch giữa hai nhiệt kế (ngăn tham chiếu vs mẫu)",
+            "gia_tri_hien_tai": "chưa có file",
+            "trang_thai": "CHƯA HIỆU CHUẨN CHÉO",
+            "viec_can_lam": (
+                "Nhúng chung hai đầu đo vào cùng cốc nước khuấy đều ở nhiều nhiệt độ "
+                "và chạy scripts/hieu_chuan_cheo_nhiet_ke.py."
+            ),
         })
 
     # Kiểm tra từng loài trong nguong_loai

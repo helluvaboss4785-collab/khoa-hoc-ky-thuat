@@ -504,11 +504,13 @@ def sinh_du_lieu_hieu_chuan_mo_phong(
     sigma_nhiet_ke_C: float = 0.1,
     T_tham_chieu_C: float | tuple[float, ...] | list[float] | None = None,
     seed: int = 0,
+    offset_nhiet_ke_tc_C: float = 0.0,
 ) -> "pd.DataFrame":
     """Sinh bảng dữ liệu hiệu chuẩn MÔ PHỎNG (cùng định dạng CSV đo thật).
 
     - Δy "thật" tính bằng mô hình Snell (core.optics); cộng nhiễu Gauss σ_Δy.
     - Nhiệt độ ghi lại = nhiệt độ thật + sai số nhiệt kế N(0, σ_T).
+      Nếu `offset_nhiet_ke_tc_C != 0`, số đọc ngăn tham chiếu = T_tc_that + offset_nhiet_ke_tc_C + nhiễu.
     - T_tham_chieu_C = None: giả định ngăn tham chiếu cân bằng nhiệt với mẫu (không ghi cột T_tc).
       Nếu truyền số hoặc danh sách nhiệt độ ngăn tham chiếu: ghi cột nhiet_do_tham_chieu_C độc lập.
     - MỌI DÒNG có nguon_du_lieu = "MO_PHONG" để chương trình hiển thị nhãn
@@ -547,7 +549,9 @@ def sinh_du_lieu_hieu_chuan_mo_phong(
                         cal.COT_NGUON: cal.NHAN_MO_PHONG,
                     }
                     if T_tc_muc is not None:
-                        rec[cal.COT_NHIET_DO_TC] = float(T_tc_muc + rng.normal(0.0, sigma_nhiet_ke_C))
+                        rec[cal.COT_NHIET_DO_TC] = float(
+                            T_tc_muc + float(offset_nhiet_ke_tc_C) + rng.normal(0.0, sigma_nhiet_ke_C)
+                        )
                     dong.append(rec)
     df = pd.DataFrame(dong)
     df.attrs["gia_dinh_can_bang_nhiet"] = T_tham_chieu_C is None

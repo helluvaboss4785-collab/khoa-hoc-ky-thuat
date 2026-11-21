@@ -587,6 +587,18 @@ function updateUnconfirmedCountUI(nVal) {
   if ($("#modal-assumptions-count")) $("#modal-assumptions-count").textContent = txt;
 }
 
+function updateThermometerCalStatusUI(info) {
+  const el = $("#t1-thermometer-cal-status");
+  if (!el || !info) return;
+  if (info.da_hieu_chuan) {
+    el.style.color = "#0f766e";
+    el.textContent = info.thong_bao || `Đã hiệu chuẩn chéo nhiệt kế (${fmt(info.offset_C, 3)} ± ${fmt(info.sigma_offset_C, 3)} °C, ${info.ngay}, ${info.nguoi_thuc_hien})`;
+  } else {
+    el.style.color = "#b45309";
+    el.textContent = info.thong_bao || "Chưa hiệu chuẩn chéo hai nhiệt kế: chênh lệch cố định giữa 2 đầu đo có thể gây chặn oan hoặc tăng bất định.";
+  }
+}
+
 async function openAssumptionsPanel() {
   const modal = $("#assumptions-modal-backdrop");
   if (modal) modal.classList.add("open");
@@ -621,6 +633,9 @@ async function loadBootstrap() {
     renderSpeciesFullTable(data.danh_sach_loai);
     if (data.so_tham_so_chua_xac_nhan !== undefined) {
       updateUnconfirmedCountUI(data.so_tham_so_chua_xac_nhan);
+    }
+    if (data.hieu_chuan_nhiet_ke) {
+      updateThermometerCalStatusUI(data.hieu_chuan_nhiet_ke);
     }
     $("#t5-a").value = data.quang_hoc.A_do;
     $("#val-t5-a").textContent = `${Number(data.quang_hoc.A_do).toFixed(1)}°`;
@@ -1015,6 +1030,9 @@ function renderMeasureResults(d) {
   }
   if (d.so_tham_so_chua_xac_nhan !== undefined) {
     updateUnconfirmedCountUI(d.so_tham_so_chua_xac_nhan);
+  }
+  if (d.hieu_chuan_nhiet_ke) {
+    updateThermometerCalStatusUI(d.hieu_chuan_nhiet_ke);
   }
 
   // Tóm tắt đo đa khung (nếu có)
