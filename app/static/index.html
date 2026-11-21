@@ -54,6 +54,9 @@
       <button type="button" id="btn-open-guide" class="btn-25d btn-sidebar-25d btn-sm">
         Hướng dẫn sử dụng
       </button>
+      <button type="button" id="btn-open-assumptions" class="btn-25d btn-sidebar-25d btn-sm">
+        Các tham số còn là giả định (<span id="sb-assumptions-count">--</span>)
+      </button>
 
       <label class="sb-toggle-row pro-only">
         <span>Hiện trợ lý 4 bước</span>
@@ -411,6 +414,9 @@
                   <input type="checkbox" id="toggle-extra-info" /> Hiển thị thông tin bổ sung
                 </label>
                 <div id="t1-extra-info-box" style="display:none; margin-top:6px;"></div>
+              </div>
+              <div id="t1-assumptions-banner" style="margin-top:6px; font-size:0.8rem; color:#475569;">
+                <button type="button" id="t1-unconfirmed-link" class="inline-link-btn">Còn <span id="t1-unconfirmed-count">--</span> tham số chưa xác nhận — xem danh sách giả định</button>
               </div>
             </div>
 
@@ -1165,6 +1171,33 @@
       </div>
     </div>
   </aside>
+
+  <!-- ==================== MODAL CÁC THAM SỐ CÒN LÀ GIẢ ĐỊNH (R7) ==================== -->
+  <div id="assumptions-modal-backdrop" class="modal-backdrop">
+    <div class="modal-25d" style="max-width:860px; width:94%;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+        <h3 style="margin:0; font-size:1.1rem; color:#0b1d3a;">Các tham số còn là giả định / chưa xác nhận (<span id="modal-assumptions-count">--</span>)</h3>
+        <button type="button" id="btn-close-assumptions" class="btn-25d btn-sm">Đóng</button>
+      </div>
+      <p style="margin:8px 0 10px; font-size:0.83rem; color:#475569;">
+        Bảng này liệt kê trung thực toàn bộ các ngưỡng/hằng số mặc định hoặc còn để trống (<code>null</code>) trong <code>config.yaml</code> và công thức Quan–Fry để nhóm thực nghiệm chủ động đo, đối chiếu và thay bằng số liệu thật trước khi nộp báo cáo KHKT.
+      </p>
+      <div class="table-scroll-25d" style="max-height:58vh; overflow:auto;">
+        <table class="data-table-25d">
+          <thead>
+            <tr>
+              <th>Tham số</th>
+              <th>Nhóm</th>
+              <th>Giá trị hiện tại</th>
+              <th>Trạng thái</th>
+              <th>Việc người dùng cần làm</th>
+            </tr>
+          </thead>
+          <tbody id="assumptions-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 
   <div id="toast-tray" class="toast-tray"></div>
 

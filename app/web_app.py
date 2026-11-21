@@ -45,6 +45,7 @@ from core import ong_kinh
 from core import optics as op
 from core import thang
 from core import thresholds as th
+from core import trang_thai_cau_hinh
 from core.measure import (
     AnhKhongHopLeError,
     KetQuaDoDeltaY,
@@ -837,9 +838,14 @@ async def api_bootstrap(request: Request) -> JSONResponse:
         },
         "danh_sach_loai": load_serialized_species(),
         "so_ban_ghi_nhat_ki": so_ban_ghi,
+        "so_tham_so_chua_xac_nhan": trang_thai_cau_hinh.liet_ke_tham_so_chua_xac_nhan(CONFIG_PATH)["so_tham_so_chua_xac_nhan"],
         "han_che_nacl": cal.HAN_CHE_NACL,
         "nhan_chua_hieu_chuan": cal.NHAN_CHUA_HIEU_CHUAN,
     })
+
+
+async def api_trang_thai_cau_hinh(request: Request) -> JSONResponse:
+    return _json_ok(trang_thai_cau_hinh.liet_ke_tham_so_chua_xac_nhan(CONFIG_PATH))
 
 
 def _serialize_chat_luong(
@@ -1120,6 +1126,7 @@ async def api_measure(request: Request) -> JSONResponse:
             "anh_danh_dau_b64": anh_b64,
             "profile": _extract_profile_data(anh_input, kq_do),
             "danh_gia_loai": danh_gia_loai,
+            "so_tham_so_chua_xac_nhan": trang_thai_cau_hinh.liet_ke_tham_so_chua_xac_nhan(CONFIG_PATH)["so_tham_so_chua_xac_nhan"],
         })
     except AnhQuaLonError as exc:
         return _json_err_typed(
@@ -1721,6 +1728,7 @@ async def api_measure_multi(request: Request) -> JSONResponse:
             "anh_danh_dau_b64": anh_b64,
             "profile": _extract_profile_data(anh_rep, kq_rep),
             "danh_gia_loai": danh_gia_loai,
+            "so_tham_so_chua_xac_nhan": trang_thai_cau_hinh.liet_ke_tham_so_chua_xac_nhan(CONFIG_PATH)["so_tham_so_chua_xac_nhan"],
         })
     except AnhQuaLonError as exc:
         return _json_err_typed(413, "ANH_QUA_LON", str(exc), exc)
@@ -2478,6 +2486,7 @@ routes = [
     Route("/api/bland-altman", endpoint=api_bland_altman, methods=["POST"]),
     Route("/api/config/optics", endpoint=api_config_optics, methods=["POST"]),
     Route("/api/config/species", endpoint=api_config_species, methods=["POST"]),
+    Route("/api/trang-thai-cau-hinh", endpoint=api_trang_thai_cau_hinh, methods=["GET"]),
     Mount("/static", app=StaticFiles(directory=str(STATIC_DIR)), name="static"),
 ]
 

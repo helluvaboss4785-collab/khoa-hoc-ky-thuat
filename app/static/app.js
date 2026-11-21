@@ -580,6 +580,36 @@ async function flushOfflineQueue(silent = false) {
   }
 }
 
+function updateUnconfirmedCountUI(nVal) {
+  const txt = String(nVal ?? "--");
+  if ($("#sb-assumptions-count")) $("#sb-assumptions-count").textContent = txt;
+  if ($("#t1-unconfirmed-count")) $("#t1-unconfirmed-count").textContent = txt;
+  if ($("#modal-assumptions-count")) $("#modal-assumptions-count").textContent = txt;
+}
+
+async function openAssumptionsPanel() {
+  const modal = $("#assumptions-modal-backdrop");
+  if (modal) modal.classList.add("open");
+  try {
+    const data = await apiGet("/api/trang-thai-cau-hinh", "assumptions");
+    updateUnconfirmedCountUI(data.so_tham_so_chua_xac_nhan);
+    const tbody = $("#assumptions-tbody");
+    if (tbody && Array.isArray(data.danh_sach)) {
+      tbody.innerHTML = data.danh_sach.map((it) => `
+        <tr>
+          <td><b>${esc(it.ten_tham_so)}</b><br><code style="font-size:0.75rem; color:#64748b;">${esc(it.ma)}</code></td>
+          <td>${esc(it.nhom)}</td>
+          <td><code>${esc(it.gia_tri_hien_tai)}</code></td>
+          <td>${esc(it.trang_thai)}</td>
+          <td>${esc(it.viec_can_lam)}</td>
+        </tr>
+      `).join("");
+    }
+  } catch (err) {
+    toast(`Không tải được bảng giả định: ${err.message}`);
+  }
+}
+
 async function loadBootstrap() {
   try {
     const data = await apiGet(`/api/bootstrap?ho_so=${encodeURIComponent(STATE.hoSo || "mac_dinh")}`);
@@ -589,6 +619,9 @@ async function loadBootstrap() {
     updateModelBadges(data.mo_hinh, data.quang_hoc, data.so_ban_ghi_nhat_ki);
     populateSpeciesDropdowns(data.danh_sach_loai);
     renderSpeciesFullTable(data.danh_sach_loai);
+    if (data.so_tham_so_chua_xac_nhan !== undefined) {
+      updateUnconfirmedCountUI(data.so_tham_so_chua_xac_nhan);
+    }
     $("#t5-a").value = data.quang_hoc.A_do;
     $("#val-t5-a").textContent = `${Number(data.quang_hoc.A_do).toFixed(1)}°`;
     $("#t5-d").value = data.quang_hoc.D_m;
@@ -979,6 +1012,9 @@ function renderMeasureResults(d) {
       extraWrap.style.display = "none";
       extraBox.innerHTML = "";
     }
+  }
+  if (d.so_tham_so_chua_xac_nhan !== undefined) {
+    updateUnconfirmedCountUI(d.so_tham_so_chua_xac_nhan);
   }
 
   // Tóm tắt đo đa khung (nếu có)
@@ -2424,6 +2460,12 @@ function bindEvents() {
   $("#btn-close-guide").addEventListener("click", () => $("#guide-modal-backdrop").classList.remove("open"));
   $("#guide-modal-backdrop").addEventListener("click", (ev) => {
     if (ev.target.id === "guide-modal-backdrop") $("#guide-modal-backdrop").classList.remove("open");
+  });
+  $("#btn-open-assumptions")?.addEventListener("click", openAssumptionsPanel);
+  $("#t1-unconfirmed-link")?.addEventListener("click", openAssumptionsPanel);
+  $("#btn-close-assumptions")?.addEventListener("click", () => $("#assumptions-modal-backdrop")?.classList.remove("open"));
+  $("#assumptions-modal-backdrop")?.addEventListener("click", (ev) => {
+    if (ev.target.id === "assumptions-modal-backdrop") $("#assumptions-modal-backdrop").classList.remove("open");
   });
   $("#toggle-coach").addEventListener("change", updateCoachBar);
   $("#toggle-extra-info")?.addEventListener("change", (ev) => {
