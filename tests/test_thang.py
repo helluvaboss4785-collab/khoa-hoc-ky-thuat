@@ -160,3 +160,50 @@ def test_api_measure_thang_exif_va_canh_bao_ae_af() -> None:
     assert resp2.status_code == 200
     d2 = json.loads(resp2.body.decode("utf-8"))
     assert not any("AE/AF lock" in w for w in d2["chat_luong"]["canh_bao"])
+
+
+def test_r6_xu_ly_thu_muc_anh_ghi_px_per_mm_va_canh_bao_thieu_thang(tmp_path) -> None:
+    """R6: xu_ly_thu_muc_anh ghi px_per_mm từ metadata và cảnh báo ảnh có thước nhưng thiếu px_per_mm."""
+    import cv2
+    from scripts.xu_ly_thu_muc_anh import xu_ly_thu_muc_anh
+
+    cfg = CauHinhQuangHoc.tu_yaml()
+    img_dir = tmp_path / "anh_r6"
+    img_dir.mkdir()
+    meta_rows = []
+    for idx, (ten, px_val, co_thuoc) in enumerate([
+        ("mau_01.png", 12.5, 1),
+        ("mau_co_thuoc_02.png", "", 1),
+    ]):
+        mp = sinh_anh_hai_vach_mo_phong(
+            ThamSoMoPhong(S_ppt=15.0, T_C=25.0, T_tham_chieu_C=25.0, seed=60 + idx),
+            cfg=cfg,
+            gan_watermark=False,
+        )
+        cv2.imwrite(str(img_dir / ten), mp.anh)
+        meta_rows.append({
+            "ten_file": ten,
+            "do_man_chuan_ppt": 15.0,
+            "nhiet_do_C": 25.0,
+            "nhiet_do_tham_chieu_C": 25.0,
+            "px_per_mm": px_val,
+            "co_thuoc": co_thuoc,
+            "id_thiet_bi": "TB1",
+            "id_dien_thoai": "DT1",
+        })
+    meta_p = tmp_path / "meta.csv"
+    pd.DataFrame(meta_rows).to_csv(meta_p, index=False, encoding="utf-8-sig")
+
+    df_cal, df_rep, _, _ = xu_ly_thu_muc_anh(
+        thu_muc=img_dir,
+        nguon="MO_PHONG",
+        metadata_csv=meta_p,
+        out_csv=tmp_path / "cal.csv",
+        out_report=tmp_path / "rep.csv",
+    )
+    assert df_cal[cal.COT_PX_PER_MM].iloc[0] == pytest.approx(12.5)
+    assert df_cal[cal.COT_PX_PER_MM].iloc[1] == ""
+    rep_by_name = {r["ten_file"]: r for _, r in df_rep.iterrows()}
+    assert rep_by_name["mau_01.png"]["canh_bao_thang"] == ""
+    assert "px_per_mm" in str(rep_by_name["mau_co_thuoc_02.png"]["canh_bao_thang"])
+

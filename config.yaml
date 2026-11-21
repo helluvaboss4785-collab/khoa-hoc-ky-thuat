@@ -60,6 +60,7 @@ hieu_chuan:                      # Tham số dựng đường chuẩn (Cột m�
   cho_phep_giam_sigma_D_khi_on_dinh: false  # GIẢ ĐỊNH, cần thay bằng giá trị đo được (mặc định TẮT: chỉ bật khi chấp nhận giả định cân bằng nhiệt giúp giảm σ_D)
   sigma_D_khi_da_on_dinh_C: 1.0  # GIẢ ĐỊNH, cần thay bằng giá trị đo được (°C khi chuỗi Δy(t) đã ổn định đủ lâu)
   thoi_gian_on_dinh_toi_thieu_phut: 5.0  # GIẢ ĐỊNH, cần thay bằng giá trị đo được (số phút theo dõi ổn định tối thiểu để giảm σ_D)
+  nguong_bien_thien_px_per_mm_phan_tram: 2.0  # GIẢ ĐỊNH, cần thay bằng giá trị đo được (biến thiên px/mm vượt ngưỡng % này -> cảnh báo khi dựng đường chuẩn theo px)
   sai_so_dung_dich_chuan_ppt: null  # bất định chuẩn của dung dịch NaCl chuẩn (‰) - để null khi chưa khai báo
   nhiet_do_toi_thieu_phu_C: null    # dải nhiệt độ tối thiểu cần phủ khi hiệu chuẩn (°C) - để người dùng đặt
   seed: 0                        # hạt giống ngẫu nhiên để chia train/test tái lập được

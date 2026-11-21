@@ -563,3 +563,48 @@ def test_r0_bat_dinh_khi_nhap_T_tc_khong_hoc_D():
     assert "chenh_nhiet_con_lai" not in est_d_none.thanh_phan_bat_dinh
 
 
+def test_r6_thang_px_per_mm_va_don_vi_duong_chuan():
+    """R6: don_vi_y='mm' thiếu px_per_mm báo lỗi tên dòng; trộn px_per_mm cảnh báo can_than; biến thiên >2% cảnh báo kèm ‰."""
+    rows_base = []
+    for S in (0.0, 5.0, 10.0, 15.0, 20.0, 25.0):
+        for T in (22.0, 26.0):
+            rows_base.append({
+                cal.COT_DO_MAN: S,
+                cal.COT_NHIET_DO: T,
+                cal.COT_NHIET_DO_TC: T,
+                cal.COT_DELTA_Y: 0.5 * S * 10.0,
+                cal.COT_PX_PER_MM: 10.0,
+                cal.COT_DO_DUC: 0.0,
+                cal.COT_GHI_CHU: f"mau_{int(S)}_{int(T)}",
+                cal.COT_ID_THIET_BI: "TB1",
+                cal.COT_ID_DIEN_THOAI: "DT1",
+                cal.COT_NGUON: cal.NHAN_MO_PHONG,
+            })
+
+    # 1. Bình thường (đồng nhất 10.0 px/mm): không có TRON_PX_PER_MM hay BIEN_THIEN_PX_PER_MM
+    df_ok = pd.DataFrame(rows_base)
+    bc_ok = cal.dung_duong_chuan(df_ok, bac_ep=1, don_vi_y="px")
+    assert not any(c["ma"] in ("TRON_PX_PER_MM", "BIEN_THIEN_PX_PER_MM") for c in bc_ok.canh_bao_chi_tiet)
+
+    # 2. don_vi_y="mm" nhưng dòng 3 thiếu px_per_mm -> ValueError nêu rõ dòng 3, không bỏ dòng hay về px
+    df_thieu = df_ok.copy()
+    df_thieu.loc[2, cal.COT_PX_PER_MM] = np.nan
+    with pytest.raises(ValueError, match="dòng 3"):
+        cal.dung_duong_chuan(df_thieu, bac_ep=1, don_vi_y="mm")
+
+    # 3. Trộn dòng có và không có px_per_mm khi dựng theo px -> cảnh báo can_than TRON_PX_PER_MM
+    bc_tron = cal.dung_duong_chuan(df_thieu, bac_ep=1, don_vi_y="px")
+    assert any(c["ma"] == "TRON_PX_PER_MM" and c["cap"] == "can_than" for c in bc_tron.canh_bao_chi_tiet)
+
+    # 4. px_per_mm biến thiên > 2% cùng (TB1, DT1) khi tính bằng px -> cảnh báo + ước lượng ‰
+    df_var = df_ok.copy()
+    df_var.loc[df_var.index >= 6, cal.COT_PX_PER_MM] = 10.8  # ~7.7% biến thiên > 2%
+    bc_var = cal.dung_duong_chuan(df_var, bac_ep=1, don_vi_y="px")
+    cb_var = [c for c in bc_var.canh_bao_chi_tiet if c["ma"] == "BIEN_THIEN_PX_PER_MM"]
+    assert len(cb_var) == 1
+    assert cb_var[0]["cap"] == "can_than"
+    assert "đường chuẩn pixel chỉ đúng cho đúng một cấu hình camera/khoảng cách" in cb_var[0]["noi_dung"].lower()
+    assert "‰" in cb_var[0]["noi_dung"]
+
+
+

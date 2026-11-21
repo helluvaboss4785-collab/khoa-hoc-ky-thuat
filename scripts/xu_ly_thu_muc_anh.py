@@ -204,7 +204,22 @@ def xu_ly_thu_muc_anh(
         t_tc_raw = meta_dict.get("nhiet_do_tham_chieu_C")
         t_tc_val = float(t_tc_raw) if (t_tc_raw is not None and pd.notna(t_tc_raw) and str(t_tc_raw).strip() != "") else None
         px_raw = meta_dict.get("px_per_mm")
-        px_val = float(px_raw) if (px_raw is not None and pd.notna(px_raw) and str(px_raw).strip() != "") else None
+        px_val: float | None = None
+        if px_raw is not None and pd.notna(px_raw) and str(px_raw).strip() != "":
+            try:
+                px_cand = float(px_raw)
+                if np.isfinite(px_cand) and px_cand > 0.0:
+                    px_val = px_cand
+            except (TypeError, ValueError):
+                px_val = None
+        co_thuoc = _la_bool_int(meta_dict.get("co_thuoc"), 0) == 1
+        txt_thuoc = f"{img_path.stem} {meta_dict.get('ghi_chu', '')}".lower()
+        co_dau_hieu_thuoc = co_thuoc or any(tok in txt_thuoc for tok in ("thuoc", "thước", "ruler"))
+        cb_thang = (
+            "Ảnh có thước nhưng thiếu hoặc sai giá trị px_per_mm trong metadata"
+            if (co_dau_hieu_thuoc and px_val is None)
+            else ""
+        )
         ma_me = str(meta_dict.get("ma_me_pha", "") if pd.notna(meta_dict.get("ma_me_pha", "")) else "").strip()
         ngay_do = str(meta_dict.get("ngay_do", "") if pd.notna(meta_dict.get("ngay_do", "")) else "").strip()
         id_tb = str(meta_dict.get("id_thiet_bi", "") if pd.notna(meta_dict.get("id_thiet_bi", "")) else "").strip()
@@ -271,6 +286,7 @@ def xu_ly_thu_muc_anh(
                 "nen_khong_deu": None,
                 "exif_exposure": exif_info.get("exposure_str", ""),
                 "exif_iso": exif_info.get("iso", ""),
+                "canh_bao_thang": cb_thang,
                 "ly_do_loai": err_msg,
             })
             continue
@@ -292,6 +308,7 @@ def xu_ly_thu_muc_anh(
             "nen_khong_deu": cq.nen_khong_deu,
             "exif_exposure": exif_info.get("exposure_str", ""),
             "exif_iso": exif_info.get("iso", ""),
+            "canh_bao_thang": cb_thang,
             "ly_do_loai": ly_do,
         })
 

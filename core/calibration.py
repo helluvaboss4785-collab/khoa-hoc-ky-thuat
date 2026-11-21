@@ -114,6 +114,7 @@ class CauHinhHieuChuan:
     cho_phep_giam_sigma_D_khi_on_dinh: bool = False
     sigma_D_khi_da_on_dinh_C: float = 1.0
     thoi_gian_on_dinh_toi_thieu_phut: float = 5.0
+    nguong_bien_thien_px_per_mm_phan_tram: float = 2.0
     sai_so_dung_dich_chuan_ppt: float | None = None
     nhiet_do_toi_thieu_phu_C: float | None = None
     seed: int = 0
@@ -146,6 +147,9 @@ class CauHinhHieuChuan:
             ),
             thoi_gian_on_dinh_toi_thieu_phut=float(
                 c.get("thoi_gian_on_dinh_toi_thieu_phut", mac_dinh.thoi_gian_on_dinh_toi_thieu_phut)
+            ),
+            nguong_bien_thien_px_per_mm_phan_tram=float(
+                c.get("nguong_bien_thien_px_per_mm_phan_tram", mac_dinh.nguong_bien_thien_px_per_mm_phan_tram)
             ),
             sai_so_dung_dich_chuan_ppt=float(raw_dd) if raw_dd is not None else None,
             nhiet_do_toi_thieu_phu_C=float(raw_t_phu) if raw_t_phu is not None else None,
@@ -570,8 +574,18 @@ def _lay_y_theo_don_vi(df: pd.DataFrame, don_vi_y: str) -> np.ndarray:
         if COT_PX_PER_MM not in df.columns:
             raise ValueError("Dựng đường chuẩn theo mm yêu cầu cột 'px_per_mm' trong dữ liệu.")
         scale = pd.to_numeric(df[COT_PX_PER_MM], errors="coerce").to_numpy(float)
-        if np.any(~np.isfinite(scale)) or np.any(scale <= 0.0):
-            raise ValueError("Tất cả các dòng phải có px_per_mm > 0 hợp lệ để dựng đường chuẩn theo mm.")
+        bad_idx = [i for i, val in enumerate(scale) if (not math.isfinite(float(val))) or float(val) <= 0.0]
+        if bad_idx:
+            dong_loi: list[str] = []
+            has_note = COT_GHI_CHU in df.columns
+            for i in bad_idx[:8]:
+                note = str(df[COT_GHI_CHU].iloc[i]).strip() if has_note else ""
+                dong_loi.append(f"dòng {i + 1} ({note})" if note else f"dòng {i + 1}")
+            extra = f" (+{len(bad_idx) - 8} dòng khác)" if len(bad_idx) > 8 else ""
+            raise ValueError(
+                f"Dựng đường chuẩn theo mm yêu cầu MỌI dòng có px_per_mm > 0; thiếu hoặc không hợp lệ tại: "
+                f"{', '.join(dong_loi)}{extra}."
+            )
         return y_px / scale
     if don_vi_y != "px":
         raise ValueError(f"don_vi_y '{don_vi_y}' không hợp lệ (chỉ hỗ trợ 'px' hoặc 'mm').")
@@ -1035,6 +1049,7 @@ class BaoCaoHieuChuan:
     df_train: pd.DataFrame
     df_test: pd.DataFrame
     canh_bao: list[str] = field(default_factory=list)
+    canh_bao_chi_tiet: list[dict[str, str]] = field(default_factory=list)
 
 
 def chia_train_test(
@@ -1160,30 +1175,76 @@ def dung_duong_chuan(
     """
     ch = cau_hinh or CauHinhHieuChuan()
     canh_bao: list[str] = []
+    canh_bao_chi_tiet: list[dict[str, str]] = []
+
+    def _them_cb_hieu_chuan(ma: str, cap: str, noi_dung: str) -> None:
+        canh_bao.append(noi_dung)
+        canh_bao_chi_tiet.append({"ma": ma, "cap": cap, "noi_dung": noi_dung})
+
     nguon_df = xac_dinh_nguon_du_lieu(df)
     if nguon_df == NHAN_MO_PHONG:
-        canh_bao.append(f"{NHAN_CHUA_HIEU_CHUAN}: đường chuẩn này dựng từ dữ liệu mô phỏng.")
+        _them_cb_hieu_chuan("MO_PHONG", "can_than", f"{NHAN_CHUA_HIEU_CHUAN}: đường chuẩn này dựng từ dữ liệu mô phỏng.")
     elif nguon_df != NHAN_THUC_TE:
-        canh_bao.append(
-            f"{NHAN_CHUA_XAC_NHAN_NGUON}: thiếu cột nguon_du_lieu hoặc có dòng chưa ghi rõ THUC_TE."
+        _them_cb_hieu_chuan(
+            "CHUA_XAC_NHAN_NGUON",
+            "can_than",
+            f"{NHAN_CHUA_XAC_NHAN_NGUON}: thiếu cột nguon_du_lieu hoặc có dòng chưa ghi rõ THUC_TE.",
         )
     if bool(df.attrs.get("gia_dinh_can_bang_nhiet", COT_NHIET_DO_TC not in df.columns)):
-        canh_bao.append(
-            "Thiếu cột nhiet_do_tham_chieu_C: giả định hai ngăn cân bằng nhiệt, chưa đo."
+        _them_cb_hieu_chuan(
+            "GIA_DINH_CAN_BANG_NHIET",
+            "can_than",
+            "Thiếu cột nhiet_do_tham_chieu_C: giả định hai ngăn cân bằng nhiệt, chưa đo.",
         )
     if don_vi_y == "px":
-        canh_bao.append(
-            "Đường chuẩn theo pixel chỉ đúng cho đúng một cấu hình camera và khoảng cách màn."
+        _them_cb_hieu_chuan(
+            "DON_VI_PX",
+            "thong_tin",
+            "Đường chuẩn theo pixel chỉ đúng cho đúng một cấu hình camera và khoảng cách màn.",
         )
+    if COT_PX_PER_MM in df.columns and len(df) > 0:
+        px_arr = pd.to_numeric(df[COT_PX_PER_MM], errors="coerce").to_numpy(float)
+        valid_px = np.isfinite(px_arr) & (px_arr > 0.0)
+        if np.any(valid_px) and not np.all(valid_px) and don_vi_y != "mm":
+            _them_cb_hieu_chuan(
+                "TRON_PX_PER_MM",
+                "can_than",
+                "Dữ liệu CSV trộn lẫn dòng có và không có px_per_mm: hãy bổ sung đủ thang chuẩn hoặc tách riêng bộ ảnh.",
+            )
+        if don_vi_y == "px" and int(np.count_nonzero(valid_px)) >= 2:
+            df_px = df.loc[valid_px].copy()
+            df_px["_px_val"] = px_arr[valid_px]
+            grp_cols = [c for c in (COT_ID_THIET_BI, COT_ID_DIEN_THOAI) if c in df_px.columns]
+            groups = df_px.groupby(grp_cols, dropna=False) if grp_cols else [((), df_px)]
+            for grp_key, grp_df in groups:
+                vals_px = grp_df["_px_val"].to_numpy(float)
+                if len(vals_px) < 2:
+                    continue
+                mean_px = float(np.mean(vals_px))
+                pct_var = (float(np.max(vals_px) - np.min(vals_px)) / mean_px) * 100.0 if mean_px > 0 else 0.0
+                if pct_var > float(ch.nguong_bien_thien_px_per_mm_phan_tram):
+                    s_ref_max = max(float(df[COT_DO_MAN].max()), 1.0)
+                    err_est_ppt = (pct_var / 100.0) * s_ref_max
+                    nhan_nhom = f"nhóm {grp_key}" if grp_cols else "bộ dữ liệu"
+                    _them_cb_hieu_chuan(
+                        "BIEN_THIEN_PX_PER_MM",
+                        "can_than",
+                        f"Đường chuẩn pixel chỉ đúng cho đúng một cấu hình camera/khoảng cách: {nhan_nhom} có "
+                        f"px_per_mm biến thiên {pct_var:.1f}% (> {ch.nguong_bien_thien_px_per_mm_phan_tram:g}%), "
+                        f"ước lượng có thể gây sai lệch tới ±{err_est_ppt:.2f} ‰ ở {s_ref_max:g} ‰. "
+                        "Hãy chuyển sang don_vi_y='mm' hoặc cố định lại khoảng cách chụp.",
+                    )
     if df.attrs.get("so_dong_bi_loai", 0):
-        canh_bao.append(f"Đã loại {df.attrs['so_dong_bi_loai']} dòng thiếu dữ liệu.")
+        _them_cb_hieu_chuan("DONG_BI_LOAI", "thong_tin", f"Đã loại {df.attrs['so_dong_bi_loai']} dòng thiếu dữ liệu.")
     if _so_muc(df[COT_DO_MAN].to_numpy(float), 0.01) < 3:
-        canh_bao.append("Cần ít nhất 3 mức độ mặn chuẩn; nên dùng 5–8 mức phủ hết dải cần đo.")
+        _them_cb_hieu_chuan("IT_MUC_S", "can_than", "Cần ít nhất 3 mức độ mặn chuẩn; nên dùng 5–8 mức phủ hết dải cần đo.")
     nhom_all = _lay_nhom_me_pha(df)
     if nhom_all is None:
-        canh_bao.append(
+        _them_cb_hieu_chuan(
+            "THIEU_MA_ME_PHA",
+            "can_than",
             "Không có cột ma_me_pha (hoặc < 2 mẻ pha đầy đủ): các lần đo lặp của cùng một dung dịch "
-            "nằm cả ở train và test nên sai số test bị đánh giá thấp."
+            "nằm cả ở train và test nên sai số test bị đánh giá thấp.",
         )
 
     if len(df) >= 8:
@@ -1258,7 +1319,7 @@ def dung_duong_chuan(
         bac_chon=bac_chon, ly_do_chon=ly_do,
         RMSE_test_px=rmse_test_px, RMSE_test_ppt=rmse_test_ppt,
         sai_so_theo_muc=theo_muc, bang_test=bang_test,
-        df_train=df_train, df_test=df_test, canh_bao=canh_bao,
+        df_train=df_train, df_test=df_test, canh_bao=canh_bao, canh_bao_chi_tiet=canh_bao_chi_tiet,
     )
 
 
