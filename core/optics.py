@@ -91,22 +91,36 @@ class CauHinhQuangHoc:
         )
 
 
+HE_SO_QUAN_FRY_TRONG_MA: dict[str, float] = {
+    "a0": 1.31405,
+    "a1": 1.779e-4,
+    "a2": -1.05e-6,
+    "a3": 1.6e-8,
+    "a4": -2.02e-6,
+    "a5": 15.868,
+    "a6": 0.01155,
+    "a7": -0.00423,
+    "a8": -4382.0,
+    "a9": 1.1455e6,
+}
+
+
 def chiet_suat_quan_fry(S_ppt: float, T_C: float, buoc_song_nm: float = 650.0) -> float:
     """Chiết suất tuyệt đối của nước biển n(S, T, λ) theo công thức thực nghiệm Quan–Fry.
 
     Các hệ số lấy từ nhóm; PHẢI đối chiếu với bài gốc Quan & Fry (Applied Optics, 1995) trước khi đưa vào báo cáo.
     Không nhân thêm chiết suất không khí. Phát cảnh báo khi ngoài dải 0–30 °C, 0–35 ‰, 400–700 nm.
     """
-    a0 = 1.31405
-    a1 = 1.779e-4
-    a2 = -1.05e-6
-    a3 = 1.6e-8
-    a4 = -2.02e-6
-    a5 = 15.868
-    a6 = 0.01155
-    a7 = -0.00423
-    a8 = -4382.0
-    a9 = 1.1455e6
+    a0 = HE_SO_QUAN_FRY_TRONG_MA["a0"]
+    a1 = HE_SO_QUAN_FRY_TRONG_MA["a1"]
+    a2 = HE_SO_QUAN_FRY_TRONG_MA["a2"]
+    a3 = HE_SO_QUAN_FRY_TRONG_MA["a3"]
+    a4 = HE_SO_QUAN_FRY_TRONG_MA["a4"]
+    a5 = HE_SO_QUAN_FRY_TRONG_MA["a5"]
+    a6 = HE_SO_QUAN_FRY_TRONG_MA["a6"]
+    a7 = HE_SO_QUAN_FRY_TRONG_MA["a7"]
+    a8 = HE_SO_QUAN_FRY_TRONG_MA["a8"]
+    a9 = HE_SO_QUAN_FRY_TRONG_MA["a9"]
 
     ngoai: list[str] = []
     if not (0.0 <= T_C <= 30.0):
