@@ -607,4 +607,51 @@ def test_r6_thang_px_per_mm_va_don_vi_duong_chuan():
     assert "‰" in cb_var[0]["noi_dung"]
 
 
+def test_v3_quan_he_U_theo_sigma_T_tai_D0():
+    """V3: Bảo vệ hồi quy Q0 tại D_đo = 0 — U tăng nghiêm ngặt theo σ_T và khớp tỉ số lí thuyết.
+
+    Công thức giải tích tại D_đo = 0 (hai nhiệt kế cùng độ chính xác σ_T_C = σ_T_tc = σ_T):
+      - Độ bất định đo chênh nhiệt: σ_Dđo = √(σ_T² + σ_T²) = √2 · σ_T
+      - Thành phần bất định chênh nhiệt còn lại: u_D(σ_T) = |∂S/∂D|_LT · √2 · σ_T = c · σ_T
+      - Gọi u_0 = u(σ_T = 0) là tổng hợp các nguồn không phụ thuộc σ_T (đo ảnh, s_res, khớp hệ số),
+        ta có: u(σ_T) = √(u_0² + (a_T² + c²) · σ_T²) với a_T = |∂f/∂T / ∂f/∂S| ≈ 0 khi học tại D=0.
+      - Do đó tỉ số lí thuyết:
+          R = U(0.5) / U(0.1) = √(u_0² + c_eff² · 0.5²) / √(u_0² + c_eff² · 0.1²)
+        nằm chặt trong [4.0, 5.01] (cận trên 5.0 khi u_0 → 0, thực tế ~4.6–4.9 khi u_0 ~ 0.015–0.025 ‰).
+    """
+    import math
+    from core import optics as op
+
+    cfg = op.CauHinhQuangHoc.tu_yaml()
+    df_cb = sinh_du_lieu_hieu_chuan_mo_phong(
+        cfg=cfg, T_tham_chieu_C=None, sigma_delta_y_px=0.05, sigma_nhiet_ke_C=0.0, seed=7
+    )
+    mh_no_d = cal.dung_duong_chuan(df_cb, bac_ep=1).mo_hinh
+    dy0 = op.delta_y_vi_sai_px(18.0, 25.0, 25.0, cfg)
+
+    u0_res = cal.uoc_luong_do_man(
+        mh_no_d, dy0, 25.0, sigma_delta_y_px=0.05, sigma_T_C=0.0, T_tham_chieu_C=25.0, sigma_T_tham_chieu_C=0.0
+    )
+    us = {
+        sig: cal.uoc_luong_do_man(
+            mh_no_d, dy0, 25.0, sigma_delta_y_px=0.05, sigma_T_C=sig, T_tham_chieu_C=25.0, sigma_T_tham_chieu_C=sig
+        )
+        for sig in (0.1, 0.2, 0.5)
+    }
+    assert us[0.5].U_S_ppt > us[0.2].U_S_ppt > us[0.1].U_S_ppt > u0_res.U_S_ppt
+
+    ratio = us[0.5].U_S_ppt / us[0.1].U_S_ppt
+    assert 4.0 <= ratio <= 5.01
+
+    # Kiểm khớp công thức phân tích từng thành phần
+    k_d = cal._do_nhay_S_theo_D_ly_thuyet(18.0, 25.0)
+    f_s = mh_no_d.dao_ham_theo_S(us[0.1].S_ppt, 25.0, T_tc=25.0)
+    a_t = abs(mh_no_d.dao_ham_theo_T(us[0.1].S_ppt, 25.0, T_tc=25.0) / f_s)
+    c_eff = math.hypot(a_t, math.sqrt(2.0) * k_d)
+    u0 = u0_res.u_S_ppt
+    ratio_ly_thuyet = math.hypot(u0, c_eff * 0.5) / math.hypot(u0, c_eff * 0.1)
+    assert ratio == pytest.approx(ratio_ly_thuyet, rel=1e-3)
+
+
+
 

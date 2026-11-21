@@ -120,6 +120,15 @@ def chay_tat_ca() -> pd.DataFrame:
     ratio_u = u_in / max(u_ref0, 1e-9)
     add_row("Q0", "Q0_nhap_T_tc_D0", "Có nhập T_tc (σ_T=0.1, σ_Ttc<=0.2°C), D=0°C (200 phép đo)", f"cov={cov_in*100:.1f}%, U/U_ref={ratio_u:.2f}x", "cov >= 95% & <= 3x", cov_in >= 0.95 and ratio_u <= 3.0)
 
+    # Bảo vệ hồi quy V3: tại D_đo = 0, kiểm tra U(0.1) < U(0.2) < U(0.5) và tỉ số U(0.5)/U(0.1) nằm trong [4.0, 5.01]
+    dy0_chk = op.delta_y_vi_sai_px(18.0, 25.0, 25.0, cfg_op)
+    u_01_chk = cal.uoc_luong_do_man(mh_no_D, dy0_chk, 25.0, sigma_delta_y_px=0.05, sigma_T_C=0.1, T_tham_chieu_C=25.0, sigma_T_tham_chieu_C=0.1).U_S_ppt
+    u_02_chk = cal.uoc_luong_do_man(mh_no_D, dy0_chk, 25.0, sigma_delta_y_px=0.05, sigma_T_C=0.2, T_tham_chieu_C=25.0, sigma_T_tham_chieu_C=0.2).U_S_ppt
+    u_05_chk = cal.uoc_luong_do_man(mh_no_D, dy0_chk, 25.0, sigma_delta_y_px=0.05, sigma_T_C=0.5, T_tham_chieu_C=25.0, sigma_T_tham_chieu_C=0.5).U_S_ppt
+    ratio_05_01 = u_05_chk / max(u_01_chk, 1e-9)
+    assert u_05_chk > u_02_chk > u_01_chk and (4.0 <= ratio_05_01 <= 5.01), f"Hồi quy Q0 D=0 bất thường: {u_01_chk}, {u_02_chk}, {u_05_chk}"
+    print(f"[V3 check Q0 D=0] U(0.1)={u_01_chk:.4f} < U(0.2)={u_02_chk:.4f} < U(0.5)={u_05_chk:.4f}‰ | U(0.5)/U(0.1)={ratio_05_01:.2f}x (trong [4.0, 5.01])")
+
     dy_d3 = op.delta_y_vi_sai_px(18.0, 26.0, 23.0, cfg_op)
     est_gate = cal.uoc_luong_do_man(mh_no_D, dy_d3, 26.0, T_tham_chieu_C=23.0)
     add_row("Q0", "Q0_gating_khong_D", "Nhập T_tc với |D|=3°C trên mô hình không học D", f"khong_danh_gia_duoc={est_gate.khong_danh_gia_duoc}", "True", est_gate.khong_danh_gia_duoc is True)

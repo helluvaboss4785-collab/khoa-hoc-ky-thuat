@@ -690,27 +690,32 @@ def _lam_sach_ten_file(ten_file: Any, mac_dinh: str = "tep_tai_len") -> str:
     return clean[:120]
 
 
-def _decode_base64_image_bytes(
-    b64_str: str,
+def _as_bool(val: Any, mac_dinh: bool = False) -> bool:
+    """Chuyển đổi an toàn giá trị boolean từ JSON hoặc chuỗi multipart form."""
+    if val is None:
+        return mac_dinh
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, (int, float)):
+        return bool(val)
+    s = str(val).strip().lower()
+    if s in ("1", "true", "yes", "co", "on"):
+        return True
+    if s in ("0", "false", "no", "khong", "off", ""):
+        return False
+    return mac_dinh
+
+
+def _validate_and_decode_image_bytes(
+    raw: bytes,
     max_mb: float | None = None,
     max_mp: float | None = None,
 ) -> tuple[np.ndarray, bytes]:
+    """Kiểm tra giới hạn dung lượng/Megapixel và giải mã byte ảnh sang BGR."""
     lim = load_limits_config() if (max_mb is None or max_mp is None) else {}
     lim_mb = float(max_mb if max_mb is not None else lim.get("dung_luong_anh_MB", 25.0))
     lim_mp = float(max_mp if max_mp is not None else lim.get("so_megapixel_toi_da", 60.0))
     max_bytes = max(int(round(lim_mb * 1024 * 1024)), 1)
-
-    if "," in b64_str:
-        b64_str = b64_str.split(",", 1)[1]
-    b64_clean = b64_str.strip()
-    # Kiểm nhanh độ dài chuỗi base64 trước khi cấp phát buffer giải mã
-    if len(b64_clean) > int(max_bytes * 1.45) + 128:
-        raise AnhQuaLonError(f"Ảnh tải lên vượt quá giới hạn dung lượng {lim_mb:g} MB.")
-
-    try:
-        raw = base64.b64decode(b64_clean, validate=False)
-    except Exception as exc:
-        raise AnhKhongHopLeError("Không giải mã được dữ liệu ảnh base64 tải lên.") from exc
 
     if len(raw) > max_bytes:
         raise AnhQuaLonError(
@@ -729,6 +734,30 @@ def _decode_base64_image_bytes(
             f"Độ phân giải ảnh ({w_img}×{h_img} = {mp_val:.2f} MP) vượt quá giới hạn {lim_mp:g} MP."
         )
     return img, raw
+
+
+def _decode_base64_image_bytes(
+    b64_str: str,
+    max_mb: float | None = None,
+    max_mp: float | None = None,
+) -> tuple[np.ndarray, bytes]:
+    lim = load_limits_config() if (max_mb is None or max_mp is None) else {}
+    lim_mb = float(max_mb if max_mb is not None else lim.get("dung_luong_anh_MB", 25.0))
+    max_bytes = max(int(round(lim_mb * 1024 * 1024)), 1)
+
+    if "," in b64_str:
+        b64_str = b64_str.split(",", 1)[1]
+    b64_clean = b64_str.strip()
+    # Kiểm nhanh độ dài chuỗi base64 trước khi cấp phát buffer giải mã
+    if len(b64_clean) > int(max_bytes * 1.45) + 128:
+        raise AnhQuaLonError(f"Ảnh tải lên vượt quá giới hạn dung lượng {lim_mb:g} MB.")
+
+    try:
+        raw = base64.b64decode(b64_clean, validate=False)
+    except Exception as exc:
+        raise AnhKhongHopLeError("Không giải mã được dữ liệu ảnh base64 tải lên.") from exc
+
+    return _validate_and_decode_image_bytes(raw, max_mb=lim_mb, max_mp=max_mp)
 
 
 def _decode_base64_image(b64_str: str) -> np.ndarray:
@@ -916,10 +945,28 @@ def _serialize_chat_luong(
 
 
 async def api_measure(request: Request) -> JSONResponse:
-    try:
-        body = await request.json()
-    except Exception:
-        return _json_err("Dữ liệu JSON gửi lên không hợp lệ.")
+    raw_img_upload_bytes: bytes | None = None
+    content_type = str(request.headers.get("content-type", "")).lower()
+    if "multipart/form-data" in content_type:
+        try:
+            form = await request.form()
+            body: dict[str, Any] = {}
+            up_file = form.get("file") or form.get("image")
+            if up_file is not None and hasattr(up_file, "read"):
+                raw_img_upload_bytes = await up_file.read()
+                body["ten_file"] = getattr(up_file, "filename", None) or "upload.png"
+            for k_f, v_f in form.items():
+                if k_f not in ("file", "image") and not hasattr(v_f, "read"):
+                    body[k_f] = v_f
+            if "mode" not in body:
+                body["mode"] = "upload"
+        except Exception:
+            return _json_err("Dữ liệu multipart gửi lên không hợp lệ.")
+    else:
+        try:
+            body = await request.json()
+        except Exception:
+            return _json_err("Dữ liệu JSON gửi lên không hợp lệ.")
 
     mode = str(body.get("mode", "sim"))
     ho_so = _req_ho_so(request, body)
@@ -930,7 +977,7 @@ async def api_measure(request: Request) -> JSONResponse:
     phat_hien_nhan_mp = False
 
     try:
-        khong_do_nhiet_do = bool(body.get("khong_do_nhiet_do", False))
+        khong_do_nhiet_do = _as_bool(body.get("khong_do_nhiet_do"), False)
         raw_t = body.get("nhiet_do_do")
         if not khong_do_nhiet_do:
             if raw_t is None or (isinstance(raw_t, str) and not raw_t.strip()):
@@ -966,7 +1013,7 @@ async def api_measure(request: Request) -> JSONResponse:
             do_duc = float(body.get("do_duc", 0.15))
             drift_px = float(body.get("drift_px", 4.0))
             bo_tri = "doc" if body.get("bo_tri") == "doc" else "ngang"
-            cho_phep_bao_hoa = bool(body.get("cho_phep_bao_hoa", False))
+            cho_phep_bao_hoa = _as_bool(body.get("cho_phep_bao_hoa"), False)
             seed = int(body.get("seed", 42))
 
             p_synth = ThamSoMoPhong(
@@ -990,10 +1037,13 @@ async def api_measure(request: Request) -> JSONResponse:
             }
         elif mode == "upload":
             _ = _lam_sach_ten_file(body.get("ten_file") or body.get("file_name"), mac_dinh="anh_upload")
-            image_b64 = body.get("image_base64")
-            if not image_b64 or not isinstance(image_b64, str):
-                return _json_err("Chưa cung cấp ảnh (image_base64) để đo.")
-            anh_input, raw_img_bytes = _decode_base64_image_bytes(image_b64)
+            if raw_img_upload_bytes is not None:
+                anh_input, raw_img_bytes = _validate_and_decode_image_bytes(raw_img_upload_bytes)
+            else:
+                image_b64 = body.get("image_base64")
+                if not image_b64 or not isinstance(image_b64, str):
+                    return _json_err("Chưa cung cấp ảnh (image_base64 hoặc file multipart) để đo.")
+                anh_input, raw_img_bytes = _decode_base64_image_bytes(image_b64)
             if doc_nhan_mo_phong(raw_img_bytes):
                 phat_hien_nhan_mp = True
                 la_anh_mo_phong = True
@@ -1001,7 +1051,7 @@ async def api_measure(request: Request) -> JSONResponse:
         else:
             return _json_err(f"Chế độ đo '{mode}' không được hỗ trợ.")
 
-        khoa_ae_af = bool(body.get("khoa_ae_af", False))
+        khoa_ae_af = _as_bool(body.get("khoa_ae_af"), False)
         thang_anh_dict: dict[str, Any] | None = None
         px_per_mm_val: float | None = None
         u_px_per_mm_val = 0.0
