@@ -1,4 +1,9 @@
-"""Đóng gói mã nguồn sạch để nộp bài / gửi giám khảo, loại trừ file tạm, .venv, .git và CSDL *.db*."""
+"""Đóng gói mã nguồn sạch để nộp bài / gửi giám khảo.
+
+Giữ lại đầy đủ mã nguồn, `docs/`, biểu mẫu `data/mau_*.csv` và các tệp cấu hình/xác nhận
+`data/*.json` do người dùng tự tạo (nếu có); loại trừ `.venv`, `.git`, `__pycache__`,
+`.pytest_cache`, CSDL `*.db*` và file `.zip`.
+"""
 
 from __future__ import annotations
 
@@ -21,7 +26,7 @@ THU_MUC_LOAI_TRU = {
     ".mypy_cache",
     ".ruff_cache",
 }
-MAU_FILE_LOAI_TRU = ("*.db", "*.db-wal", "*.db-shm", "*.sqlite3", "*.sqlite", "*.pyc", "*.pyo", "*.zip")
+MAU_FILE_LOAI_TRU = ("*.db", "*.db-wal", "*.db-shm", "*.db-*", "*.sqlite3", "*.sqlite", "*.pyc", "*.pyo", "*.zip")
 THU_MUC_CAM_TRONG_ZIP = {".venv", "venv", "env", ".git", "__pycache__", ".pytest_cache"}
 MAU_FILE_CAM_TRONG_ZIP = ("*.db", "*.db-wal", "*.db-shm", "*.sqlite3", "*.sqlite", "*.db-*")
 
@@ -122,7 +127,10 @@ def main(argv: list[str] | None = None) -> int:
             for v in vi_pham:
                 print(f" - {v}")
             return 1
-        print(f"KIỂM TRA ĐẠT: Không chứa .venv/.git/__pycache__/.pytest_cache/*.db* và < {args.gioi_han_mb:g} MB.")
+        print(
+            f"KIỂM TRA ĐẠT: Giữ docs/, data/mau_*.csv, data/*.json (khi có); "
+            f"không chứa .venv/.git/__pycache__/.pytest_cache/*.db* và < {args.gioi_han_mb:g} MB."
+        )
     return 0
 
 

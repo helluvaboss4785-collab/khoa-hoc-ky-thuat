@@ -76,3 +76,42 @@ def test_r10_kiem_tra_goi_phat_hien_vi_pham_va_cli(tmp_path: Path):
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "KIỂM TRA ĐẠT" in proc.stdout
     assert zip_repo.exists()
+
+
+def test_v7_dong_goi_bao_ton_data_json_va_mau_khi_co_nhung_loai_db(tmp_path: Path):
+    """Kiểm thử cả 2 trạng thái (chưa có và có data/*.json người dùng) đều đóng gói đúng và loại *.db*."""
+    fake_proj = tmp_path / "proj_v7"
+    (fake_proj / "core").mkdir(parents=True)
+    (fake_proj / "core" / "mod.py").write_text("x = 1\n", encoding="utf-8")
+    (fake_proj / "docs").mkdir()
+    (fake_proj / "docs" / "QUY_TRINH_THU_DU_LIEU.md").write_text("# Quy trinh\n", encoding="utf-8")
+    (fake_proj / "data").mkdir()
+    (fake_proj / "data" / "mau_cap_nhiet_ke.csv").write_text("nhiet_do_mau_doc_C\n", encoding="utf-8")
+    (fake_proj / "data" / "nhat_ki_do.db").write_bytes(b"sqlite")
+    (fake_proj / "data" / "nhat_ki_do.db-wal").write_bytes(b"wal")
+
+    # (a) Chưa có data/*.json xác nhận thật
+    zip_a = tmp_path / "khong_json.zip"
+    tao_file_zip_nop_bai(zip_a, fake_proj)
+    dat_a, vp_a, _ = kiem_tra_goi_zip(zip_a, gioi_han_mb=20.0)
+    assert dat_a is True and vp_a == []
+    with zipfile.ZipFile(zip_a, "r") as zf:
+        names_a = set(zf.namelist())
+    assert "docs/QUY_TRINH_THU_DU_LIEU.md" in names_a
+    assert "data/mau_cap_nhiet_ke.csv" in names_a
+    assert not any(n.startswith("data/nhat_ki_do.db") for n in names_a)
+
+    # (b) Đã có data/*.json do người dùng tự tạo (chỉ tạo trong tmp_path)
+    (fake_proj / "data" / "xac_nhan_quan_fry.json").write_text('{"da_doi_chieu_khop": true}\n', encoding="utf-8")
+    (fake_proj / "data" / "hieu_chuan_nhiet_ke.json").write_text('{"offset_C": 0.5}\n', encoding="utf-8")
+    zip_b = tmp_path / "co_json.zip"
+    tao_file_zip_nop_bai(zip_b, fake_proj)
+    dat_b, vp_b, _ = kiem_tra_goi_zip(zip_b, gioi_han_mb=20.0)
+    assert dat_b is True and vp_b == []
+    with zipfile.ZipFile(zip_b, "r") as zf:
+        names_b = set(zf.namelist())
+    assert "data/xac_nhan_quan_fry.json" in names_b
+    assert "data/hieu_chuan_nhiet_ke.json" in names_b
+    assert "docs/QUY_TRINH_THU_DU_LIEU.md" in names_b
+    assert "data/mau_cap_nhiet_ke.csv" in names_b
+    assert not any(".db" in n for n in names_b)

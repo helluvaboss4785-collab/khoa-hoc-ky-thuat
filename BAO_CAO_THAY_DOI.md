@@ -284,4 +284,97 @@ Các công việc sau liên quan trực tiếp đến **tài liệu gốc, thi�
 7. **Chạy danh sách kiểm tra thủ công trên điện thoại thật (`R10`):** Thực hiện toàn bộ 12 bước trong `docs/KIEM_TRA_THU_CONG_TREN_DIEN_THOAI.md` và ghi kết quả Đạt/Không.
 8. **So sánh kênh màu trên ảnh chụp thật (`R5`):** Chạy `python scripts/so_sanh_kenh.py --nguon THUC_TE --thu-muc <thu_muc_anh_that>` trên chính điện thoại dự thi trước khi chốt `xu_ly_anh.kenh_laser`.
 
+---
+
+# VÒNG 4 (V0–V7): CHỐNG GIẢ NHÃN NGUỒN, HIỆU CHUẨN NHIỆT KẾ, QUAN–FRY 2 NGƯỜI, TESTCLIENT & KIỂM TRA THIẾT KẾ THÍ NGHIỆM
+
+## 1. Kết quả kiểm thử cơ sở (trước V0) và kết quả cuối Vòng 4 (sau V7)
+
+- **Cơ sở trước V0 (`HEAD = 1506ebc`, cuối Vòng 3):**
+  - `.\.venv\Scripts\python.exe -m pytest tests -q` → `111 passed, 1 skipped` (`test_hoi_quy_anh_that` skip với lí do `"chưa có ảnh thật"`).
+  - `.\.venv\Scripts\python.exe scripts/kiem_tra_chap_nhan_vong2.py` → `13/13 TIEU CHI DAT.` (`Q3_anh_12MP_4000x3000`: `time=0.213s, |err|=0.0009px`).
+  - `.\.venv\Scripts\python.exe scripts/kiem_tra_chap_nhan_vong3.py` → `16/17 tieu chi DAT.` (chỉ `R0_E_giam_RMS_vs_B_khong_bi_chan` = `KHONG_DAT` ở mức giảm `26.6%` do sàn nhiễu nhiệt kế `~0.171‰`).
+- **Kết quả kiểm thử cuối Vòng 4 (sau V7):**
+  - `.\.venv\Scripts\python.exe -m pytest tests -q` → `136 passed, 1 skipped` (`test_hoi_quy_anh_that` vẫn skip có lí do `"chưa có ảnh thật"`, kèm 2 cảnh báo `StarletteDeprecationWarning`/`DeprecationWarning` khi `starlette.testclient.TestClient` chạy cùng `httpx==0.28.1`).
+  - `node --check app/static/app.js` → thoát mã `0`.
+  - `.\.venv\Scripts\python.exe scripts/dong_goi.py --out outputs/_kiem_tra_tam_v4.zip --kiem-tra` → đạt (`83 tệp`, `0.54 MB < 20 MB`; giữ `docs/`, `data/mau_*.csv`, `data/*.json` khi có; không chứa `.venv`, `.git`, `__pycache__`, `.pytest_cache`, `*.db*`; file zip tạm đã được xóa sau khi kiểm).
+  - `.\.venv\Scripts\python.exe scripts/kiem_tra_chap_nhan_vong2.py` → `13/13 TIEU CHI DAT.` (`Q3_anh_12MP_4000x3000`: `time=0.470s, |err|=0.0009px`).
+  - `.\.venv\Scripts\python.exe scripts/kiem_tra_chap_nhan_vong3.py` → `16/17 tieu chi DAT.` (`tong_chua_xac_nhan=50` ở R7; `R0_E_giam_RMS_vs_B_khong_bi_chan` giữ nguyên `KHONG_DAT` ở mức `26.6%`, `outputs/kiem_tra_chap_nhan_vong3.csv`).
+  - `.\.venv\Scripts\python.exe scripts/kiem_tra_chap_nhan_vong4.py` → `18/18 tieu chi DAT.` (xuất `outputs/kiem_tra_chap_nhan_vong4.csv`).
+  - Xác minh `data/xac_nhan_quan_fry.json` và `data/hieu_chuan_nhiet_ke.json` **không tồn tại** sẵn trong repo (`False`).
+
+---
+
+## 2. Bảng tóm tắt V0–V7 kèm commit git
+
+| Mã | Mục tiêu | Thay đổi chính | Commit |
+| :---: | :--- | :--- | :---: |
+| **V0** | Chống gắn nhãn `THUC_TE` cho ảnh mô phỏng | Nhúng metadata `SIMULATED` ngay trong PNG (`tEXt`) & JPEG (`COM`) bằng `struct`/`zlib`; đọc nhãn bằng `doc_nhan_mo_phong`; `xu_ly_thu_muc_anh.py --nguon THUC_TE` chặn thoát mã `2`; `/api/measure`, `/api/measure-multi`, `xuat_bao_cao.py` ép cờ mô phỏng | `b4a3896` |
+| **V1** | Hiệu chuẩn chéo 2 nhiệt kế (tĩnh & tuyến tính theo `T`) | Tạo `core/nhiet_ke.py` & `scripts/hieu_chuan_cheo_nhiet_ke.py`; đọc/lưu `data/hieu_chuan_nhiet_ke.json`; áp bù `offset_nhiet_ke_C` + `sigma_offset_nhiet_ke_C` vào `uoc_luong_do_man`, `doc_csv_hieu_chuan`, API & Tab 1; hiển thị trong R7 | `c75a38a` |
+| **V2** | Củng cố đối chiếu Quan–Fry 2 người độc lập & 3 trạng thái R7 | Bắt buộc điền `trang_bang` cho đủ `a0..a9`, `--nguoi-doi-chieu`, `--trich-dan`; hỗ trợ `--nguoi-xac-nhan-2` (khác người 1); in cảnh báo không chép từ mã; hỗ trợ 3 trạng thái R7 (`chua_xac_nhan`, `xac_nhan_1_nguoi`, `xac_nhan_2_nguoi`) | `93b32b1` |
+| **V3** | Kiểm thử `TestClient` thật, multipart upload & bảo vệ hồi quy `Q0` | Cài và ghim `httpx==0.28.1` trong `requirements.txt`; hỗ trợ `multipart/form-data` thật ở `/api/measure`; tạo `tests/test_api_testclient.py`; thêm kiểm thử tỉ lệ bất định `Q0` theo `sigma_T` tại `D=0` (`4.94x`) | `86bd72b` |
+| **V4** | Kiểm tra thiết kế thí nghiệm hiệu chuẩn (không chặn) | Tạo `core/kiem_tra_thiet_ke.py` & CLI `scripts/kiem_tra_thiet_ke_thi_nghiem.py`; kiểm dữ liệu thô (`ma_me_pha`, `nguon_du_lieu`, `px_per_mm`, lặp, dải `S`, dải `T`, `D`); thêm `POST /api/kiem-tra-thiet-ke`, tích hợp `/api/calibrate`, Tab 4 & `xuat_bao_cao.py` | `c893426` |
+| **V5** | Tài liệu quy trình thu dữ liệu thực nghiệm & 2 biểu mẫu CSV trống | Tạo `docs/QUY_TRINH_THU_DU_LIEU.md` (hướng dẫn nước đá xay, 2 mẻ pha, điều cấm) và 2 CSV 0 dòng (`data/mau_cap_nhiet_ke.csv`, `data/mau_ghi_chep_thi_nghiem.csv`); liên kết từ `README.md` | `0f27ee8` |
+| **V6** | Hoàn thiện panel giả định R7 cho V1–V4 & cập nhật `README.md` | Thêm `hieu_chuan.dai_man_muc_tieu_ppt` và toàn bộ 10 khóa `thiet_ke_thi_nghiem.*` vào `DANH_MUC_GIA_DINH` (`core/trang_thai_cau_hinh.py`); mở rộng `tests/test_trang_thai_cau_hinh.py` & `README.md` | `6ba305b` |
+| **V7** | Bảo tồn `data/*.json` khi đóng gói, cache `v10`, nghiệm thu Vòng 4 & báo cáo | Cập nhật `scripts/dong_goi.py` + `tests/test_dong_goi.py`, nâng cache `sw.js`/`index.html` lên `v10`, tạo & chạy `scripts/kiem_tra_chap_nhan_vong4.py`, cập nhật `README.md` & `BAO_CAO_THAY_DOI.md` | (commit cuối Vòng 4) |
+
+---
+
+## 3. Bảng nghiệm thu Vòng 4 trên ảnh/dữ liệu MÔ PHỎNG (`scripts/kiem_tra_chap_nhan_vong4.py`)
+
+> Lệnh tái lập: `.\.venv\Scripts\python.exe scripts/kiem_tra_chap_nhan_vong4.py` (xuất `outputs/kiem_tra_chap_nhan_vong4.csv`; bảo toàn Vòng 2 `13/13` và Vòng 3 `16/17`).
+
+| Nhóm | Tiêu chí kiểm chứng | Số đo thực tế (MÔ PHỎNG) | Phân bố / Khoảng Wilson 95% | Kết luận |
+| :---: | :--- | :--- | :--- | :---: |
+| **V0** | Chặn ảnh PNG nhúng `tEXt` khi `--nguon THUC_TE` (`V0_png_tEXt_chan`) | `ret=2`, `csv_ton_tai=False` | Nhúng `tEXt=True` & bị chặn ngay cả khi xóa `.json` và đổi tên sạch | **Đạt** |
+| **V0** | Chặn ảnh JPEG nhúng `COM` khi `--nguon THUC_TE` (`V0_jpeg_COM_chan`) | `ret=2`, `csv_ton_tai=False` | Nhúng `COM=True` & bị chặn ngay cả khi xóa `.json` và đổi tên sạch | **Đạt** |
+| **V0** | Chặn sidecar `.json` (`simulated: true`) & tên `MO_PHONG` (`V0_sidecar_json_chan`, `V0_ten_file_MO_PHONG_chan`) | Đều `ret=2`, `csv_ton_tai=False` | Không ghi CSV đầu ra | **Đạt** |
+| **V0** | `/api/measure` (TestClient multipart) phát hiện ảnh nhúng `SIMULATED` (`V0_api_measure_nhan_nhung`) | `http=200`, `la_mo_phong=True`, `khong_danh_gia_duoc=True` | Cảnh báo: `['ANH_MO_PHONG_NHUNG', 'CHUA_KHOA_AE_AF']` | **Đạt** |
+| **V0** | Ảnh sạch không nhãn nhúng không dương tính giả (`V0_anh_sach_khong_nhung`, *chỉ kiểm logic*) | `doc_nhan_mo_phong=False` | Dữ liệu đầu vào vẫn là ảnh mô phỏng thô không nhúng chunk | **Đạt** |
+| **V1** | Offset cố định `+0,5 °C` (`seed=4101`, `N=400`, `σ_T=0,2 °C`) | Chặn oan giảm `207/400 → 27/400`; `cov=100.0%` | Chặn `[46.9–56.6%] → [4.7–9.6%]`; `cov CI [99.0–100.0%]`, `mean=-0.0109‰`, `RMS=0.0300‰`, `max=0.0833‰` | **Đạt** |
+| **V1** | Offset cố định `+1,0 °C` (`seed=4102`, `N=400`, `σ_T=0,2 °C`) | Chặn oan giảm `389/400 → 24/400`; `cov=100.0%` | Chặn `[95.1–98.5%] → [4.1–8.8%]`; `cov CI [99.0–100.0%]`, `mean=-0.0111‰`, `RMS=0.0302‰`, `max=0.0746‰` | **Đạt** |
+| **V1** | Offset tuyến tính `-0,2 + 0,02·T` (`seed=4103`, `N=400`, 18 cặp / 3 mức `T`) | `b_đo=0.02110`, `phu_thuoc_nhiet_do=True`; chặn `96 → 30/400`; `cov=100.0%` | `cov CI [99.0–100.0%]`, `RMS=0.0300‰`, `max=0.0725‰` | **Đạt** |
+| **V1** | Hồi quy cơ sở `offset = 0,0 °C` (`seed=4104`, `N=400`) | `off_uoc=-0.0276 °C`, chặn `32 → 36/400`; `cov=100.0%` | `cov CI [99.0–100.0%]`, `RMS=0.0321‰`, `max=0.0768‰` | **Đạt** |
+| **V1** | Từ chối đầu vào thiếu cặp (`<6`) hoặc thiếu mức nhiệt (`<2`) | `tu_choi_cap_lt6=True`, `tu_choi_muc_lt2=True` | Ném `ValueError` | **Đạt** |
+| **V2** | 5 tình huống siết Quan–Fry & 3 trạng thái R7 (`chua_xac_nhan`, `xac_nhan_1_nguoi`, `xac_nhan_2_nguoi`) | Thiếu `trang_bang` / `--nguoi-doi-chieu` / `--trich-dan` / trùng 2 người đều bị chặn; 3 trạng thái R7 chuyển đúng; CLI in đủ cảnh báo không chép mã (`ret=0`) | Kiểm đủ 5/5 tiêu chí `V2_*` | **Đạt** |
+| **V4** | Kiểm tra thiết kế thí nghiệm đầy đủ & bắt lỗi không chặn đường chuẩn | Bộ đầy đủ: `hop_le=True, chua_dat=0, cb=0`; thiếu `ma_me_pha` / 1 mẻ / trộn nguồn / `D=0` đều báo `chua_dat` và `cal.dung_duong_chuan` vẫn đạt `R²=1.00000` | Không chặn luồng dựng đường chuẩn | **Đạt** |
+
+---
+
+## 4. Đóng gói `data/*.json` và khẳng định không tạo sẵn tệp xác nhận thật
+
+- Trong `scripts/dong_goi.py`, danh sách loại trừ (`THU_MUC_LOAI_TRU`, `MAU_FILE_LOAI_TRU`) loại bỏ hoàn toàn `.venv`, `.git`, `__pycache__`, `.pytest_cache`, mọi CSDL SQLite `*.db*` (`data/nhat_ki_do.db*`) và file `.zip`, nhưng **chủ động giữ lại** `docs/`, biểu mẫu `data/mau_*.csv` và mọi file JSON trong `data/*.json` (`xac_nhan_quan_fry.json`, `hieu_chuan_nhiet_ke.json`, hồ sơ đường chuẩn do nhóm tự tạo khi có). Lí do: nếu nhóm đã tự thực hiện hiệu chuẩn chéo nhiệt kế thật hoặc đối chiếu xong Quan–Fry trước khi nộp bài, file chứng nhận `data/*.json` (kèm hash CSV, ngày, tên người thực hiện) là bằng chứng xác nhận hợp lệ cần đi cùng mã nguồn, khác với nhật kí đo cá nhân `*.db*` dễ phình dung lượng và mang dữ liệu chạy thử cục bộ.
+- **Khẳng định trong repo hiện tại:** Không tạo sẵn `data/xac_nhan_quan_fry.json` hay `data/hieu_chuan_nhiet_ke.json`; mọi kiểm thử trong `tests/` và `scripts/kiem_tra_chap_nhan_vong4.py` đều ghi vào thư mục tạm (`tmp_path` / `tempfile.TemporaryDirectory()`).
+
+---
+
+## 5. Các hằng số `GIẢ ĐỊNH` mới thêm ở Vòng 4 (đã có trong panel R7)
+
+1. `hieu_chuan.nhiet_ke_cheo.so_cap_toi_thieu = 6` và `so_muc_nhiet_toi_thieu = 2` (**V1**): Ngưỡng tối thiểu số cặp đọc và số mức nhiệt độ khi hiệu chuẩn chéo hai nhiệt kế.
+2. `hieu_chuan.dai_man_muc_tieu_ppt = [0.0, 35.0]` (**V4**): Dải độ mặn mục tiêu mặc định dùng khi đánh giá độ phủ thiết kế thí nghiệm.
+3. Khối `thiet_ke_thi_nghiem.*` (10 tham số, **V4**): `so_muc_man_toi_thieu = 6`, `phai_co_muc_0 = true`, `ti_le_phu_dai_man_toi_thieu = 0.8`, `so_lan_lap_toi_thieu_moi_o = 3`, `so_me_pha_toi_thieu = 2`, `so_muc_nhiet_toi_thieu = 3`, `bien_do_nhiet_toi_thieu_C = 6.0`, `so_muc_D_toi_thieu_neu_hoc_D = 2`, `chenh_D_toi_thieu_C = 1.0`, `ti_le_toi_da_moi_muc = 0.4`. Toàn bộ đều có ghi chú `GIẢ ĐỊNH, cần thay bằng giá trị đo được` trong `config.yaml` và hiển thị trong panel R7 (`50` mục chưa xác nhận ở cấu hình mặc định).
+
+---
+
+## 6. Các bài test cũ đã chỉnh ở Vòng 4, lí do & lưu ý môi trường `TestClient`
+
+1. `tests/test_xuat_bao_cao.py::test_r9_xuat_bao_cao_chi_kiem_logic_nhan_thuc_te_khong_watermark` (**V0**): Tên test đã được giữ rõ mục đích `"chỉ kiểm logic, dữ liệu vẫn là mô phỏng"`, cập nhật chuỗi giả lập cột `id_thiet_bi`/`id_dien_thoai` sang `"TB_KIEM_LOGIC"` / `"DT_KIEM_LOGIC"` (thay vì chuỗi chứa `"MO_PHONG"` như bản cũ) vì từ V0 `xuat_bao_cao.py` chủ động chặn đóng dấu mô phỏng mọi dòng có nhãn thiết bị chứa `"MO_PHONG"`/`"SIMULATED"`.
+2. `tests/test_quan_fry_doi_chieu.py` (**V2**): Cập nhật helper tạo CSV đối chiếu có đủ cột `trang_bang` không rỗng cho cả `a0..a9` và truyền `--nguoi-doi-chieu`, `--trich-dan` khi kiểm nhánh `--luu-xac-nhan` vì V2 siết bắt buộc các trường này.
+3. **Cảnh báo `StarletteDeprecationWarning` (`V3`):** Khi dùng `starlette.testclient.TestClient` với `httpx==0.28.1` (đã ghim trong `requirements.txt`), Starlette 1.3.1 phát 2 cảnh báo deprecation (`Using httpx with starlette.testclient is deprecated; install httpx2 instead` và `anyio.abc.BlockingPortal`). Mọi bài test HTTP thật (`tests/test_api_testclient.py`, `tests/test_kiem_tra_thiet_ke_v4.py`, `scripts/kiem_tra_chap_nhan_vong4.py`) đều chạy đồng bộ và đạt kết quả bình thường.
+
+---
+
+## 7. Danh sách 9 việc CHỈ người dùng (nhóm thực nghiệm) làm được
+
+1. **Chụp ảnh thật từ thiết bị của nhóm và chỉnh ngưỡng xử lí ảnh:** Tinh chỉnh các ngưỡng dưới `xu_ly_anh.*` trong `config.yaml` bằng ảnh chụp thật và đưa bộ kiểm định thật vào `tests/anh_that/`.
+2. **Hiệu chuẩn chéo hai nhiệt kế thật (`V1`, `V5`):** Nhúng chung hai đầu đo vào cùng một cốc nước khuấy đều ở nhiều mức nhiệt (nếu kiểm điểm `0 °C` dùng nước đá xay + nước cất, không đo trực tiếp đá cục), ghi bảng vào `data/mau_cap_nhiet_ke.csv` theo `docs/QUY_TRINH_THU_DU_LIEU.md` và chạy `scripts/hieu_chuan_cheo_nhiet_ke.py --nguon THUC_TE`.
+3. **Thu dữ liệu hiệu chuẩn thực nghiệm thật (`--nguon THUC_TE`, `V4`, `V5`):** Pha ≥ 2 mẻ độc lập (`ma_me_pha`), ghi chép `data/mau_ghi_chep_thi_nghiem.csv`, phủ đủ dải mặn và dải nhiệt độ ao thực tế, đo lặp ≥ 3 ảnh/ô, đặt thước `px_per_mm`, khóa AE/AF.
+4. **Đo thực nghiệm chênh nhiệt điển hình `ΔT` giữa hai ngăn & `he_so_triet_chung`:** Thay thế các tham số `phan_tich_sai_so.*` và xác minh thực chứng xem có thể bật `cho_phep_giam_sigma_D_khi_on_dinh` trên bình thật hay không.
+5. **Khai báo bất định dụng cụ đo:** Điền `hieu_chuan.sai_so_dung_dich_chuan_ppt`, `hieu_chuan.sai_so_nhiet_ke_C`, `hieu_chuan.nhiet_do_toi_thieu_phu_C` thực tế vào `config.yaml` (cùng giáo viên chỉnh khối `thiet_ke_thi_nghiem.*` nếu cần).
+6. **Điền ngưỡng sinh học có trích dẫn nguồn:** Bổ sung `an_toan`, `canh_bao_*`, `nguy_hiem_*` và `nguon_tham_khao` đầy đủ tác giả/năm/trang-DOI cho các loài trong `nguong_loai` của `config.yaml`.
+7. **Đối chiếu 10 hệ số Quan–Fry từ bài báo gốc bằng 2 người độc lập (`V2`):** Mở `docs/DOI_CHIEU_QUAN_FRY.md`, tự đọc bài gốc **Quan & Fry (*Applied Optics*, 1995)**, ghi đủ số trang/bảng cho `a0..a9` và chạy `scripts/kiem_tra_quan_fry.py --luu-xac-nhan` với đủ `--nguoi-doi-chieu` và `--nguoi-xac-nhan-2` khác nhau.
+8. **Chạy danh sách kiểm tra thủ công trên điện thoại thật (`R10`):** Thực hiện toàn bộ 12 bước trong `docs/KIEM_TRA_THU_CONG_TREN_DIEN_THOAI.md` (cài PWA, chạy ngoại tuyến, camera, vẽ ROI, xuất CSV).
+9. **So sánh kênh màu trên ảnh chụp thật của nhóm (`R5`):** Chạy `python scripts/so_sanh_kenh.py --nguon THUC_TE --thu-muc <thu_muc_anh_that>` trước khi chốt `xu_ly_anh.kenh_laser`.
+
+
 

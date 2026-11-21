@@ -120,12 +120,13 @@ python scripts/xu_ly_thu_muc_anh.py --thu-muc data/anh_that --nguon THUC_TE --tu
 
 ## 4. CHẠY KIỂM THỬ TỰ ĐỘNG & KẾT QUẢ MÔ PHỎNG
 
-### 4.1. Kiểm thử đơn vị, tích hợp và nghiệm thu Vòng 3
+### 4.1. Kiểm thử đơn vị, tích hợp và nghiệm thu Vòng 3 & Vòng 4
 ```bash
 python -m pytest tests -q
 python scripts/kiem_tra_chap_nhan_vong3.py
+python scripts/kiem_tra_chap_nhan_vong4.py
 ```
-Kết quả thực tế sau Vòng 3 (`R0–R10`): **`111 passed, 1 skipped`** (`test_hoi_quy_anh_that` trong `tests/test_anh_that.py` chủ động skip với lí do `"chưa có ảnh thật"`). Toàn bộ các con số dưới đây đến từ ảnh/dữ liệu **MÔ PHỎNG**, **KHÔNG phải độ chính xác của thiết bị thật**.
+Kết quả thực tế sau Vòng 4 (`V0–V7`): **`136 passed, 1 skipped`** (`test_hoi_quy_anh_that` trong `tests/test_anh_that.py` chủ động skip với lí do `"chưa có ảnh thật"`; kèm 2 cảnh báo không chặn `StarletteDeprecationWarning`/`DeprecationWarning` khi dùng `httpx==0.28.1` với `starlette.testclient.TestClient`). Toàn bộ các con số dưới đây vẫn đến từ ảnh/dữ liệu **MÔ PHỎNG**, **KHÔNG phải độ chính xác của thiết bị thật**.
 
 ### 4.2. Bảng độ bền vững thuật toán trên 100 seed ảnh MÔ PHỎNG (`R2`)
 > **Lưu ý:** Bảng dưới đây đo **độ bền vững thuật toán xử lí ảnh trên dữ liệu MÔ PHỎNG** (`sim/synth.py`, ảnh `600×400`, `y_tham_chieu_goc = 100`), **KHÔNG phải độ chính xác của thiết bị thật**.

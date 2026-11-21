@@ -1,0 +1,19 @@
+﻿nhom,tieu_chi,chi_tiet,gia_tri_do,ket_luan,nguon_du_lieu
+V0,V0_png_tEXt_chan,"ret=2, csv_ton_tai=False",nhung=True & bi_chan,DAT,MO_PHONG
+V0,V0_jpeg_COM_chan,"ret=2, csv_ton_tai=False",nhung=True & bi_chan,DAT,MO_PHONG
+V0,V0_sidecar_json_chan,"ret=2, csv_ton_tai=False",bi_chan,DAT,MO_PHONG
+V0,V0_ten_file_MO_PHONG_chan,"ret=2, csv_ton_tai=False",bi_chan,DAT,MO_PHONG
+V0,V0_api_measure_nhan_nhung,"http=200, la_mo_phong=True, cb=['ANH_MO_PHONG_NHUNG', 'CHUA_KHOA_AE_AF']",ep la_mo_phong & chan,DAT,MO_PHONG
+V0,V0_anh_sach_khong_nhung,doc_nhan_mo_phong=False,False (khong duong tinh gia),DAT,MO_PHONG
+V1,V1_offset_co_dinh_0.5C,"N=400, chan_truoc=207/400 [CI 46.9-56.6%] -> chan_sau=27/400 [CI 4.7-9.6%]","cov=100.0% [CI 99.0-100.0%], mean=-0.0109, RMS=0.0300, max=0.0833‰",DAT,MO_PHONG
+V1,V1_offset_co_dinh_1.0C,"N=400, chan_truoc=389/400 [CI 95.1-98.5%] -> chan_sau=24/400 [CI 4.1-8.8%]","cov=100.0% [CI 99.0-100.0%], mean=-0.0111, RMS=0.0302, max=0.0746‰",DAT,MO_PHONG
+V1,V1_offset_tuyen_tinh_0.02,"b_do=0.02110, phu_thuoc_T=True, chan 96->30/400","cov=100.0% [CI 99.0-100.0%], RMS=0.0300, max=0.0725‰",DAT,MO_PHONG
+V1,V1_co_so_offset_0,"off_uoc=-0.0276C, chan 32->36/400","cov=100.0% [CI 99.0-100.0%], RMS=0.0321, max=0.0768‰",DAT,MO_PHONG
+V1,V1_tu_choi_thieu_du_lieu,"tu_choi_cap_lt6=True, tu_choi_muc_lt2=True",ca hai True,DAT,MO_PHONG
+V2,V2_thieu_trang_bang,khop=False,False,DAT,MO_PHONG
+V2,V2_thieu_nguoi_hoac_trich_dan,"no_nd=False, no_td=False, ton_tai=False",ca hai bi chan & khong luu,DAT,MO_PHONG
+V2,V2_trung_nguoi_1_va_2,khop=False,False,DAT,MO_PHONG
+V2,V2_3_trang_thai_R7,"0=chua_xac_nhan, 1=xac_nhan_1_nguoi, 2=xac_nhan_2_nguoi",chua -> 1_nguoi -> 2_nguoi,DAT,MO_PHONG
+V2,V2_canh_bao_khong_chep_ma,ret=0,co CANH BAO khong chep ma,DAT,MO_PHONG
+V4,V4_bo_day_du_dat,"hop_le=True, chua_dat=0, cb=0",hop_le=True,DAT,MO_PHONG
+V4,V4_bat_loi_khong_chan,"no_me=chua_dat, 1_me=chua_dat, mix=chua_dat, D0=chua_dat, R2_fit=1.00000",tat ca chua_dat & van fit duoc,DAT,MO_PHONG
