@@ -61,6 +61,11 @@ Truy cập `http://127.0.0.1:8000`.
 
 ## 3. QUY TRÌNH THU DỮ LIỆU THẬT, CHỤP ẢNH & HIỆU CHUẨN
 
+> **Tài liệu hướng dẫn đầy đủ cho học sinh & biểu mẫu ghi chép thực nghiệm (`V5`):**  
+> - Quy trình thu thập dữ liệu từng bước: [`docs/QUY_TRINH_THU_DU_LIEU.md`](docs/QUY_TRINH_THU_DU_LIEU.md)  
+> - Biểu mẫu cặp đọc hiệu chuẩn chéo nhiệt kế (trống, 0 dòng giả lập): [`data/mau_cap_nhiet_ke.csv`](data/mau_cap_nhiet_ke.csv)  
+> - Biểu mẫu nhật kí pha mẫu & chụp ảnh thí nghiệm (trống, 0 dòng giả lập): [`data/mau_ghi_chep_thi_nghiem.csv`](data/mau_ghi_chep_thi_nghiem.csv)
+
 ### 3.1. Thiết lập phần cứng & Chụp ảnh
 1. Đặt cuvet hai ngăn cách màn hứng trắng mờ một khoảng $D$ ổn định; laser 650 nm vuông góc mặt kính vào.
 2. Ngăn trái chứa nước cất $0\,‰$ đóng kín; ngăn phải tráng 2 lần bằng nước mẫu trước khi đo.
