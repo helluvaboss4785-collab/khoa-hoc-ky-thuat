@@ -174,8 +174,9 @@ def kiem_tra_vung_meo_ong_kinh(
     he_so_meo_k1: float | None = None,
     chua_sua_meo: bool = True,
     w_img: int | None = None,
+    co_tham_so_ong_kinh: bool = False,
 ) -> dict[str, Any]:
-    """Kiểm tra hai vạch có nằm ở vùng rìa dễ méo ống kính hay không (tùy chọn, chỉ cảnh báo)."""
+    """Kiểm tra hai vạch có nằm ở vùng rìa dễ méo ống kính hay không (R3: chỉ cảnh báo khi có k1/hiệu chuẩn)."""
     cy = max(float(h_img) / 2.0, 1.0)
     ti_le_tc = abs(float(y_tc) - cy) / cy
     ti_le_mau = abs(float(y_mau) - cy) / cy
@@ -185,21 +186,37 @@ def kiem_tra_vung_meo_ong_kinh(
     if not vuot_nguong:
         return {
             "canh_bao_meo": False,
+            "la_thong_tin_bo_sung": False,
             "ti_le_lech_tam_max": float(ti_le_max),
             "can_tren_sai_so_px": None,
             "cap": None,
             "noi_dung": "",
         }
 
-    if he_so_meo_k1 is None or not math.isfinite(float(he_so_meo_k1)):
+    co_k1 = he_so_meo_k1 is not None and math.isfinite(float(he_so_meo_k1))
+    if not co_k1 and not co_tham_so_ong_kinh:
         return {
-            "canh_bao_meo": True,
+            "canh_bao_meo": False,
+            "la_thong_tin_bo_sung": True,
             "ti_le_lech_tam_max": float(ti_le_max),
             "can_tren_sai_so_px": None,
             "cap": "thong_tin",
             "noi_dung": (
                 f"Vạch laser nằm khá xa tâm ảnh (lệch tâm đứng {ti_le_max * 100:.0f}% > {nguong_lech_tam_ti_le * 100:.0f}%): "
-                "khu vực rìa dễ bị méo ống kính (chưa khai báo k1 để ước lượng sai số; nên đưa vạch vào gần tâm hoặc hiệu chuẩn bàn cờ)."
+                "khu vực rìa dễ bị méo ống kính (chưa khai báo k1 và chưa có hiệu chuẩn ống kính theo id_dien_thoai)."
+            ),
+        }
+
+    if not co_k1:
+        return {
+            "canh_bao_meo": True,
+            "la_thong_tin_bo_sung": False,
+            "ti_le_lech_tam_max": float(ti_le_max),
+            "can_tren_sai_so_px": None,
+            "cap": "can_than",
+            "noi_dung": (
+                f"Vạch nằm ở vùng rìa dễ méo ống kính (lệch tâm {ti_le_max * 100:.0f}% > {nguong_lech_tam_ti_le * 100:.0f}%) "
+                "và điện thoại đã có thông số hiệu chuẩn ống kính nhưng đang tắt tự sửa méo."
             ),
         }
 
@@ -212,6 +229,7 @@ def kiem_tra_vung_meo_ong_kinh(
     can_tren_px = float(k1_abs * abs((float(y_mau) - cy) * r2_m - (float(y_tc) - cy) * r2_tc))
     return {
         "canh_bao_meo": True,
+        "la_thong_tin_bo_sung": False,
         "ti_le_lech_tam_max": float(ti_le_max),
         "can_tren_sai_so_px": can_tren_px,
         "cap": "can_than",

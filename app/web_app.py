@@ -872,6 +872,7 @@ def _serialize_chat_luong(
         "fwhm_tc": cq.fwhm_tc,
         "canh_bao": canh_bao_txt,
         "canh_bao_chi_tiet": canh_bao_ct,
+        "thong_tin_bo_sung": [dict(x) for x in getattr(cq, "thong_tin_bo_sung", [])],
     }
 
 
@@ -1009,12 +1010,18 @@ async def api_measure(request: Request) -> JSONResponse:
 
         img_cfg = load_image_config()
         ts_ok_use = None
+        ts_found = None
         id_dt_req = str(body.get("id_dien_thoai") or "").strip()
-        if bool(img_cfg.get("bat_sua_meo_ong_kinh", False)) and id_dt_req:
+        if id_dt_req:
             ok_dir = Path(str(img_cfg.get("thu_muc_hieu_chuan_ong_kinh", "data/ong_kinh")))
             if not ok_dir.is_absolute():
                 ok_dir = THU_MUC_GOC / ok_dir
-            ts_ok_use = ong_kinh.tai_tham_so_ong_kinh(id_dt_req, ok_dir)
+            ts_found = ong_kinh.tai_tham_so_ong_kinh(id_dt_req, ok_dir)
+            if bool(img_cfg.get("bat_sua_meo_ong_kinh", False)):
+                ts_ok_use = ts_found
+        k1_khai_bao = img_cfg.get("he_so_meo_k1_khai_bao")
+        if k1_khai_bao is None and ts_found is not None and ts_found.he_so_meo:
+            k1_khai_bao = float(ts_found.he_so_meo[0])
         buoc_cot = max(2, int(anh_input.shape[1] // 250)) if anh_input.shape[1] > 600 else 2
         kq_do = do_delta_y_tu_anh(
             anh_input,
@@ -1032,7 +1039,8 @@ async def api_measure(request: Request) -> JSONResponse:
             nguong_nen_khong_deu=float(img_cfg.get("nguong_nen_khong_deu", 30.0)),
             tham_so_ong_kinh=ts_ok_use,
             nguong_lech_tam_meo_ti_le=float(img_cfg.get("nguong_lech_tam_meo_ti_le", 0.30)),
-            he_so_meo_k1_khai_bao=img_cfg.get("he_so_meo_k1_khai_bao"),
+            he_so_meo_k1_khai_bao=k1_khai_bao,
+            co_tham_so_ong_kinh_id=(ts_found is not None),
         )
 
         (
@@ -1494,12 +1502,18 @@ async def api_measure_multi(request: Request) -> JSONResponse:
         bh_lien_tiep = int(img_cfg.get("so_cot_lien_tiep_bao_hoa", 15))
         nen_thresh = float(img_cfg.get("nguong_nen_khong_deu", 30.0))
         ts_ok_use = None
+        ts_found = None
         id_dt_req = str(body.get("id_dien_thoai") or "").strip()
-        if bool(img_cfg.get("bat_sua_meo_ong_kinh", False)) and id_dt_req:
+        if id_dt_req:
             ok_dir = Path(str(img_cfg.get("thu_muc_hieu_chuan_ong_kinh", "data/ong_kinh")))
             if not ok_dir.is_absolute():
                 ok_dir = THU_MUC_GOC / ok_dir
-            ts_ok_use = ong_kinh.tai_tham_so_ong_kinh(id_dt_req, ok_dir)
+            ts_found = ong_kinh.tai_tham_so_ong_kinh(id_dt_req, ok_dir)
+            if bool(img_cfg.get("bat_sua_meo_ong_kinh", False)):
+                ts_ok_use = ts_found
+        k1_khai_bao = img_cfg.get("he_so_meo_k1_khai_bao")
+        if k1_khai_bao is None and ts_found is not None and ts_found.he_so_meo:
+            k1_khai_bao = float(ts_found.he_so_meo[0])
         kq_da = do_delta_y_da_khung_hinh(
             frames_ok,
             roi_tham_chieu=roi_tc_tuple,
@@ -1514,7 +1528,8 @@ async def api_measure_multi(request: Request) -> JSONResponse:
             nguong_nen_khong_deu=nen_thresh,
             tham_so_ong_kinh=ts_ok_use,
             nguong_lech_tam_meo_ti_le=float(img_cfg.get("nguong_lech_tam_meo_ti_le", 0.30)),
-            he_so_meo_k1_khai_bao=img_cfg.get("he_so_meo_k1_khai_bao"),
+            he_so_meo_k1_khai_bao=k1_khai_bao,
+            co_tham_so_ong_kinh_id=(ts_found is not None),
         )
 
         # Hợp nhất danh sách khung lỗi (cả khung lỗi lúc giải mã + khung lỗi lúc đo vạch)
@@ -1542,7 +1557,8 @@ async def api_measure_multi(request: Request) -> JSONResponse:
             nguong_nen_khong_deu=nen_thresh,
             tham_so_ong_kinh=ts_ok_use,
             nguong_lech_tam_meo_ti_le=float(img_cfg.get("nguong_lech_tam_meo_ti_le", 0.30)),
-            he_so_meo_k1_khai_bao=img_cfg.get("he_so_meo_k1_khai_bao"),
+            he_so_meo_k1_khai_bao=k1_khai_bao,
+            co_tham_so_ong_kinh_id=(ts_found is not None),
         )
         sigma_dy_use = max(kq_da.sai_so_thong_ke_px, kq_rep.sai_so_delta_y_px if kq_da.sai_so_thong_ke_px <= 0 else 0.0)
         cq_chung = kq_da.chat_luong_chung

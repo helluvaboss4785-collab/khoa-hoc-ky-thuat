@@ -61,6 +61,7 @@ class ChatLuongAnh:
     nen_khong_deu: bool = False
     bien_thien_nen: float = 0.0
     canh_bao_meo_ong_kinh: bool = False
+    thong_tin_bo_sung: list[dict[str, str]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -578,6 +579,7 @@ def do_delta_y_tu_anh(
     tham_so_ong_kinh: ThamSoOngKinh | None = None,
     nguong_lech_tam_meo_ti_le: float = 0.30,
     he_so_meo_k1_khai_bao: float | None = None,
+    co_tham_so_ong_kinh_id: bool = False,
 ) -> KetQuaDoDeltaY:
     """Đo độ lệch vi sai Δy và chỉ số độ đục từ một ảnh chụp (chọn kênh laser tối ưu & kiểm bão hòa gốc)."""
     if tham_so_ong_kinh is not None:
@@ -761,12 +763,20 @@ def do_delta_y_tu_anh(
         he_so_meo_k1=he_so_meo_k1_khai_bao,
         chua_sua_meo=(tham_so_ong_kinh is None),
         w_img=w_anh,
+        co_tham_so_ong_kinh=co_tham_so_ong_kinh_id or (tham_so_ong_kinh is not None),
     )
+    thong_tin_bo_sung = list(chat_luong_khoi_tao.thong_tin_bo_sung)
     co_meo_ong_kinh = bool(meo_check["canh_bao_meo"])
     if co_meo_ong_kinh and meo_check["noi_dung"]:
         canh_bao_ct_final.append({
             "ma": "MEO_ONG_KINH",
-            "cap": str(meo_check["cap"] or "thong_tin"),
+            "cap": str(meo_check["cap"] or "can_than"),
+            "noi_dung": str(meo_check["noi_dung"]),
+        })
+    elif meo_check.get("la_thong_tin_bo_sung") and meo_check["noi_dung"]:
+        thong_tin_bo_sung.append({
+            "ma": "MEO_ONG_KINH_THONG_TIN",
+            "cap": "thong_tin",
             "noi_dung": str(meo_check["noi_dung"]),
         })
 
@@ -787,6 +797,7 @@ def do_delta_y_tu_anh(
         nen_khong_deu=nen_khong_deu,
         bien_thien_nen=bien_thien_nen,
         canh_bao_meo_ong_kinh=co_meo_ong_kinh,
+        thong_tin_bo_sung=thong_tin_bo_sung,
     )
 
     # 8. Sinh ảnh vẽ kết quả kiểm chứng
@@ -822,6 +833,7 @@ def do_delta_y_da_khung_hinh(
     tham_so_ong_kinh: ThamSoOngKinh | None = None,
     nguong_lech_tam_meo_ti_le: float = 0.30,
     he_so_meo_k1_khai_bao: float | None = None,
+    co_tham_so_ong_kinh_id: bool = False,
 ) -> KetQuaDoDaKhungHinh:
     """Xử lí chuỗi nhiều khung hình (video / multi-shot), lấy trung vị và độ phân tán.
 
@@ -858,6 +870,7 @@ def do_delta_y_da_khung_hinh(
                 tham_so_ong_kinh=tham_so_ong_kinh,
                 nguong_lech_tam_meo_ti_le=nguong_lech_tam_meo_ti_le,
                 he_so_meo_k1_khai_bao=he_so_meo_k1_khai_bao,
+                co_tham_so_ong_kinh_id=co_tham_so_ong_kinh_id,
             )
         except (AnhKhongHopLeError, KhongTimThayVachError, ValueError) as exc:
             khung_loi.append((idx, str(exc)))
@@ -954,6 +967,14 @@ def do_delta_y_da_khung_hinh(
             if ch not in kenh_bh_gop:
                 kenh_bh_gop.append(ch)
 
+    tt_bs_gop: list[dict[str, str]] = []
+    seen_bs: set[str] = set()
+    for cq_item in ds_cq_tat_ca:
+        for item_bs in getattr(cq_item, "thong_tin_bo_sung", []):
+            if item_bs["noi_dung"] not in seen_bs:
+                seen_bs.add(item_bs["noi_dung"])
+                tt_bs_gop.append(dict(item_bs))
+
     chat_luong_chung = ChatLuongAnh(
         hop_le=all(c.hop_le for c in ds_cq_tat_ca) and (not khung_loi),
         bao_hoa=any(c.bao_hoa for c in ds_cq_tat_ca),
@@ -971,6 +992,7 @@ def do_delta_y_da_khung_hinh(
         nen_khong_deu=any(c.nen_khong_deu for c in ds_cq_tat_ca),
         bien_thien_nen=max(c.bien_thien_nen for c in ds_cq_tat_ca),
         canh_bao_meo_ong_kinh=any(c.canh_bao_meo_ong_kinh for c in ds_cq_tat_ca),
+        thong_tin_bo_sung=tt_bs_gop,
     )
 
     return KetQuaDoDaKhungHinh(

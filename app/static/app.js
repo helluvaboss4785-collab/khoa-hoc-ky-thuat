@@ -965,6 +965,22 @@ function renderMeasureResults(d) {
     .map((w) => `<div class="banner-25d ${w.cls}"><div class="banner-icon">${w.icon}</div><div>${esc(w.text)}</div></div>`)
     .join("");
 
+  const extraWrap = $("#t1-extra-info-wrap");
+  const extraBox = $("#t1-extra-info-box");
+  const extraList = Array.isArray(cq.thong_tin_bo_sung) ? cq.thong_tin_bo_sung : [];
+  if (extraWrap && extraBox) {
+    if (extraList.length > 0) {
+      extraWrap.style.display = "block";
+      extraBox.innerHTML = extraList
+        .map((it) => `<div class="banner-25d info"><div class="banner-icon">i</div><div>${esc(it.noi_dung)}</div></div>`)
+        .join("");
+      extraBox.style.display = $("#toggle-extra-info")?.checked ? "block" : "none";
+    } else {
+      extraWrap.style.display = "none";
+      extraBox.innerHTML = "";
+    }
+  }
+
   // Tóm tắt đo đa khung (nếu có)
   const mBox = $("#t1-multi-summary");
   if (mBox) {
@@ -2410,6 +2426,10 @@ function bindEvents() {
     if (ev.target.id === "guide-modal-backdrop") $("#guide-modal-backdrop").classList.remove("open");
   });
   $("#toggle-coach").addEventListener("change", updateCoachBar);
+  $("#toggle-extra-info")?.addEventListener("change", (ev) => {
+    const extraBox = $("#t1-extra-info-box");
+    if (extraBox) extraBox.style.display = ev.target.checked ? "block" : "none";
+  });
   const advDrawer = $("#t1-advanced-details");
   if (advDrawer) {
     advDrawer.addEventListener("toggle", () => {

@@ -86,7 +86,7 @@ def _tao_bo_anh_ban_co_meo_gia(
 
 
 def test_q6_canh_bao_meo_vung_ria_co_va_khong_k1():
-    """Q6: Vạch gần tâm không cảnh báo méo; ở rìa cảnh báo thong_tin nếu chưa có k1 và can_than nếu có k1."""
+    """Q6/R3: Vạch gần tâm không cảnh báo; ở rìa chỉ thành thông tin bổ sung nếu chưa có k1, và cảnh báo MEO_ONG_KINH khi có k1 hoặc hiệu chuẩn."""
     cfg = CauHinhQuangHoc.tu_yaml()
     # 1. Hai vạch gần tâm ảnh (h=300, cy=150: y_tc=130, S=4‰ -> y_mau≈150) -> lệch tâm < 30% -> không cảnh báo
     mp_tam = sinh_anh_hai_vach_mo_phong(
@@ -95,16 +95,19 @@ def test_q6_canh_bao_meo_vung_ria_co_va_khong_k1():
     )
     kq_tam = do_delta_y_tu_anh(mp_tam.anh, x_ref=mp_tam.x_ref, tao_anh_ve=False)
     assert kq_tam.chat_luong.canh_bao_meo_ong_kinh is False
+    assert kq_tam.chat_luong.thong_tin_bo_sung == []
 
-    # 2. Một vạch gần rìa dưới (y_tc=140, S=22‰ -> y_mau≈250 -> lệch 67% > 30%)
+    # 2. Một vạch gần rìa dưới (y_tc=140, S=22‰ -> y_mau≈250 -> lệch 67% > 30%): mặc định không khai báo k1 -> KHÔNG phát MEO_ONG_KINH
     mp_ria = sinh_anh_hai_vach_mo_phong(
         ThamSoMoPhong(S_ppt=22.0, T_C=25.0, y_tham_chieu_goc=140.0, seed=2),
         cfg=cfg,
     )
     kq_no_k1 = do_delta_y_tu_anh(mp_ria.anh, x_ref=mp_ria.x_ref, tao_anh_ve=False)
-    assert kq_no_k1.chat_luong.canh_bao_meo_ong_kinh is True
-    assert any(c["ma"] == "MEO_ONG_KINH" and c["cap"] == "thong_tin" for c in kq_no_k1.chat_luong.canh_bao_chi_tiet)
+    assert kq_no_k1.chat_luong.canh_bao_meo_ong_kinh is False
+    assert not any(c["ma"] == "MEO_ONG_KINH" for c in kq_no_k1.chat_luong.canh_bao_chi_tiet)
+    assert any(c["ma"] == "MEO_ONG_KINH_THONG_TIN" for c in kq_no_k1.chat_luong.thong_tin_bo_sung)
 
+    # 3. Khi khai báo k1 -> phát MEO_ONG_KINH kèm cận trên px
     kq_with_k1 = do_delta_y_tu_anh(
         mp_ria.anh, x_ref=mp_ria.x_ref, he_so_meo_k1_khai_bao=0.08, tao_anh_ve=False
     )
@@ -113,6 +116,26 @@ def test_q6_canh_bao_meo_vung_ria_co_va_khong_k1():
         c["ma"] == "MEO_ONG_KINH" and c["cap"] == "can_than" and "px" in c["noi_dung"]
         for c in kq_with_k1.chat_luong.canh_bao_chi_tiet
     )
+
+    # 4. Khi có tham số hiệu chuẩn theo id_dien_thoai (kể cả không truyền k1 trực tiếp) -> vẫn phát cảnh báo
+    kq_with_id = do_delta_y_tu_anh(
+        mp_ria.anh, x_ref=mp_ria.x_ref, co_tham_so_ong_kinh_id=True, tao_anh_ve=False
+    )
+    assert kq_with_id.chat_luong.canh_bao_meo_ong_kinh is True
+    assert any(c["ma"] == "MEO_ONG_KINH" for c in kq_with_id.chat_luong.canh_bao_chi_tiet)
+
+
+def test_r3_anh_thong_thuong_khong_phat_canh_bao_meo():
+    """R3: 3 ảnh mô phỏng thông thường có vạch xa tâm với cấu hình mặc định đều không phát MEO_ONG_KINH."""
+    cfg = CauHinhQuangHoc.tu_yaml()
+    for i, s_val in enumerate((18.0, 22.0, 28.0)):
+        mp = sinh_anh_hai_vach_mo_phong(
+            ThamSoMoPhong(S_ppt=s_val, T_C=25.0, y_tham_chieu_goc=140.0, seed=50 + i),
+            cfg=cfg,
+        )
+        kq = do_delta_y_tu_anh(mp.anh, x_ref=mp.x_ref, tao_anh_ve=False)
+        assert kq.chat_luong.canh_bao_meo_ong_kinh is False
+        assert not any(c["ma"] == "MEO_ONG_KINH" for c in kq.chat_luong.canh_bao_chi_tiet)
 
 
 def test_q6_hieu_chuan_ban_co_va_undistort_giam_lech_it_nhat_70_phan_tram(tmp_path):
