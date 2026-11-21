@@ -44,6 +44,7 @@
 ```bash
 python -m pip install -r requirements.txt
 ```
+*(Ghi chú: `requirements.txt` đã ghim sẵn `httpx==0.28.1` để chạy trọn vẹn kiểm thử tích hợp ASGI qua Starlette `TestClient` bên cạnh bộ chạy web thực tế).*
 
 ### 2.2. Khởi chạy Web 2.5D & Giới hạn tải lên
 ```bash
@@ -93,11 +94,21 @@ python scripts/xu_ly_thu_muc_anh.py --thu-muc data/anh_that --nguon THUC_TE --tu
 - Để hiệu chuẩn méo ống kính riêng cho từng máy điện thoại bằng ảnh bàn cờ, dùng [`scripts/hieu_chuan_ong_kinh.py`](scripts/hieu_chuan_ong_kinh.py).
 - Để kích hoạt kiểm thử hồi quy trên ảnh chụp thật của nhóm, đặt ảnh và `nhan_chuan.csv` vào `tests/anh_that/` theo hướng dẫn trong [`tests/anh_that/README.md`](tests/anh_that/README.md).
 
-### 3.4. Đối chiếu Quan–Fry, xuất báo cáo và kiểm tra thực địa (R7–R10)
-- **Bảng trạng thái giả định (`R7`):** Trên giao diện web có nút *"Các tham số còn là giả định"* (và endpoint `GET /api/trang-thai-cau-hinh`) liệt kê mọi tham số còn mang giá trị giả định, còn `null`, thiếu nguồn sinh học, hoặc chưa đối chiếu Quan–Fry.
-- **Đối chiếu 10 hệ số Quan–Fry (`R8`):** Mở [`docs/DOI_CHIEU_QUAN_FRY.md`](docs/DOI_CHIEU_QUAN_FRY.md), tự kiểm từ bài báo gốc Quan & Fry (*Applied Optics*, 1995) rồi chạy:
+### 3.4. Chống gắn nhãn sai nguồn dữ liệu (`V0`), Hiệu chuẩn chéo nhiệt kế (`V1`), Thiết kế thí nghiệm (`V4`) & Xuất báo cáo
+- **Chống gắn nhãn sai nguồn dữ liệu (`V0`):** Mọi ảnh sinh từ `sim/synth.py` đều nhúng dấu `SIMULATED` ngay trong file ảnh (chunk `tEXt` PNG, đoạn `COM` JPEG, file `.json` cạnh ảnh) và nhận diện tên file chứa `MO_PHONG`/`SIMULATED`. Lệnh `scripts/xu_ly_thu_muc_anh.py --nguon THUC_TE` sẽ từ chối (mã thoát `2`, không ghi CSV) nếu gặp ảnh có dấu mô phỏng; Web App `/api/measure`, `/api/measure-multi` tự gắn `la_mo_phong = True`, `khong_danh_gia_duoc = True` và ép lưu nhật kí thành `MÔ PHỎNG`.
+- **Hiệu chuẩn chéo hai nhiệt kế (`V1`):** Ngâm chung hai đầu đo trong cùng một cốc nước khuấy đều ở nhiều mức nhiệt (điểm `0 °C` kiểm bằng nước đá xay + nước cất, không đo trực tiếp đá cục), ghi bảng theo [`data/mau_cap_nhiet_ke.csv`](data/mau_cap_nhiet_ke.csv) rồi chạy:
   ```bash
-  python scripts/kiem_tra_quan_fry.py --csv <file_csv_cua_ban.csv> --luu-xac-nhan
+  python scripts/hieu_chuan_cheo_nhiet_ke.py --csv data/cap_nhiet_ke_cua_nhom.csv --nguoi-thuc-hien "<Ten_HS>" --nguon THUC_TE
+  ```
+  Công cụ kiểm định độ dốc tuyến tính `offset(T) = a + b·T`, lưu `data/hieu_chuan_nhiet_ke.json` và tự cộng bất định `σ_offset` vào `σ_Dđo` khi đo mặn (nếu chưa hiệu chuẩn chéo, phần mềm bật cảnh báo nhắc trong kết quả đo và panel R7).
+- **Kiểm tra thiết kế thí nghiệm (`V4` — không chặn dựng đường chuẩn):** Trước hoặc song song khi dựng đường chuẩn trên Tab 4 hoặc CLI, kiểm nhanh số mức nồng độ, điểm gốc `0‰`, độ phủ dải, cân bằng mẫu, số mẻ pha `ma_me_pha`, biên độ nhiệt độ, biến thiên `D` (khi học `D`), tỉ lệ `px/mm` và tính đồng nhất `nguon_du_lieu` bằng:
+  ```bash
+  python scripts/kiem_tra_thiet_ke_thi_nghiem.py --csv data/hieu_chuan_cua_toi.csv
+  ```
+- **Bảng trạng thái giả định (`R7`/`V6`):** Trên giao diện web có nút *"Các tham số còn là giả định"* (và endpoint `GET /api/trang-thai-cau-hinh`) liệt kê trung thực mọi tham số còn mang giá trị giả định (bao gồm cả thông số hiệu chuẩn chéo nhiệt kế `V1` và `thiet_ke_thi_nghiem.*` `V4`), còn `null`, thiếu nguồn sinh học, hoặc trạng thái đối chiếu Quan–Fry 3 mức.
+- **Đối chiếu 10 hệ số Quan–Fry 2 người độc lập (`R8`/`V2`):** Mở [`docs/DOI_CHIEU_QUAN_FRY.md`](docs/DOI_CHIEU_QUAN_FRY.md), điền số trang/bảng cho đủ 10 hệ số từ bài báo gốc Quan & Fry (*Applied Optics*, 1995) rồi chạy:
+  ```bash
+  python scripts/kiem_tra_quan_fry.py --csv <file_csv_cua_ban.csv> --luu-xac-nhan --nguoi-doi-chieu "<Nguoi_1>" --nguoi-xac-nhan-2 "<Nguoi_2>" --trich-dan "Quan & Fry (1995), Applied Optics ..."
   ```
 - **Xuất tài liệu báo cáo & poster (`R9`):** Dùng [`scripts/xuat_bao_cao.py`](scripts/xuat_bao_cao.py) để xuất 6 tài liệu vào `outputs/bao_cao/` (đồ thị đường chuẩn kèm phần dư & vùng bất định, bảng sai số theo mức, Bland–Altman khi có `--so-sanh`, ngân sách sai số lí thuyết, bảng giả định R7, Markdown tổng hợp). Mọi hình/bảng tự động đóng dấu bắt buộc `DỮ LIỆU MÔ PHỎNG / CHƯA XÁC NHẬN` nếu chưa đủ nhãn `THUC_TE`:
   ```bash
