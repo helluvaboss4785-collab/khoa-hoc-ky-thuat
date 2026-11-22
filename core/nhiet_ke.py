@@ -15,7 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -55,9 +55,16 @@ class HieuChuanCheoNhietKe:
     nguon_du_lieu: str = "CHUA_XAC_DINH"
     nguoi_thuc_hien: str = ""
     sha256_csv: str = ""
+    do_phan_giai_mau_C: float = 0.0
+    do_phan_giai_tc_C: float = 0.0
+    phan_giai_suy_ra: bool = True
+    sigma_phan_giai_C: float = 0.0
+    canh_bao_do_phan_giai: bool = False
+    canh_bao_chi_tiet: list[dict[str, str]] = field(default_factory=list)
 
     def offset_va_sigma_tai(self, T_C: float) -> tuple[float, float]:
-        """Trả `(offset_C, sigma_offset_C)` tại nhiệt độ mẫu `T_C` (°C)."""
+        """Trả `(offset_C, sigma_offset_C)` tại nhiệt độ mẫu `T_C` (°C), luôn giữ sàn `σ_pg`."""
+        san_pg = max(float(self.sigma_phan_giai_C or 0.0), 0.0)
         if (
             self.phu_thuoc_nhiet_do
             and self.he_so_a is not None
@@ -72,8 +79,8 @@ class HieuChuanCheoNhietKe:
                 sig = math.sqrt(max(var, 0.0))
             else:
                 sig = float(self.sigma_offset_C)
-            return off, sig
-        return float(self.offset_C), float(self.sigma_offset_C)
+            return off, max(sig, san_pg)
+        return float(self.offset_C), max(float(self.sigma_offset_C), san_pg)
 
     def sang_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -81,7 +88,9 @@ class HieuChuanCheoNhietKe:
     @classmethod
     def tu_dict(cls, d: dict[str, Any]) -> "HieuChuanCheoNhietKe":
         fields = cls.__dataclass_fields__.keys()
-        kw = {k: v for k, v in d.items() if k in fields}
+        kw: dict[str, Any] = {k: v for k, v in d.items() if k in fields}
+        if kw.get("canh_bao_chi_tiet") is None:
+            kw["canh_bao_chi_tiet"] = []
         return cls(**kw)
 
     def mo_ta_ngan(self) -> str:
@@ -94,6 +103,34 @@ class HieuChuanCheoNhietKe:
             f"Đã hiệu chuẩn chéo nhiệt kế ({self.offset_C:+.3f} ± {self.sigma_offset_C:.3f} °C, "
             f"ngày {self.ngay}, người làm: {self.nguoi_thuc_hien})"
         )
+
+
+def uoc_luong_do_phan_giai(values: np.ndarray) -> float:
+    """Suy ra độ phân giải hiển thị (°C) từ chuỗi số đọc nhiệt kế (W3).
+
+    Vật lí & tránh bẫy số liệu:
+    - Khi nhiệt kế có nhiễu lặp trong cùng mức nhiệt, hiệu giữa các giá trị khác nhau liên tiếp
+      nhỏ hơn 1.0 °C phản ánh bước lượng tử hóa thực tế (vd 0.5, 0.1, 0.01 °C).
+    - Nếu các số đọc tại từng bể nhiệt đều làm tròn khớp vào một giá trị duy nhất (vd [20, 28, 36]),
+      khoảng cách giữa các bể là 8.0 °C chứ không phải độ phân giải 8 °C; do đó ta chỉ lấy
+      min(diff) đối với diff < 1.0 °C, còn lại dò theo lưới giảm dần (1.0 -> 0.001) để không bị
+      khớp giả bởi bước mịn nhất mà giữ ước lượng thận trọng theo chữ số thập phân quan sát được.
+    """
+    arr = np.asarray(values, dtype=float)
+    arr = arr[np.isfinite(arr)]
+    if arr.size == 0:
+        return 0.0
+    uniq = np.unique(np.round(arr, 6))
+    if uniq.size >= 2:
+        diffs = np.diff(uniq)
+        sub = diffs[(diffs > 1e-9) & (diffs < 1.0 - 1e-9)]
+        if sub.size > 0:
+            return float(round(float(np.min(sub)), 6))
+    for cand in (1.0, 0.5, 0.2, 0.1, 0.05, 0.01, 0.001):
+        rem = np.abs(uniq / cand - np.round(uniq / cand))
+        if np.all(rem < 1e-5):
+            return float(cand)
+    return 0.001
 
 
 def _dem_muc_nhiet(T_vals: np.ndarray, nguong_C: float = 0.5) -> int:
@@ -121,6 +158,21 @@ def doc_nguong_nhiet_ke_cheo_yaml(config_path: str | Path = CONFIG_MAC_DINH) -> 
     return int(nk.get("so_cap_toi_thieu", 6)), int(nk.get("so_muc_nhiet_toi_thieu", 2))
 
 
+def doc_do_phan_giai_toi_da_yaml(config_path: str | Path = CONFIG_MAC_DINH) -> float:
+    """Đọc ngưỡng độ phân giải tối đa `do_phan_giai_toi_da_C` (°C) từ `config.yaml` (mặc định 0.1)."""
+    p = Path(config_path)
+    if not p.exists():
+        return 0.1
+    with open(p, encoding="utf-8") as f:
+        raw = yaml.safe_load(f) or {}
+    nk = ((raw.get("hieu_chuan") or {}).get("nhiet_ke_cheo")) or {}
+    try:
+        val = float(nk.get("do_phan_giai_toi_da_C", 0.1))
+        return val if math.isfinite(val) and val > 0 else 0.1
+    except Exception:
+        return 0.1
+
+
 def hieu_chuan_cheo_tu_df(
     df_raw: pd.DataFrame,
     nguoi_thuc_hien: str,
@@ -129,11 +181,20 @@ def hieu_chuan_cheo_tu_df(
     so_muc_nhiet_toi_thieu: int = 2,
     sha256_csv: str = "",
     ngay: str | None = None,
+    do_phan_giai_mau_C: float | None = None,
+    do_phan_giai_tc_C: float | None = None,
+    do_phan_giai_toi_da_C: float = 0.1,
 ) -> HieuChuanCheoNhietKe:
     """Tính độ lệch offset hệ thống và kiểm tra phụ thuộc nhiệt độ từ bảng cặp số đọc cùng bể nước."""
     nguoi = str(nguoi_thuc_hien or "").strip()
     if not nguoi:
         raise ValueError("Bắt buộc khai báo tên người thực hiện (--nguoi-thuc-hien).")
+
+    for ten_pg, val_pg in (("do_phan_giai_mau_C", do_phan_giai_mau_C), ("do_phan_giai_tc_C", do_phan_giai_tc_C)):
+        if val_pg is not None:
+            v = float(val_pg)
+            if not math.isfinite(v) or v < 0.0:
+                raise ValueError(f"{ten_pg} phải là số hữu hạn >= 0.")
 
     df = df_raw.copy()
     df.columns = [str(c).strip() for c in df.columns]
@@ -180,10 +241,31 @@ def hieu_chuan_cheo_tu_df(
     if nguon_cuoi not in ("THUC_TE", "MO_PHONG"):
         raise ValueError("Bắt buộc khai báo --nguon (THUC_TE hoặc MO_PHONG) hoặc điền đủ cột nguon_du_lieu.")
 
+    # Độ phân giải nhiệt kế & sàn sai số lượng tử hóa σ_pg (W3)
+    # Giả định lượng tử hóa độc lập giữa `so_muc` mức nhiệt khác nhau:
+    # Var(U[-r/2, r/2]) = r²/12 cho mỗi nhiệt kế -> σ_pg = √(r_mẫu² + r_tc²) / √(12 · so_muc).
+    r_mau = float(do_phan_giai_mau_C) if do_phan_giai_mau_C is not None else uoc_luong_do_phan_giai(t_mau)
+    r_tc = float(do_phan_giai_tc_C) if do_phan_giai_tc_C is not None else uoc_luong_do_phan_giai(t_tc)
+    phan_giai_suy_ra = (do_phan_giai_mau_C is None) or (do_phan_giai_tc_C is None)
+    sigma_pg = math.sqrt(r_mau**2 + r_tc**2) / math.sqrt(12.0 * max(so_muc, 1))
+
+    canh_bao_pg = (r_mau > do_phan_giai_toi_da_C + 1e-12) or (r_tc > do_phan_giai_toi_da_C + 1e-12)
+    canh_bao_chi_tiet: list[dict[str, str]] = []
+    if canh_bao_pg:
+        canh_bao_chi_tiet.append({
+            "ma": "DO_PHAN_GIAI_NHIET_KE_THO",
+            "cap": "can_than",
+            "thong_diep": (
+                f"Nhiệt kế có độ phân giải thô (r_mẫu={r_mau:g} °C, r_tc={r_tc:g} °C > ngưỡng "
+                f"{do_phan_giai_toi_da_C:g} °C); σ_offset đã được nâng theo sàn lượng tử hóa σ_pg={sigma_pg:.4f} °C."
+            ),
+        })
+
     diff = t_tc - t_mau
     offset_tb = float(np.mean(diff))
     sd_diff = float(np.std(diff, ddof=1)) if so_cap >= 2 else 0.0
-    sigma_off = float(sd_diff / math.sqrt(so_cap)) if so_cap >= 2 else 0.0
+    sigma_sem = float(sd_diff / math.sqrt(so_cap)) if so_cap >= 2 else 0.0
+    sigma_off = math.hypot(sigma_sem, sigma_pg)
 
     # Hồi quy tuyến tính offset(T) = a + b * T_mau và kiểm định độ dốc b
     phu_thuoc = False
@@ -212,9 +294,17 @@ def hieu_chuan_cheo_tu_df(
             p_val = 0.0 if abs(b_hat) > 1e-4 else 1.0
             ci_lo, ci_hi = b_hat, b_hat
 
+        # Cộng phương sai lượng tử hóa σ_pg² vào phương sai hệ số chặn cov_ab[0, 0]
+        # để Var(a + b·T) = Var_OLS(T) + σ_pg² tại mọi mức T_C.
+        cov_ab_co_san = cov_ab.copy()
+        cov_ab_co_san[0, 0] = float(cov_ab_co_san[0, 0]) + sigma_pg**2
+
         he_so_a = a_hat
         he_so_b = b_hat
-        cov_ab_list = [[float(cov_ab[0, 0]), float(cov_ab[0, 1])], [float(cov_ab[1, 0]), float(cov_ab[1, 1])]]
+        cov_ab_list = [
+            [float(cov_ab_co_san[0, 0]), float(cov_ab_co_san[0, 1])],
+            [float(cov_ab_co_san[1, 0]), float(cov_ab_co_san[1, 1])],
+        ]
         b_ci95 = [float(ci_lo), float(ci_hi)]
         p_val_b = float(p_val)
         # Ý nghĩa thống kê (p < 0.05 và 0 ngoài CI 95%) + độ dốc vật lí đáng kể
@@ -238,6 +328,12 @@ def hieu_chuan_cheo_tu_df(
         nguon_du_lieu=nguon_cuoi,
         nguoi_thuc_hien=nguoi,
         sha256_csv=sha256_csv,
+        do_phan_giai_mau_C=r_mau,
+        do_phan_giai_tc_C=r_tc,
+        phan_giai_suy_ra=phan_giai_suy_ra,
+        sigma_phan_giai_C=float(sigma_pg),
+        canh_bao_do_phan_giai=canh_bao_pg,
+        canh_bao_chi_tiet=canh_bao_chi_tiet,
     )
 
 

@@ -352,6 +352,13 @@ DANH_MUC_GIA_DINH: tuple[MucGiaDinhKhaiBao, ...] = (
         trang_thai="GIA_DINH",
         viec_can_lam="Kiểm tra và bổ sung các thư mục lưu ảnh thử nghiệm/mô phỏng của nhóm vào config.yaml để tránh nhầm nguồn.",
     ),
+    MucGiaDinhKhaiBao(
+        nhom="hieu_chuan",
+        khoa="nhiet_ke_cheo.do_phan_giai_toi_da_C",
+        ten_hien_thi="Độ phân giải tối đa của nhiệt kế khi hiệu chuẩn chéo (°C)",
+        trang_thai="GIA_DINH",
+        viec_can_lam="Kiểm tra độ chia nhỏ nhất thực tế của cả 2 nhiệt kế; nếu thô hơn ngưỡng này phần mềm bật cảnh báo và nâng sàn σ_pg.",
+    ),
 )
 
 
@@ -466,7 +473,7 @@ def liet_ke_tham_so_chua_xac_nhan(
             "viec_can_lam": item.viec_can_lam,
         })
 
-    # Kiểm tra hiệu chuẩn chéo hai nhiệt kế (V1)
+    # Kiểm tra hiệu chuẩn chéo hai nhiệt kế (V1) & giả định độ phân giải (W3)
     hc_nk = tai_hieu_chuan_cheo_nhiet_ke(hieu_chuan_nhiet_ke_path)
     if hc_nk is None:
         danh_sach.append({
@@ -480,6 +487,17 @@ def liet_ke_tham_so_chua_xac_nhan(
                 "và chạy scripts/hieu_chuan_cheo_nhiet_ke.py."
             ),
         })
+    danh_sach.append({
+        "ma": "hieu_chuan.nhiet_ke_cheo.gia_dinh_doc_lap_phan_giai",
+        "nhom": "hieu_chuan",
+        "ten_tham_so": "Giả định lượng tử hóa độc lập giữa các mức nhiệt trong sàn σ_pg",
+        "gia_tri_hien_tai": "σ_pg = √(r_mẫu² + r_tc²) / √(12 · số_mức)",
+        "trang_thai": "GIẢ ĐỊNH",
+        "viec_can_lam": (
+            "Giả định sai số làm tròn phân bố đều và độc lập giữa các mức nhiệt; "
+            "nên dùng nhiệt kế ≤ 0.1 °C và đo ở nhiều mức nhiệt khác nhau."
+        ),
+    })
 
     # Kiểm tra từng loài trong nguong_loai
     nguong_loai = raw.get("nguong_loai", {}) or {}
