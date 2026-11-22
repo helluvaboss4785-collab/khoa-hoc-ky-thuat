@@ -15,4 +15,4 @@ R2,R2_speckle_0.2,"seeds=1000..1099, hop_le=96/100 (96.0% [CI 90.2%-98.4%]), <0.
 R2,R2_gradient_40,"seeds=1000..1099, hop_le=100/100 (100.0% [CI 96.3%-100.0%]), <0.15px=100/100 (100.0% [CI 96.3%-100.0%])","RMS=0.0052px, med=0.0036px, p95=0.0094px, max=0.0155px",DAT,MO_PHONG
 R2,R2_speckle_0.1_gradient_40,"seeds=1000..1099, hop_le=95/100 (95.0% [CI 88.8%-97.8%]), <0.15px=95/95 (100.0% [CI 96.1%-100.0%])","RMS=0.0445px, med=0.0353px, p95=0.0853px, max=0.1045px",DAT,MO_PHONG
 R3,R3_meo_ong_kinh_ria,Mac dinh chi vao thong_tin_bo_sung; khi co k1 moi vao canh_bao_chi_tiet kem px,"def_cb=False, k1_cb=True",DAT,MO_PHONG
-R7,R7_nguong_loai_va_gia_dinh,"thieu_nguon=[], tong_chua_xac_nhan=50, qf_json_ton_tai=False",thieu_ma=[],DAT,MO_PHONG
+R7,R7_nguong_loai_va_gia_dinh,"thieu_nguon=[], tong_chua_xac_nhan=54, qf_json_ton_tai=False",thieu_ma=[],DAT,MO_PHONG

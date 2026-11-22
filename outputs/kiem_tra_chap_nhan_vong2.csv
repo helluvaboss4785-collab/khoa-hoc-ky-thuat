@@ -11,4 +11,4 @@ MO_PHONG,Q2,Q2_speckle_0.2,"100 seed 1000..1099 speckle=0.2, 600x400, S=20‰","
 MO_PHONG,Q2,Q2_clipping_that_400,Cháy sáng phẳng đỉnh 400 (S=20‰),"hop_le=False, max_run=192",hop_le=False,True
 MO_PHONG,Q3,Q3_gradient_40,100 seed 1000..1099 gradient_nen_y=40,"pass=100/100 [96.3..100.0%], nen_khong_deu=100/100, max|err|=0.0155px",100/100 dat & <0.2px,True
 MO_PHONG,Q3,Q3_gradient_90,100 seed 1000..1099 gradient_nen_y=90,"pass=100/100 [96.3..100.0%], nen_khong_deu=100/100, max|err|=0.0151px",100/100 dat & <0.2px,True
-MO_PHONG,Q3,Q3_anh_12MP_4000x3000,Tốc độ & độ đúng ảnh 4000×3000,"time=0.487s, |err|=0.0009px",<= 3.0s & < 0.2px,True
+MO_PHONG,Q3,Q3_anh_12MP_4000x3000,Tốc độ & độ đúng ảnh 4000×3000,"time=0.111s, |err|=0.0009px",<= 3.0s & < 0.2px,True

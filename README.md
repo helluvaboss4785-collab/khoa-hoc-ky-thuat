@@ -100,39 +100,43 @@ python scripts/xu_ly_thu_muc_anh.py --thu-muc data/anh_that --nguon THUC_TE --tu
 - Để hiệu chuẩn méo ống kính riêng cho từng máy điện thoại bằng ảnh bàn cờ, dùng [`scripts/hieu_chuan_ong_kinh.py`](scripts/hieu_chuan_ong_kinh.py).
 - Để kích hoạt kiểm thử hồi quy trên ảnh chụp thật của nhóm, đặt ảnh và `nhan_chuan.csv` vào `tests/anh_that/` theo hướng dẫn trong [`tests/anh_that/README.md`](tests/anh_that/README.md).
 
-### 3.4. Chống gắn nhãn sai nguồn dữ liệu (`V0`), Hiệu chuẩn chéo nhiệt kế (`V1`), Thiết kế thí nghiệm (`V4`) & Xuất báo cáo
-- **Chống gắn nhãn sai nguồn dữ liệu (`V0`):** Mọi ảnh sinh từ `sim/synth.py` đều nhúng dấu `SIMULATED` ngay trong file ảnh (chunk `tEXt` PNG, đoạn `COM` JPEG, file `.json` cạnh ảnh) và nhận diện tên file chứa `MO_PHONG`/`SIMULATED`. Lệnh `scripts/xu_ly_thu_muc_anh.py --nguon THUC_TE` sẽ từ chối (mã thoát `2`, không ghi CSV) nếu gặp ảnh có dấu mô phỏng; Web App `/api/measure`, `/api/measure-multi` tự gắn `la_mo_phong = True`, `khong_danh_gia_duoc = True` và ép lưu nhật kí thành `MÔ PHỎNG`.
-- **Hiệu chuẩn chéo hai nhiệt kế (`V1`):** Ngâm chung hai đầu đo trong cùng một cốc nước khuấy đều ở nhiều mức nhiệt (điểm `0 °C` kiểm bằng nước đá xay + nước cất, không đo trực tiếp đá cục), ghi bảng theo [`data/mau_cap_nhiet_ke.csv`](data/mau_cap_nhiet_ke.csv) rồi chạy:
+### 3.4. Chống nhầm nguồn (`V0`, `W0`), Nhiệt kế (`V1`, `W3`), Thiết kế & Trùng lặp (`V4`, `W1`), Quan–Fry (`V2`, `W2`) & Báo cáo
+- **Chống gắn nhãn sai nguồn & kiểm EXIF (`V0`, `W0`):** Mọi ảnh sinh từ `sim/synth.py` và `scripts/so_sanh_kenh.py` được nhúng dấu `SIMULATED` (chunk `tEXt` PNG, đoạn `COM` JPEG, file `.json` cạnh ảnh), nhận diện tên file chứa `MO_PHONG`/`SIMULATED`, đồng thời ghi mã băm SHA-256 vào sổ `outputs/so_anh_mo_phong.csv`. Khi chạy `scripts/xu_ly_thu_muc_anh.py --nguon THUC_TE`, ảnh khớp sổ mô phỏng hoặc nằm trong thư mục mô phỏng khai báo tại `nhap_anh.thu_muc_mo_phong` (`outputs`, `tests/anh_mo_phong`) bị chặn với mã thoát `2` (không ghi CSV). Nếu ảnh sạch không có EXIF máy ảnh (`doc_exif_may_anh`), CLI từ chối ở mã `3` trừ khi truyền rõ `--khai-bao-nguon-anh` và `--nguoi-khai-bao`, đồng thời ghi dấu kiểm toán vào `data/so_anh_da_xu_ly.csv` (mâu thuẫn nhãn cùng SHA-256 cũng chặn ở mã `2`). Web App `/api/measure` và `/api/measure-multi` tra cứu đồng thời nhãn nhúng và sổ SHA-256 để ép `la_mo_phong = True`, `khong_danh_gia_duoc = True`, còn ảnh thiếu EXIF gắn cảnh báo không chặn `ANH_KHONG_EXIF` (`cap = "can_than"`).
+- **Hiệu chuẩn chéo hai nhiệt kế & sàn lượng tử hóa (`V1`, `W3`):** Ngâm chung hai đầu đo trong cùng một cốc nước khuấy đều ở nhiều mức nhiệt (điểm `0 °C` kiểm bằng nước đá xay + nước cất, ghi **đủ mọi chữ số thập phân hiển thị**, không đo trực tiếp đá cục), điền [`data/mau_cap_nhiet_ke.csv`](data/mau_cap_nhiet_ke.csv) rồi chạy:
   ```bash
   python scripts/hieu_chuan_cheo_nhiet_ke.py --csv data/cap_nhiet_ke_cua_nhom.csv --nguoi-thuc-hien "<Ten_HS>" --nguon THUC_TE
   ```
-  Công cụ kiểm định độ dốc tuyến tính `offset(T) = a + b·T`, lưu `data/hieu_chuan_nhiet_ke.json` và tự cộng bất định `σ_offset` vào `σ_Dđo` khi đo mặn (nếu chưa hiệu chuẩn chéo, phần mềm bật cảnh báo nhắc trong kết quả đo và panel R7).
-- **Kiểm tra thiết kế thí nghiệm (`V4` — không chặn dựng đường chuẩn):** Trước hoặc song song khi dựng đường chuẩn trên Tab 4 hoặc CLI, kiểm nhanh số mức nồng độ, điểm gốc `0‰`, độ phủ dải, cân bằng mẫu, số mẻ pha `ma_me_pha`, biên độ nhiệt độ, biến thiên `D` (khi học `D`), tỉ lệ `px/mm` và tính đồng nhất `nguon_du_lieu` bằng:
+  Công cụ kiểm định `offset(T) = a + b·T`, tự suy ra độ phân giải hiển thị (`r_mẫu`, `r_tc`) hoặc nhận khai báo qua `--do-phan-giai-mau` / `--do-phan-giai-tc`, cộng sàn bất định lượng tử hóa `σ_pg = √(r_mẫu² + r_tc²)/√(12·số_mức)` vào cả chế độ hằng số và ma trận hiệp phương sai tuyến tính, đồng thời bật cảnh báo `DO_PHAN_GIAI_NHIET_KE_THO` nếu thô hơn `hieu_chuan.nhiet_ke_cheo.do_phan_giai_toi_da_C` (`0.1 °C`). Kết quả lưu tại `data/hieu_chuan_nhiet_ke.json` và tự cộng `σ_offset` vào `σ_Dđo`.
+- **Kiểm tra thiết kế thí nghiệm & phát hiện dữ liệu trùng lặp (`V4`, `W1` — không chặn dựng đường chuẩn):** Trước hoặc song song khi dựng đường chuẩn trên Tab 4 hoặc CLI, kiểm số mức nồng độ, điểm `0‰`, độ phủ dải, cân bằng mẫu, số mẻ `ma_me_pha`, biên độ nhiệt độ, biến thiên `D` (khi học `D`), tỉ lệ `px/mm`, tính đồng nhất `nguon_du_lieu` và ánh xạ bí danh `BI_DANH_COT`:
   ```bash
   python scripts/kiem_tra_thiet_ke_thi_nghiem.py --csv data/hieu_chuan_cua_toi.csv
   ```
-- **Bảng trạng thái giả định (`R7`/`V6`):** Trên giao diện web có nút *"Các tham số còn là giả định"* (và endpoint `GET /api/trang-thai-cau-hinh`) liệt kê trung thực mọi tham số còn mang giá trị giả định (bao gồm cả thông số hiệu chuẩn chéo nhiệt kế `V1` và `thiet_ke_thi_nghiem.*` `V4`), còn `null`, thiếu nguồn sinh học, hoặc trạng thái đối chiếu Quan–Fry 3 mức.
-- **Đối chiếu 10 hệ số Quan–Fry 2 người độc lập (`R8`/`V2`):** Mở [`docs/DOI_CHIEU_QUAN_FRY.md`](docs/DOI_CHIEU_QUAN_FRY.md), điền số trang/bảng cho đủ 10 hệ số từ bài báo gốc Quan & Fry (*Applied Optics*, 1995) rồi chạy:
+  `phat_hien_ban_sao_du_lieu` phát hiện 3 dấu hiệu tường minh (trùng hệt toàn bộ dòng, trùng `sha256_anh` kể cả khi đổi nhãn `S`/`delta_y_px`, trùng `ten_file` nhưng lệch `delta_y_px`), xuất cảnh báo `DU_LIEU_CO_BAN_SAO` (`nghiem_trong`) trên Web App/đường chuẩn và mục `## Cảnh báo dữ liệu trùng lặp` ở đầu `tong_hop_bao_cao.md`, đồng thời tính số lần lặp thực tế mỗi ô `(S × mức T)` sau khi loại bản sao. Phần mềm chủ động không dùng heuristic độ tản mát nhỏ để tránh báo nhầm dương tính giả.
+- **Bảng trạng thái giả định (`R7`, `V6`, `W0–W3`):** Trên giao diện web có nút *"Các tham số còn là giả định"* (`GET /api/trang-thai-cau-hinh`) liệt kê trung thực **54** mục mặc định ở cấu hình gốc (gồm thông số nhiệt kế chéo `V1`/`W3`, thiết kế & ngưỡng trùng lặp `V4`/`W1`, danh sách thư mục mô phỏng `W0`, giá trị `null`, thiếu nguồn sinh học, và trạng thái Quan–Fry 3 mức).
+- **Đối chiếu 10 hệ số Quan–Fry 2 người độc lập & giới hạn (`R8`, `V2`, `W2`):** [`docs/DOI_CHIEU_QUAN_FRY.md`](docs/DOI_CHIEU_QUAN_FRY.md) đã gỡ bỏ toàn bộ 10 hằng số khỏi tài liệu hướng dẫn để tránh chép lại; học sinh đọc trực tiếp bài gốc Quan & Fry (*Applied Optics*, 1995), điền đủ `trang_bang` (không chấp nhận chuỗi giữ chỗ như `?`, `x`, thiếu chữ số) và chạy:
   ```bash
   python scripts/kiem_tra_quan_fry.py --csv <file_csv_cua_ban.csv> --luu-xac-nhan --nguoi-doi-chieu "<Nguoi_1>" --nguoi-xac-nhan-2 "<Nguoi_2>" --trich-dan "Quan & Fry (1995), Applied Optics ..."
   ```
-- **Xuất tài liệu báo cáo & poster (`R9`):** Dùng [`scripts/xuat_bao_cao.py`](scripts/xuat_bao_cao.py) để xuất 6 tài liệu vào `outputs/bao_cao/` (đồ thị đường chuẩn kèm phần dư & vùng bất định, bảng sai số theo mức, Bland–Altman khi có `--so-sanh`, ngân sách sai số lí thuyết, bảng giả định R7, Markdown tổng hợp). Mọi hình/bảng tự động đóng dấu bắt buộc `DỮ LIỆU MÔ PHỎNG / CHƯA XÁC NHẬN` nếu chưa đủ nhãn `THUC_TE`:
+  Công cụ kiểm định chuẩn hóa tên tiếng Việt không dấu/chữ `đ`, định dạng `--trich-dan` (≥ 25 ký tự và có năm `19xx`/`20xx`), ghi cờ `trung_chuoi_ma` và luôn gắn `ghi_chu_gioi_han` nhấn mạnh đây là xác nhận tự khai, phần mềm không tự chứng minh được đối chiếu độc lập.
+- **Xuất tài liệu báo cáo & poster (`R9`, `W1`):** Dùng [`scripts/xuat_bao_cao.py`](scripts/xuat_bao_cao.py) xuất bộ tài liệu vào `outputs/bao_cao/` (đồ thị, bảng sai số theo mức, Bland–Altman khi có `--so-sanh`, ngân sách sai số, bảng R7, Markdown tổng hợp kèm cảnh báo trùng lặp ngay đầu file); tự đóng dấu `DỮ LIỆU MÔ PHỎNG / CHƯA XÁC NHẬN` khi thiếu nhãn `THUC_TE`:
   ```bash
   python scripts/xuat_bao_cao.py --csv data/hieu_chuan_cua_toi.csv --so-sanh data/so_sanh.csv
   ```
-- **Kiểm tra thủ công trên điện thoại thật (`R10`):** Làm theo từng bước trong bảng [`docs/KIEM_TRA_THU_CONG_TREN_DIEN_THOAI.md`](docs/KIEM_TRA_THU_CONG_TREN_DIEN_THOAI.md) để nghiệm thu PWA, chạy ngoại tuyến, camera, vẽ ROI và xuất CSV trên điện thoại thật.
+- **Kiểm tra thủ công trên điện thoại thật (`R10`):** Làm theo từng bước trong bảng [`docs/KIEM_TRA_THU_CONG_TREN_DIEN_THOAI.md`](docs/KIEM_TRA_THU_CONG_TREN_DIEN_THOAI.md) để nghiệm thu PWA (service worker cache `salinity-static-v11`), chạy ngoại tuyến, camera, vẽ ROI và xuất CSV trên điện thoại thật.
 
 ---
 
 ## 4. CHẠY KIỂM THỬ TỰ ĐỘNG & KẾT QUẢ MÔ PHỎNG
 
-### 4.1. Kiểm thử đơn vị, tích hợp và nghiệm thu Vòng 3 & Vòng 4
+### 4.1. Kiểm thử đơn vị, tích hợp và nghiệm thu Vòng 2, Vòng 3, Vòng 4 & Vòng 5
 ```bash
 python -m pytest tests -q
+python scripts/kiem_tra_chap_nhan_vong2.py
 python scripts/kiem_tra_chap_nhan_vong3.py
 python scripts/kiem_tra_chap_nhan_vong4.py
+python scripts/kiem_tra_chap_nhan_vong5.py
 ```
-Kết quả thực tế sau Vòng 4 (`V0–V7`): **`136 passed, 1 skipped`** (`test_hoi_quy_anh_that` trong `tests/test_anh_that.py` chủ động skip với lí do `"chưa có ảnh thật"`; kèm 2 cảnh báo không chặn `StarletteDeprecationWarning`/`DeprecationWarning` khi dùng `httpx==0.28.1` với `starlette.testclient.TestClient`). Toàn bộ các con số dưới đây vẫn đến từ ảnh/dữ liệu **MÔ PHỎNG**, **KHÔNG phải độ chính xác của thiết bị thật**.
+Kết quả đo thực tế sau Vòng 5 (`W0–W5`): **`149 passed, 1 skipped`** (`test_hoi_quy_anh_that` trong `tests/test_anh_that.py` chủ động skip với lí do `"chưa có ảnh thật"`; kèm 2 cảnh báo deprecation của `starlette.testclient` với `httpx==0.28.1` nêu ở mục 2.1); nghiệm thu tự động trên dữ liệu/ảnh **MÔ PHỎNG**: Vòng 2 **`13/13 ĐẠT`**, Vòng 3 **`16/17 ĐẠT`** (giữ nguyên báo cáo trung thực `R0_E_giam_RMS_vs_B_khong_bi_chan = KHONG_DAT` tại `26.6%`), Vòng 4 **`18/18 ĐẠT`**, Vòng 5 **`11/11 ĐẠT`**. Toàn bộ các con số dưới đây đến từ ảnh/dữ liệu **MÔ PHỎNG**, **KHÔNG phải độ chính xác của thiết bị thật**.
 
 ### 4.2. Bảng độ bền vững thuật toán trên 100 seed ảnh MÔ PHỎNG (`R2`)
 > **Lưu ý:** Bảng dưới đây đo **độ bền vững thuật toán xử lí ảnh trên dữ liệu MÔ PHỎNG** (`sim/synth.py`, ảnh `600×400`, `y_tham_chieu_goc = 100`), **KHÔNG phải độ chính xác của thiết bị thật**.

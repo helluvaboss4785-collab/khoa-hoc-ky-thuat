@@ -3,7 +3,7 @@ V0,V0_png_tEXt_chan,"ret=2, csv_ton_tai=False",nhung=True & bi_chan,DAT,MO_PHONG
 V0,V0_jpeg_COM_chan,"ret=2, csv_ton_tai=False",nhung=True & bi_chan,DAT,MO_PHONG
 V0,V0_sidecar_json_chan,"ret=2, csv_ton_tai=False",bi_chan,DAT,MO_PHONG
 V0,V0_ten_file_MO_PHONG_chan,"ret=2, csv_ton_tai=False",bi_chan,DAT,MO_PHONG
-V0,V0_api_measure_nhan_nhung,"http=200, la_mo_phong=True, cb=['ANH_MO_PHONG_NHUNG', 'CHUA_KHOA_AE_AF']",ep la_mo_phong & chan,DAT,MO_PHONG
+V0,V0_api_measure_nhan_nhung,"http=200, la_mo_phong=True, cb=['ANH_MO_PHONG_NHUNG', 'ANH_KHONG_EXIF', 'CHUA_KHOA_AE_AF']",ep la_mo_phong & chan,DAT,MO_PHONG
 V0,V0_anh_sach_khong_nhung,doc_nhan_mo_phong=False,False (khong duong tinh gia),DAT,MO_PHONG
 V1,V1_offset_co_dinh_0.5C,"N=400, chan_truoc=207/400 [CI 46.9-56.6%] -> chan_sau=27/400 [CI 4.7-9.6%]","cov=100.0% [CI 99.0-100.0%], mean=-0.0109, RMS=0.0300, max=0.0833‰",DAT,MO_PHONG
 V1,V1_offset_co_dinh_1.0C,"N=400, chan_truoc=389/400 [CI 95.1-98.5%] -> chan_sau=24/400 [CI 4.1-8.8%]","cov=100.0% [CI 99.0-100.0%], mean=-0.0111, RMS=0.0302, max=0.0746‰",DAT,MO_PHONG

@@ -39,6 +39,10 @@ def test_r7_liet_ke_du_tham_so_gia_dinh_va_null_tren_config_mac_dinh() -> None:
         "thiet_ke_thi_nghiem.so_muc_D_toi_thieu_neu_hoc_D",
         "thiet_ke_thi_nghiem.chenh_D_toi_thieu_C",
         "thiet_ke_thi_nghiem.ti_le_toi_da_moi_muc",
+        "thiet_ke_thi_nghiem.ti_le_ban_sao_toi_da",
+        "nhap_anh.thu_muc_mo_phong",
+        "hieu_chuan.nhiet_ke_cheo.do_phan_giai_toi_da_C",
+        "hieu_chuan.nhiet_ke_cheo.gia_dinh_doc_lap_phan_giai",
         "xu_ly_anh.ti_le_cot_bao_hoa_nghiem_trong",
         "xu_ly_anh.so_cot_lien_tiep_bao_hoa",
         "xu_ly_anh.nguong_nen_khong_deu",
@@ -53,6 +57,8 @@ def test_r7_liet_ke_du_tham_so_gia_dinh_va_null_tren_config_mac_dinh() -> None:
         "quan_fry.he_so_quan_fry_1995",
     }
     assert cac_ma_bat_buoc.issubset(mas.keys())
+    qf_ghichu = str(res["xac_nhan_quan_fry"].get("ghi_chu_gioi_han") or "").lower()
+    assert qf_ghichu and ("tự khai" in qf_ghichu or "độc lập" in qf_ghichu)
 
 
 def test_r7_dien_tham_so_roi_khoi_danh_sach(tmp_path: Path) -> None:

@@ -376,5 +376,99 @@ Các công việc sau liên quan trực tiếp đến **tài liệu gốc, thi�
 8. **Chạy danh sách kiểm tra thủ công trên điện thoại thật (`R10`):** Thực hiện toàn bộ 12 bước trong `docs/KIEM_TRA_THU_CONG_TREN_DIEN_THOAI.md` (cài PWA, chạy ngoại tuyến, camera, vẽ ROI, xuất CSV).
 9. **So sánh kênh màu trên ảnh chụp thật của nhóm (`R5`):** Chạy `python scripts/so_sanh_kenh.py --nguon THUC_TE --thu-muc <thu_muc_anh_that>` trước khi chốt `xu_ly_anh.kenh_laser`.
 
+---
+
+# VÒNG 5 (W0–W5) — HOÀN THIỆN BẢO VỆ NGUỒN DỮ LIỆU, PHÁT HIỆN TRÙNG LẶP, ĐỐI CHIẾU QUAN–FRY, SÀN ĐỘ PHÂN GIẢI NHIỆT KẾ & TIỆN ÍCH NỘP BÀI
+
+## 1. Kết quả cơ sở vs Kết quả cuối cùng (đo trực tiếp từ lệnh chạy)
+
+| Hạng mục kiểm tra | Cơ sở đầu Vòng 5 (`e6b8c94`) | Sau Vòng 5 (`W0–W5`) | Lệnh tái lập |
+| :--- | :---: | :---: | :--- |
+| Bộ kiểm thử `pytest tests -q` | `136 passed, 1 skipped` (`400.54s`) | `149 passed, 1 skipped` | `.venv\Scripts\python.exe -m pytest tests -q` |
+| Nghiệm thu Vòng 2 (`MO_PHONG`) | `13/13 ĐẠT` (`0.310s`) | `13/13 ĐẠT` (`0.111s` trên ảnh 12MP) | `.venv\Scripts\python.exe scripts/kiem_tra_chap_nhan_vong2.py` |
+| Nghiệm thu Vòng 3 (`MO_PHONG`) | `16/17 ĐẠT` (`tong=50`) | `16/17 ĐẠT` (`tong=54`) | `.venv\Scripts\python.exe scripts/kiem_tra_chap_nhan_vong3.py` |
+| Nghiệm thu Vòng 4 (`MO_PHONG`) | `18/18 ĐẠT` | `18/18 ĐẠT` | `.venv\Scripts\python.exe scripts/kiem_tra_chap_nhan_vong4.py` |
+| Nghiệm thu Vòng 5 (`MO_PHONG`) | *(chưa có)* | `11/11 ĐẠT` | `.venv\Scripts\python.exe scripts/kiem_tra_chap_nhan_vong5.py` |
+| Số mục giả định/chưa xác nhận R7 | `50` | `54` | `liet_ke_tham_so_chua_xac_nhan()` |
+
+*(Ghi chú: ở Vòng 3 giữ nguyên kết luận trung thực `R0_E_giam_RMS_vs_B_khong_bi_chan = KHONG_DAT` tại `26.6%` thay vì nới tiêu chí; `test_hoi_quy_anh_that` chủ động skip với lí do `"chưa có ảnh thật"`.)*
+
+---
+
+## 2. Bảng commit theo thứ tự nhiệm vụ (`W0 → W5`)
+
+| Nhiệm vụ | Commit SHA | Tóm tắt thay đổi |
+| :---: | :---: | :--- |
+| **W0** | `1f9c8e2` | Sổ SHA-256 ảnh mô phỏng (`outputs/so_anh_mo_phong.csv`), kiểm EXIF máy ảnh (`doc_exif_may_anh`), chặn thư mục mô phỏng (`nhap_anh.thu_muc_mo_phong`), sổ kiểm toán ảnh đã xử lí (`data/so_anh_da_xu_ly.csv`), cờ `--out`, `--khai-bao-nguon-anh`, `--nguoi-khai-bao`, cảnh báo không chặn `ANH_KHONG_EXIF` trên web, cô lập sổ trong `tests/conftest.py`. |
+| **W1** | `8c00afe` | Phát hiện bản sao dữ liệu & nghi ngờ gán nhãn lại (`phat_hien_ban_sao_du_lieu`), tham số `thiet_ke_thi_nghiem.ti_le_ban_sao_toi_da: 0.0`, sửa `BI_DANH_COT`, tính số lặp sau khử trùng, cảnh báo `DU_LIEU_CO_BAN_SAO`, mục đầu báo cáo `## Cảnh báo dữ liệu trùng lặp`, hiển thị trên Tab 4. |
+| **W2** | `987e063` | Gỡ toàn bộ 10 hằng số Quan–Fry khỏi `docs/DOI_CHIEU_QUAN_FRY.md`, siết `trang_bang` / `--trich-dan` / chuẩn hóa tên tiếng Việt 2 người, bổ sung `trung_chuoi_ma` và `ghi_chu_gioi_han` tự khai vào `xac_nhan_quan_fry.json`, panel R7 và UI web. |
+| **W3** | `adb2054` | Thêm `uoc_luong_do_phan_giai` và sàn lượng tử hóa `σ_pg = √(r_mẫu² + r_tc²)/√(12·số_mức)` cho `core/nhiet_ke.py` (cả chế độ hằng số và ma trận hiệp phương sai OLS tuyến tính), `do_phan_giai_toi_da_C: 0.1`, `--do-phan-giai-mau` / `--do-phan-giai-tc`, cảnh báo `DO_PHAN_GIAI_NHIET_KE_THO`. |
+| **W4** | `25323de` | Tạo `dong_goi.bat`, `dong_goi.sh`, `NOP_BAI.md`, cảnh báo khi `--out` nằm trong thư mục dự án tại `scripts/dong_goi.py`, bổ sung hộp đóng gói và `Ghi chú môi trường` trong `README.md`. |
+| **W5** | *(commit hiện tại)* | Nghiệm thu Vòng 5 (`scripts/kiem_tra_chap_nhan_vong5.py` -> `outputs/kiem_tra_chap_nhan_vong5.csv`), tăng cache PWA `v10 → v11`, cập nhật `tests/test_trang_thai_cau_hinh.py`, hoàn thiện `README.md` và `BAO_CAO_THAY_DOI.md`. |
+
+---
+
+## 3. Kết quả nghiệm thu Vòng 5 (trên dữ liệu/ảnh MÔ PHỎNG)
+
+Lệnh tái lập: `.venv\Scripts\python.exe scripts/kiem_tra_chap_nhan_vong5.py` (xuất [`outputs/kiem_tra_chap_nhan_vong5.csv`](outputs/kiem_tra_chap_nhan_vong5.csv), cô lập sổ theo dõi ảnh vào thư mục tạm).
+
+| Nhóm | Tiêu chí | Kết quả đo được | Ngưỡng / Kỳ vọng | Kết luận |
+| :---: | :--- | :--- | :--- | :---: |
+| W0 | `W0_so_anh_mo_phong_chan_cat_metadata` | `cli_ret=2, csv=False, web_la_mp=True` | Chặn CLI (mã 2) & web ép mô phỏng | `DAT` |
+| W0 | `W0_chan_thu_muc_mo_phong_outputs` | `cli_ret=2, csv=False` | Chặn thư mục `outputs/` với `THUC_TE` | `DAT` |
+| W0 | `W0_exif_va_khai_bao_nguon_cli_web` | `no_decl_ret=3, decl_ret=0, web_warn=True, so_xl=True` | Chặn nếu thiếu khai báo; ghi sổ & cảnh báo | `DAT` |
+| W1 | `W1_phat_hien_ban_sao_va_lap_sau_khu_trung` | `co_bs=True, n_bs=3, warn=True, lap_st=chua_dat` | Bắt 3 dạng trùng & đếm lặp sau khử trùng | `DAT` |
+| W1 | `W1_bao_cao_trung_lap_va_bi_danh_cot` | `idx_dup=113, idx_sec1=368, alias_hop_le=True` | Cảnh báo đầu Markdown & ánh xạ bí danh | `DAT` |
+| W2 | `W2_doi_chieu_quan_fry_va_ghi_chu_tu_khai` | `no_const_doc=True, bad_tb=1, same_vn=1, ok=0, trung_ma=True` | Tài liệu sạch, siết định dạng/tên/tự khai | `DAT` |
+| W3 | `W3_san_phan_giai_r_0.01C` (400 mẫu, `seed=5301`) | `sig_old=0.0138, sig_new=0.0141 (1.03x), RMS=0.0145, cov_old=92.5%, cov_new=93.2% [90.4–95.3%], warn=0/400` | `sig_new <= 1.5x` & `cov_new >= cov_old` | `DAT` |
+| W3 | `W3_san_phan_giai_r_0.10C` (400 mẫu, `seed=5301`) | `sig_old=0.0192, sig_new=0.0312 (1.63x), RMS=0.0205, cov_old=90.2%, cov_new=99.8% [98.6–100.0%], warn=16/400` | `cov_new >= 95%` | `DAT` |
+| W3 | `W3_san_phan_giai_r_0.50C` (400 mẫu, `seed=5301`) | `sig_old=0.0574, sig_new=0.1414 (2.46x), RMS=0.1123, cov_old=66.2%, cov_new=97.2% [95.1–98.5%], warn=400/400` | `cov_new >= 95%`, `> cov_old`, bật cảnh báo | `DAT` |
+| W3 | `W3_doc_tuyen_tinh_va_san_T` | `phu_thuoc=True, max_res=0.0404C, min_sig=0.0994 >= sigma_pg=0.0913` | Bật hồi quy, dư `<= 0.15°C`, giữ sàn | `DAT` |
+| W4 | `W4_dong_goi_bat_sh_nop_bai` | `files=True, warn_md=True, warn_out=True, cli_ok=True, zip_mb=0.57` | Gói hợp lệ & `< 20 MB` qua `dong_goi.bat` | `DAT` |
+
+---
+
+## 4. Các hằng số & giả định mới thêm ở Vòng 5 (đã có trong panel R7)
+
+1. `nhap_anh.thu_muc_mo_phong = ["outputs", "tests/anh_mo_phong"]` (**W0**): Danh sách thư mục mô phỏng mặc định bị chặn khi nhập ảnh `--nguon THUC_TE` (gắn chú thích `GIẢ ĐỊNH, cần thay bằng giá trị đo được` trong `config.yaml`).
+2. `thiet_ke_thi_nghiem.ti_le_ban_sao_toi_da = 0.0` (**W1**): Tỉ lệ dòng bản sao tối đa cho phép trong bộ dữ liệu hiệu chuẩn (mặc định `0.0`, chú thích `GIẢ ĐỊNH, cần thay bằng giá trị đo được`).
+3. `hieu_chuan.nhiet_ke_cheo.do_phan_giai_toi_da_C = 0.1` (**W3**): Ngưỡng độ phân giải tối đa của nhiệt kế hiệu chuẩn chéo (°C), vượt ngưỡng này sẽ bật cảnh báo `DO_PHAN_GIAI_NHIET_KE_THO` (chú thích `GIẢ ĐỊNH, cần thay bằng giá trị đo được`).
+4. `hieu_chuan.nhiet_ke_cheo.gia_dinh_doc_lap_phan_giai` (**W3**): Giả định mô hình hóa rằng sai số lượng tử hóa phân bố đều và độc lập giữa các mức nhiệt độ khác nhau trong công thức sàn `σ_pg = √(r_mẫu² + r_tc²) / √(12 · số_mức)`.
+
+---
+
+## 5. Các bài test cũ đã chỉnh ở Vòng 5 & lí do trung thực
+
+1. `tests/test_chan_nhan_mo_phong_v0.py::test_v0_anh_sach_numpy_khong_nhung_khong_duong_tinh_gia` (**W0**): Cập nhật lời gọi CLI `--nguon THUC_TE` trên ảnh sạch không EXIF để bổ sung `--khai-bao-nguon-anh` và `--nguoi-khai-bao` theo đúng quy tắc W0 (ảnh thật không EXIF không thể tự động qua mà không có khai báo người chịu trách nhiệm). Tên test giữ nguyên, logic kiểm không-dương-tính-giả vẫn nguyên vẹn.
+2. `tests/test_quan_fry_doi_chieu.py` (**W2**): Cập nhật các fixture CSV tạm trong test để điền chuỗi `trang_bang` hợp lệ (có ít nhất 3 ký tự và chữ số như `p.3586 Table 1 ...`) và `--trich-dan` có năm xuất bản `19xx`/`20xx` cho các nhánh hợp lệ, vì W2 đã siết loại bỏ các giá trị giữ chỗ như `"?"` hay `"1"`.
+
+---
+
+## 6. Giới hạn phần mềm còn lại & Ghi chú môi trường
+
+1. **Cảnh báo môi trường `TestClient` (`pytest` & script HTTP):** Khi dùng `starlette.testclient.TestClient` cùng `httpx==0.28.1` (đã ghim trong `requirements.txt`), Python phát đúng 2 cảnh báo deprecation không ảnh hưởng đến hành vi HTTP thực tế:
+   - `StarletteDeprecationWarning: Using \`httpx\` with \`starlette.testclient\` is deprecated; install \`httpx2\` instead.`
+   - `DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.`
+2. **Giới hạn sổ theo dõi ảnh mô phỏng (`W0`):** `outputs/so_anh_mo_phong.csv` tra cứu theo mã băm SHA-256 nguyên tệp. Nếu người dùng mở ảnh mô phỏng bằng phần mềm ngoài rồi chỉnh sáng/cắt ảnh/lưu lại thành tệp mới, mã SHA-256 thay đổi nên sổ không khớp được; lúc này tuyến phòng thủ còn lại là kiểm tra EXIF máy ảnh, chặn thư mục mô phỏng và yêu cầu người dùng tự khai báo nguồn.
+3. **Giới hạn phát hiện bản sao (`W1`):** Công cụ cố tình không dùng heuristic "độ tản mát quá nhỏ" để tránh báo nhầm dương tính giả khi phép đo thực tế lặp ổn định. Do đó, việc chỉnh tay số liệu từng ô riêng lẻ không qua nhân bản tệp/dòng vẫn phụ thuộc vào trung thực ghi chép phòng thí nghiệm.
+4. **Giới hạn đối chiếu Quan–Fry (`W2`):** Cờ `da_doi_chieu_khop = True` trong `data/xac_nhan_quan_fry.json` luôn kèm `ghi_chu_gioi_han` nêu rõ đây là xác nhận tự khai của nhóm thực hiện và giáo viên hướng dẫn; phần mềm không có quyền truy cập bài báo bản quyền để tự xác minh độc lập.
+5. **Giới hạn sàn lượng tử hóa `σ_pg` (`W3`):** Nếu các lần đo ở các mức nhiệt khác nhau trùng nhau một cách hệ thống cùng chiều làm tròn hoặc mọi số đọc bị làm tròn thành số nguyên đúng (`20, 28, 36 °C`), `uoc_luong_do_phan_giai` sẽ ước lượng thận trọng mức `1.0 °C` (trừ khi người dùng truyền `--do-phan-giai-mau` / `--do-phan-giai-tc`), và phương sai thực tế chỉ phản ánh chính xác hơn khi dùng nhiệt kế độ phân giải `≤ 0.1 °C`.
+
+---
+
+## 7. Danh sách 10 việc CHỈ người dùng (nhóm thực nghiệm) làm được
+
+1. **Chụp ảnh thật có EXIF camera đầy đủ và chỉnh ngưỡng xử lí ảnh:** Chụp ảnh từ ứng dụng camera của điện thoại (giữ EXIF gốc, khóa AE/AF), tinh chỉnh các ngưỡng dưới `xu_ly_anh.*` trong `config.yaml` và đưa bộ kiểm định thật vào `tests/anh_that/`.
+2. **Hiệu chuẩn chéo hai nhiệt kế thật và ghi đủ chữ số hiển thị (`V1`, `W3`):** Nhúng chung hai đầu đo vào cùng cốc nước khuấy đều ở nhiều mức nhiệt (nếu kiểm điểm `0 °C` dùng nước đá xay + nước cất, không đo trực tiếp đá cục), ghi đủ toàn bộ chữ số thập phân vào `data/mau_cap_nhiet_ke.csv` theo `docs/QUY_TRINH_THU_DU_LIEU.md` và chạy `scripts/hieu_chuan_cheo_nhiet_ke.py --nguon THUC_TE`.
+3. **Thu dữ liệu hiệu chuẩn thực nghiệm thật (`--nguon THUC_TE`, `V4`, `W1`):** Pha ≥ 2 mẻ độc lập (`ma_me_pha`), ghi chép `data/mau_ghi_chep_thi_nghiem.csv`, phủ đủ dải mặn và dải nhiệt ao thực tế, đo lặp ≥ 3 ảnh độc lập mỗi ô (không sao chép dòng), đặt thước `px_per_mm`.
+4. **Đo thực nghiệm chênh nhiệt điển hình `ΔT` giữa hai ngăn & `he_so_triet_chung`:** Thay thế các tham số `phan_tich_sai_so.*` và xác minh thực chứng xem có thể bật `cho_phep_giam_sigma_D_khi_on_dinh` trên bình thật hay không.
+5. **Khai báo bất định dụng cụ đo:** Điền `hieu_chuan.sai_so_dung_dich_chuan_ppt`, `hieu_chuan.sai_so_nhiet_ke_C`, `hieu_chuan.nhiet_do_toi_thieu_phu_C` thực tế vào `config.yaml` (cùng giáo viên rà soát toàn bộ `54` mục trong panel R7).
+6. **Điền ngưỡng sinh học có trích dẫn nguồn:** Bổ sung `an_toan`, `canh_bao_*`, `nguy_hiem_*` và `nguon_tham_khao` đầy đủ tác giả/năm/trang-DOI cho 6 đối tượng trong `nguong_loai` của `config.yaml`.
+7. **Đối chiếu 10 hệ số Quan–Fry từ bài báo gốc bằng 2 người độc lập (`V2`, `W2`):** Mở `docs/DOI_CHIEU_QUAN_FRY.md`, tự đọc bài gốc **Quan & Fry (*Applied Optics*, 1995)**, ghi đủ `trang_bang` cho `a0..a9` và chạy `scripts/kiem_tra_quan_fry.py --luu-xac-nhan` với đủ `--nguoi-doi-chieu`, `--nguoi-xac-nhan-2` (2 người khác nhau) và `--trich-dan` có năm xuất bản.
+8. **Chạy danh sách kiểm tra thủ công trên điện thoại thật (`R10`):** Thực hiện toàn bộ 12 bước trong `docs/KIEM_TRA_THU_CONG_TREN_DIEN_THOAI.md` (cài PWA, chạy ngoại tuyến, camera, vẽ ROI, xuất CSV).
+9. **So sánh kênh màu trên ảnh chụp thật của nhóm (`R5`):** Chạy `python scripts/so_sanh_kenh.py --nguon THUC_TE --thu-muc <thu_muc_anh_that>` trước khi chốt `xu_ly_anh.kenh_laser`.
+10. **Đóng gói đúng quy trình trước khi nộp bài (`W4`):** Mở [`NOP_BAI.md`](NOP_BAI.md) và chạy `dong_goi.bat` (Windows) hoặc `./dong_goi.sh` (macOS/Linux) để tạo tệp `.zip` sạch ngoài thư mục dự án — **KHÔNG** tự nén cả thư mục dự án.
+
+
 
 
