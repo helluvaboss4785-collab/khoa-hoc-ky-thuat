@@ -14,10 +14,13 @@ LƯU Ý TRUNG THỰC DỮ LIỆU:
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import json
+import os
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -33,22 +36,141 @@ if str(ROOT) not in sys.path:
 from core import calibration as cal  # noqa: E402
 from core import thang  # noqa: E402
 from core.measure import AnhKhongHopLeError, KhongTimThayVachError, do_delta_y_tu_anh  # noqa: E402
-from sim.synth import doc_nhan_mo_phong  # noqa: E402
+from sim.synth import doc_nhan_mo_phong, tra_cuu_so_anh_mo_phong  # noqa: E402
 
 DUOI_ANH_HOP_LE = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
 MAU_TEN_FILE_RE = re.compile(r"^(\d+(?:\.\d+)?)_(\d+(?:\.\d+)?)_(\d+)$")
+SO_ANH_DA_XU_LY_MAC_DINH = ROOT / "data" / "so_anh_da_xu_ly.csv"
+COT_SO_ANH_DA_XU_LY = ("sha256", "nguon", "thoi_gian", "ten_file")
 
 
 class LoiAnhMoPhongGanNhanThucTeError(ValueError):
-    """Phát hiện ảnh có dấu hiệu mô phỏng khi người dùng chọn --nguon THUC_TE."""
+    """Phát hiện ảnh hoặc thư mục có dấu hiệu mô phỏng khi người dùng chọn --nguon THUC_TE."""
 
 
-def kiem_tra_nghi_van_anh_mo_phong(img_path: Path, raw_bytes: bytes | None = None) -> list[str]:
-    """Kiểm tra toàn bộ dấu hiệu ảnh mô phỏng: nhãn metadata nhúng, file .json cạnh ảnh và tên file."""
+class LoiThieuExifAnhThucTeError(ValueError):
+    """Ảnh dùng --nguon THUC_TE bị thiếu EXIF máy ảnh mà chưa khai báo nguồn và người khai báo."""
+
+
+class LoiXungDotNhanAnhError(ValueError):
+    """Cùng sha256 ảnh đã từng được xử lí với nhãn nguồn khác trước đó (MO_PHONG ↔ THUC_TE)."""
+
+
+def duong_dan_so_anh_da_xu_ly(so_path: Path | str | None = None) -> Path:
+    """Đường dẫn sổ sha256 các ảnh đã xử lí (ưu tiên tham số -> biến môi trường -> mặc định)."""
+    if so_path is not None:
+        return Path(so_path)
+    env_p = os.environ.get("SALINITY_SO_DA_XU_LY_PATH", "").strip()
+    if env_p:
+        return Path(env_p)
+    return SO_ANH_DA_XU_LY_MAC_DINH
+
+
+def _la_thu_muc_con(thu_muc: Path, thu_muc_cha: Path) -> bool:
+    try:
+        thu_muc.resolve().relative_to(thu_muc_cha.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def kiem_tra_thu_muc_mo_phong(thu_muc: Path, config_path: Path = ROOT / "config.yaml") -> list[str]:
+    """Kiểm tra thư mục ảnh có nằm dưới outputs/ hay các thư mục mô phỏng cấu hình hay không."""
+    cac_muc_chan: list[Path] = [ROOT / "outputs"]
+    if config_path.exists():
+        try:
+            raw_cfg = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+            ds_cfg = ((raw_cfg.get("nhap_anh") or {}).get("thu_muc_mo_phong")) or ["outputs", "tests/anh_mo_phong"]
+            for muc in ds_cfg:
+                txt = str(muc or "").strip()
+                if not txt:
+                    continue
+                p_cfg = Path(txt)
+                if not p_cfg.is_absolute():
+                    p_cfg = ROOT / p_cfg
+                cac_muc_chan.append(p_cfg)
+        except Exception:
+            cac_muc_chan.append(ROOT / "tests" / "anh_mo_phong")
+    else:
+        cac_muc_chan.append(ROOT / "tests" / "anh_mo_phong")
+
+    trung: list[str] = []
+    seen: set[Path] = set()
+    for p_chan in cac_muc_chan:
+        rp = p_chan.resolve()
+        if rp in seen:
+            continue
+        seen.add(rp)
+        if _la_thu_muc_con(thu_muc, rp):
+            trung.append(str(p_chan))
+    return trung
+
+
+def _doc_so_anh_da_xu_ly(so_path: Path | str | None = None) -> dict[str, list[dict[str, str]]]:
+    p_so = duong_dan_so_anh_da_xu_ly(so_path)
+    by_hash: dict[str, list[dict[str, str]]] = {}
+    if not p_so.exists():
+        return by_hash
+    with open(p_so, "r", encoding="utf-8-sig", newline="") as f:
+        for row in csv.DictReader(f):
+            sha = str(row.get("sha256") or "").strip().lower()
+            if sha:
+                by_hash.setdefault(sha, []).append(dict(row))
+    return by_hash
+
+
+def _ghi_so_anh_da_xu_ly(entries: list[tuple[str, str, str]], so_path: Path | str | None = None) -> None:
+    if not entries:
+        return
+    p_so = duong_dan_so_anh_da_xu_ly(so_path)
+    p_so.parent.mkdir(parents=True, exist_ok=True)
+    existing = _doc_so_anh_da_xu_ly(p_so)
+    seen_pairs = {
+        (sha, str(rec.get("nguon") or "").strip().upper())
+        for sha, recs in existing.items()
+        for rec in recs
+    }
+    to_write: list[dict[str, str]] = []
+    now_iso = datetime.now(timezone.utc).isoformat()
+    for sha, nguon, ten_file in entries:
+        key = (sha.lower(), nguon.upper())
+        if key in seen_pairs:
+            continue
+        seen_pairs.add(key)
+        to_write.append({
+            "sha256": sha.lower(),
+            "nguon": nguon.upper(),
+            "thoi_gian": now_iso,
+            "ten_file": ten_file,
+        })
+    if not to_write:
+        return
+    need_header = (not p_so.exists()) or p_so.stat().st_size == 0
+    mode = "w" if need_header else "a"
+    enc = "utf-8-sig" if need_header else "utf-8"
+    with open(p_so, mode, encoding=enc, newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(COT_SO_ANH_DA_XU_LY))
+        if need_header:
+            w.writeheader()
+        w.writerows(to_write)
+
+
+def kiem_tra_nghi_van_anh_mo_phong(
+    img_path: Path,
+    raw_bytes: bytes | None = None,
+    so_mo_phong_path: Path | str | None = None,
+) -> list[str]:
+    """Kiểm tra toàn bộ dấu hiệu ảnh mô phỏng: nhãn metadata, sổ sha256 mô phỏng, .json và tên file."""
     ly_do: list[str] = []
     raw = raw_bytes if raw_bytes is not None else img_path.read_bytes()
     if doc_nhan_mo_phong(raw):
         ly_do.append("nhãn SIMULATED nhúng trong metadata ảnh (PNG tEXt / JPEG COM)")
+
+    hit_so = tra_cuu_so_anh_mo_phong(raw, so_path=so_mo_phong_path)
+    if hit_so is not None:
+        ly_do.append(
+            f"sha256 trùng khớp ảnh mô phỏng trong sổ ({hit_so.get('duong_dan', '')})"
+        )
 
     json_sidecar = img_path.with_suffix(".json")
     if json_sidecar.exists():
@@ -80,6 +202,9 @@ COT_CSV_HIEU_CHUAN = [
     cal.COT_NGUON,
     cal.COT_KHOA_AE_AF,
     "sha256_anh",
+    "exif_co",
+    "khai_bao_nguon_anh",
+    "nguoi_khai_bao",
 ]
 
 
@@ -168,8 +293,12 @@ def xu_ly_thu_muc_anh(
     out_csv: Path | None = None,
     out_report: Path | None = None,
     config_path: Path = ROOT / "config.yaml",
+    khai_bao_nguon_anh: str = "",
+    nguoi_khai_bao: str = "",
+    so_mo_phong_path: Path | str | None = None,
+    so_da_xu_ly_path: Path | str | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, Path, Path]:
-    """Xử lí toàn bộ ảnh trong `thu_muc`, xuất CSV hiệu chuẩn (13 cột) và báo cáo chất lượng."""
+    """Xử lí toàn bộ ảnh trong `thu_muc`, xuất CSV hiệu chuẩn và báo cáo chất lượng."""
     if nguon not in ("THUC_TE", "MO_PHONG"):
         raise ValueError(f"Tham số --nguon không hợp lệ: '{nguon}' (chỉ nhận THUC_TE hoặc MO_PHONG).")
     if not thu_muc.exists() or not thu_muc.is_dir():
@@ -198,9 +327,15 @@ def xu_ly_thu_muc_anh(
         raise ValueError(f"Không tìm thấy ảnh hợp lệ ({', '.join(sorted(DUOI_ANH_HOP_LE))}) trong {thu_muc}.")
 
     if nguon == "THUC_TE":
+        ds_thu_muc_cam = kiem_tra_thu_muc_mo_phong(thu_muc, config_path=config_path)
+        if ds_thu_muc_cam:
+            raise LoiAnhMoPhongGanNhanThucTeError(
+                "TỪ CHỐI --nguon THUC_TE: thư mục ảnh nằm trong vùng chứa ảnh mô phỏng bị chặn "
+                f"({', '.join(ds_thu_muc_cam)}): {thu_muc}"
+            )
         ds_nghi_van: list[str] = []
         for img_path in ds_anh:
-            ly_do_nv = kiem_tra_nghi_van_anh_mo_phong(img_path)
+            ly_do_nv = kiem_tra_nghi_van_anh_mo_phong(img_path, so_mo_phong_path=so_mo_phong_path)
             if ly_do_nv:
                 ds_nghi_van.append(f" - {img_path.name}: {'; '.join(ly_do_nv)}")
         if ds_nghi_van:
@@ -208,6 +343,44 @@ def xu_ly_thu_muc_anh(
                 "TỪ CHỐI --nguon THUC_TE: phát hiện ảnh có dấu hiệu mô phỏng (KHÔNG ghi CSV):\n"
                 + "\n".join(ds_nghi_van)
             )
+
+    raw_by_path: dict[Path, bytes] = {}
+    sha_by_path: dict[Path, str] = {}
+    exif_by_path: dict[Path, dict[str, Any]] = {}
+    so_da_xl = _doc_so_anh_da_xu_ly(so_da_xu_ly_path)
+    xung_dot_list: list[str] = []
+    thieu_exif_list: list[str] = []
+
+    for img_path in ds_anh:
+        raw_b = img_path.read_bytes()
+        sha = hashlib.sha256(raw_b).hexdigest().lower()
+        raw_by_path[img_path] = raw_b
+        sha_by_path[img_path] = sha
+        for rec in so_da_xl.get(sha, []):
+            prev_n = str(rec.get("nguon") or "").strip().upper()
+            if prev_n and prev_n != nguon:
+                xung_dot_list.append(
+                    f" - {img_path.name} (sha256={sha[:12]}...): từng xử lí với nhãn {prev_n} "
+                    f"lúc {rec.get('thoi_gian', '')} (file '{rec.get('ten_file', '')}'), nay không thể gắn nhãn {nguon}"
+                )
+        ex_cam = thang.doc_exif_may_anh(raw_b)
+        exif_by_path[img_path] = ex_cam
+        if nguon == "THUC_TE" and not ex_cam.get("co_exif_may_anh"):
+            thieu_exif_list.append(img_path.name)
+
+    if xung_dot_list:
+        raise LoiXungDotNhanAnhError(
+            "TỪ CHỐI: phát hiện ảnh trùng sha256 đã xử lí với nhãn khác trước đó (KHÔNG ghi CSV):\n"
+            + "\n".join(xung_dot_list)
+        )
+
+    kb_nguon = str(khai_bao_nguon_anh or "").strip()
+    kb_nguoi = str(nguoi_khai_bao or "").strip()
+    if nguon == "THUC_TE" and thieu_exif_list and (not kb_nguon or not kb_nguoi):
+        raise LoiThieuExifAnhThucTeError(
+            "TỪ CHỐI --nguon THUC_TE: các ảnh sau thiếu EXIF máy ảnh (Make/Model) mà chưa truyền đủ "
+            f"--khai-bao-nguon-anh và --nguoi-khai-bao: {', '.join(thieu_exif_list)}"
+        )
 
     if out_csv is None:
         duoi = "_MO_PHONG" if nguon == "MO_PHONG" else "_THUC_TE"
@@ -238,8 +411,17 @@ def xu_ly_thu_muc_anh(
         if s_val is None or t_val is None:
             raise ValueError(f"Thiếu độ mặn chuẩn hoặc nhiệt độ cho ảnh '{img_path.name}'.")
 
-        raw_bytes = img_path.read_bytes()
-        exif_info = thang.doc_exif_phoi_sang(raw_bytes)
+        raw_bytes = raw_by_path[img_path]
+        exif_info = exif_by_path[img_path]
+        exif_co_bool = bool(exif_info.get("co_exif_may_anh"))
+        exif_co_str = "true" if exif_co_bool else "false"
+        kb_nguon_row = "" if exif_co_bool else kb_nguon
+        kb_nguoi_row = "" if exif_co_bool else kb_nguoi
+        cb_nguon_exif = (
+            "Ảnh không có EXIF, nguồn do người dùng tự khai"
+            if (nguon == "THUC_TE" and not exif_co_bool)
+            else ""
+        )
         arr = np.frombuffer(raw_bytes, dtype=np.uint8)
         img_bgr = cv2.imdecode(arr, cv2.IMREAD_COLOR) if arr.size > 0 else None
 
@@ -329,6 +511,13 @@ def xu_ly_thu_muc_anh(
                 "nen_khong_deu": None,
                 "exif_exposure": exif_info.get("exposure_str", ""),
                 "exif_iso": exif_info.get("iso", ""),
+                "exif_co": exif_co_str,
+                "exif_hang_may": exif_info.get("hang_may_anh", ""),
+                "exif_mau_may": exif_info.get("mau_may_anh", ""),
+                "exif_thoi_diem_chup": exif_info.get("thoi_diem_chup", ""),
+                "khai_bao_nguon_anh": kb_nguon_row,
+                "nguoi_khai_bao": kb_nguoi_row,
+                "canh_bao_nguon_exif": cb_nguon_exif,
                 "canh_bao_thang": cb_thang,
                 "ly_do_loai": err_msg,
             })
@@ -351,6 +540,13 @@ def xu_ly_thu_muc_anh(
             "nen_khong_deu": cq.nen_khong_deu,
             "exif_exposure": exif_info.get("exposure_str", ""),
             "exif_iso": exif_info.get("iso", ""),
+            "exif_co": exif_co_str,
+            "exif_hang_may": exif_info.get("hang_may_anh", ""),
+            "exif_mau_may": exif_info.get("mau_may_anh", ""),
+            "exif_thoi_diem_chup": exif_info.get("thoi_diem_chup", ""),
+            "khai_bao_nguon_anh": kb_nguon_row,
+            "nguoi_khai_bao": kb_nguoi_row,
+            "canh_bao_nguon_exif": cb_nguon_exif,
             "canh_bao_thang": cb_thang,
             "ly_do_loai": ly_do,
         })
@@ -370,7 +566,10 @@ def xu_ly_thu_muc_anh(
                 cal.COT_ID_DIEN_THOAI: id_dt,
                 cal.COT_NGUON: nguon,
                 cal.COT_KHOA_AE_AF: khoa_ae,
-                "sha256_anh": hashlib.sha256(raw_bytes).hexdigest(),
+                "sha256_anh": sha_by_path[img_path],
+                "exif_co": exif_co_str,
+                "khai_bao_nguon_anh": kb_nguon_row,
+                "nguoi_khai_bao": kb_nguoi_row,
             })
 
     df_cal = pd.DataFrame(cal_rows, columns=COT_CSV_HIEU_CHUAN)
@@ -379,6 +578,10 @@ def xu_ly_thu_muc_anh(
     out_report.parent.mkdir(parents=True, exist_ok=True)
     df_cal.to_csv(out_csv, index=False, encoding="utf-8-sig")
     df_report.to_csv(out_report, index=False, encoding="utf-8-sig")
+    _ghi_so_anh_da_xu_ly(
+        [(sha_by_path[p], nguon, p.name) for p in ds_anh],
+        so_path=so_da_xu_ly_path,
+    )
     return df_cal, df_report, out_csv, out_report
 
 
@@ -398,8 +601,10 @@ def main() -> None:
         action="store_true",
         help="Đọc độ mặn, nhiệt độ, lần đo từ tên file mẫu <độmặn>_<nhiệtđộ>_<lầnđo>.<ext>",
     )
-    ap.add_argument("--out-csv", type=Path, default=None, help="Đường dẫn file CSV hiệu chuẩn đầu ra")
+    ap.add_argument("--out-csv", "--out", dest="out_csv", type=Path, default=None, help="Đường dẫn file CSV hiệu chuẩn đầu ra")
     ap.add_argument("--out-report", type=Path, default=None, help="Đường dẫn file CSV báo cáo chất lượng")
+    ap.add_argument("--khai-bao-nguon-anh", default="", help="Mô tả nguồn ảnh nếu ảnh THUC_TE thiếu EXIF máy ảnh")
+    ap.add_argument("--nguoi-khai-bao", default="", help="Tên người khai báo khi ảnh THUC_TE thiếu EXIF")
     args = ap.parse_args()
 
     try:
@@ -411,7 +616,12 @@ def main() -> None:
             tu_ten_file=args.tu_ten_file,
             out_csv=args.out_csv,
             out_report=args.out_report,
+            khai_bao_nguon_anh=args.khai_bao_nguon_anh,
+            nguoi_khai_bao=args.nguoi_khai_bao,
         )
+    except LoiThieuExifAnhThucTeError as exc:
+        print(f"LOI_THIEU_EXIF: {exc}", file=sys.stderr)
+        sys.exit(3)
     except Exception as exc:
         print(f"LOI: {exc}", file=sys.stderr)
         sys.exit(2)

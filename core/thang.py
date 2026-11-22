@@ -106,8 +106,16 @@ def _dinh_dang_exposure(val: Any) -> tuple[float | None, str]:
         return None, ""
 
 
-def doc_exif_phoi_sang(raw_bytes: bytes) -> dict[str, Any]:
-    """Đọc thông tin ExposureTime và ISO từ EXIF ảnh gốc nếu có; thiếu EXIF thì trả {}."""
+def _doc_chuoi_exif(val: Any) -> str:
+    if val is None:
+        return ""
+    if isinstance(val, (bytes, bytearray)):
+        return bytes(val).decode("utf-8", errors="ignore").strip("\x00 ").strip()
+    return str(val).strip("\x00 ").strip()
+
+
+def _trich_exif_day_du(raw_bytes: bytes) -> dict[str, Any]:
+    """Trích xuất EXIF máy ảnh (Make/Model/DateTime) và thông số phơi sáng (ExposureTime/ISO)."""
     if not raw_bytes:
         return {}
     try:
@@ -118,10 +126,19 @@ def doc_exif_phoi_sang(raw_bytes: bytes) -> dict[str, Any]:
             ifd = exif.get_ifd(0x8769) if hasattr(exif, "get_ifd") else {}
             raw_exp = exif.get(33434) or (ifd.get(33434) if ifd else None)
             raw_iso = exif.get(34855) or (ifd.get(34855) if ifd else None)
+            hang = _doc_chuoi_exif(exif.get(271))
+            mau = _doc_chuoi_exif(exif.get(272))
+            dt_goc = _doc_chuoi_exif((ifd.get(36867) if ifd else None) or exif.get(36867) or exif.get(306))
     except Exception:
         return {}
 
     ket_qua: dict[str, Any] = {}
+    if hang:
+        ket_qua["hang_may_anh"] = hang
+    if mau:
+        ket_qua["mau_may_anh"] = mau
+    if dt_goc:
+        ket_qua["thoi_diem_chup"] = dt_goc
     if raw_exp is not None:
         sec, exp_str = _dinh_dang_exposure(raw_exp)
         if sec is not None:
@@ -136,3 +153,27 @@ def doc_exif_phoi_sang(raw_bytes: bytes) -> dict[str, Any]:
         except Exception:
             pass
     return ket_qua
+
+
+def doc_exif_phoi_sang(raw_bytes: bytes) -> dict[str, Any]:
+    """Đọc thông tin ExposureTime và ISO từ EXIF ảnh gốc nếu có; thiếu EXIF thì trả {}."""
+    exif_all = _trich_exif_day_du(raw_bytes)
+    ket_qua: dict[str, Any] = {}
+    for k in ("exposure_time_s", "exposure_str", "iso"):
+        if k in exif_all:
+            ket_qua[k] = exif_all[k]
+    return ket_qua
+
+
+def doc_exif_may_anh(raw_bytes: bytes) -> dict[str, Any]:
+    """Đọc EXIF máy ảnh (Make/Model/DateTime) kèm thông số phơi sáng; đặt `co_exif_may_anh` rõ ràng."""
+    exif_all = _trich_exif_day_du(raw_bytes)
+    hang = str(exif_all.get("hang_may_anh") or "").strip()
+    mau = str(exif_all.get("mau_may_anh") or "").strip()
+    return {
+        "co_exif_may_anh": bool(hang or mau),
+        "hang_may_anh": hang,
+        "mau_may_anh": mau,
+        "thoi_diem_chup": str(exif_all.get("thoi_diem_chup") or "").strip(),
+        **{k: exif_all[k] for k in ("exposure_time_s", "exposure_str", "iso") if k in exif_all},
+    }

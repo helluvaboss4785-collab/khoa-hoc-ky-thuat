@@ -37,6 +37,7 @@ data/*.db
 data/*.db-wal
 data/*.db-shm
 outputs/*_MO_PHONG*
+outputs/so_anh_mo_phong.csv
 *.zip
 .DS_Store
 Thumbs.db

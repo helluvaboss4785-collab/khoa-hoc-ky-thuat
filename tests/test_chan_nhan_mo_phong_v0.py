@@ -19,7 +19,7 @@ if str(ROOT) not in sys.path:
 from app import web_app
 from core import calibration as cal
 from core import optics as op
-from scripts.xu_ly_thu_muc_anh import xu_ly_thu_muc_anh
+from scripts.xu_ly_thu_muc_anh import LoiThieuExifAnhThucTeError, xu_ly_thu_muc_anh
 from scripts.xuat_bao_cao import BANNER_MO_PHONG, xuat_bo_bao_cao
 from sim.synth import (
     ThamSoMoPhong,
@@ -128,7 +128,8 @@ def test_v0_mo_phong_hop_le_va_anh_sach_chi_kiem_logic(tmp_path: Path):
     assert "sha256_anh" in df_cal_mp.columns and len(str(df_cal_mp.iloc[0]["sha256_anh"])) == 64
     assert csv_mp.exists()
 
-    # Ảnh NumPy sạch lưu thẳng bằng cv2.imwrite (không qua hàm mô phỏng) — chỉ kiểm logic nhánh THUC_TE
+    # Ảnh NumPy sạch lưu thẳng bằng cv2.imwrite (không EXIF):
+    # Từ W0: --nguon THUC_TE không có EXIF bắt buộc khai báo nguồn ảnh và người khai báo.
     dir_tt = tmp_path / "anh_sach_chi_kiem_logic"
     dir_tt.mkdir()
     anh_sach = _tao_anh_sach_khong_nhan()
@@ -136,7 +137,18 @@ def test_v0_mo_phong_hop_le_va_anh_sach_chi_kiem_logic(tmp_path: Path):
     assert cv2.imwrite(str(p_sach), anh_sach)
     assert doc_nhan_mo_phong(p_sach) is False
 
-    df_cal_tt, _, csv_tt, _ = xu_ly_thu_muc_anh(thu_muc=dir_tt, nguon="THUC_TE", tu_ten_file=True)
+    import pytest as _pytest
+
+    with _pytest.raises(LoiThieuExifAnhThucTeError):
+        xu_ly_thu_muc_anh(thu_muc=dir_tt, nguon="THUC_TE", tu_ten_file=True)
+
+    df_cal_tt, _, csv_tt, _ = xu_ly_thu_muc_anh(
+        thu_muc=dir_tt,
+        nguon="THUC_TE",
+        tu_ten_file=True,
+        khai_bao_nguon_anh="Anh tong hop NumPy chi kiem logic V0/W0",
+        nguoi_khai_bao="Kiem thu tu dong",
+    )
     assert len(df_cal_tt) == 1
     assert df_cal_tt.iloc[0][cal.COT_NGUON] == "THUC_TE"
     assert "sha256_anh" in df_cal_tt.columns and len(str(df_cal_tt.iloc[0]["sha256_anh"])) == 64

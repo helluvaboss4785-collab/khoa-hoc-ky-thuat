@@ -81,6 +81,9 @@ thiet_ke_thi_nghiem:
   chenh_D_toi_thieu_C: 1.0         # GIẢ ĐỊNH, cần thay bằng giá trị đo được (chỉnh cùng giáo viên)
   ti_le_toi_da_moi_muc: 0.4        # GIẢ ĐỊNH, cần thay bằng giá trị đo được (chỉnh cùng giáo viên)
 
+nhap_anh:
+  thu_muc_mo_phong: ["outputs", "tests/anh_mo_phong"]  # GIẢ ĐỊNH, cần thay bằng giá trị đo được (người dùng có thể thêm thư mục chứa ảnh mô phỏng)
+
 
 # =====================================================================
 # NGƯỠNG AN TOÀN NƯỚC THEO ĐỐI TƯỢNG (LOÀI NUÔI TRỒNG)

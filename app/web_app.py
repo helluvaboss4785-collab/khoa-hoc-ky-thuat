@@ -62,6 +62,7 @@ from sim.synth import (
     doc_nhan_mo_phong,
     sinh_anh_hai_vach_mo_phong,
     sinh_du_lieu_hieu_chuan_mo_phong,
+    tra_cuu_so_anh_mo_phong,
 )
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -1045,10 +1046,10 @@ async def api_measure(request: Request) -> JSONResponse:
                 if not image_b64 or not isinstance(image_b64, str):
                     return _json_err("Chưa cung cấp ảnh (image_base64 hoặc file multipart) để đo.")
                 anh_input, raw_img_bytes = _decode_base64_image_bytes(image_b64)
-            if doc_nhan_mo_phong(raw_img_bytes):
+            if doc_nhan_mo_phong(raw_img_bytes) or tra_cuu_so_anh_mo_phong(raw_img_bytes) is not None:
                 phat_hien_nhan_mp = True
                 la_anh_mo_phong = True
-            exif_info = thang.doc_exif_phoi_sang(raw_img_bytes)
+            exif_info = thang.doc_exif_may_anh(raw_img_bytes)
         else:
             return _json_err(f"Chế độ đo '{mode}' không được hỗ trợ.")
 
@@ -1163,7 +1164,13 @@ async def api_measure(request: Request) -> JSONResponse:
             extra_anh.append((
                 "ANH_MO_PHONG_NHUNG",
                 "nghiem_trong",
-                "Ảnh tải lên có nhãn metadata SIMULATED (ảnh mô phỏng): cưỡng chế chặn kết luận thực tế.",
+                "Ảnh tải lên có nhãn SIMULATED hoặc trùng sha256 trong sổ ảnh mô phỏng: cưỡng chế chặn kết luận thực tế.",
+            ))
+        if mode != "sim" and not bool((exif_info or {}).get("co_exif_may_anh")):
+            extra_anh.append((
+                "ANH_KHONG_EXIF",
+                "can_than",
+                "Ảnh không có EXIF máy ảnh, chưa xác minh được nguồn gốc.",
             ))
         if mode != "sim" and not khoa_ae_af:
             extra_anh.append((
@@ -1529,6 +1536,7 @@ async def api_measure_multi(request: Request) -> JSONResponse:
         raw_idx_map: list[int] = []
         pre_errors: list[tuple[int, str]] = []
         exif_info: dict[str, Any] = {}
+        co_khung_thieu_exif = False
 
         lim_cfg = load_limits_config()
         max_frames = max(2, int(lim_cfg.get("so_khung_toi_da", 60)))
@@ -1596,11 +1604,15 @@ async def api_measure_multi(request: Request) -> JSONResponse:
                         max_mb=float(lim_cfg.get("dung_luong_anh_MB", 25.0)),
                         max_mp=float(lim_cfg.get("so_megapixel_toi_da", 60.0)),
                     )
-                    if doc_nhan_mo_phong(raw_bytes):
+                    if doc_nhan_mo_phong(raw_bytes) or tra_cuu_so_anh_mo_phong(raw_bytes) is not None:
                         phat_hien_nhan_mp = True
                         la_anh_mo_phong = True
-                    if not exif_info and raw_bytes:
-                        exif_info = thang.doc_exif_phoi_sang(raw_bytes)
+                    if raw_bytes:
+                        ex_frame = thang.doc_exif_may_anh(raw_bytes)
+                        if not ex_frame.get("co_exif_may_anh"):
+                            co_khung_thieu_exif = True
+                        if not exif_info or (not exif_info.get("co_exif_may_anh") and ex_frame.get("co_exif_may_anh")):
+                            exif_info = ex_frame
                     frames_ok.append(img_bgr)
                     raw_idx_map.append(idx)
                 except AnhQuaLonError:
@@ -1770,7 +1782,13 @@ async def api_measure_multi(request: Request) -> JSONResponse:
             extra_multi.append((
                 "ANH_MO_PHONG_NHUNG",
                 "nghiem_trong",
-                "Ít nhất một khung hình tải lên chứa nhãn metadata SIMULATED (ảnh mô phỏng): cưỡng chế chặn kết luận thực tế.",
+                "Ít nhất một khung hình tải lên chứa nhãn SIMULATED hoặc trùng sha256 sổ ảnh mô phỏng: cưỡng chế chặn kết luận thực tế.",
+            ))
+        if mode != "sim" and (co_khung_thieu_exif or not bool((exif_info or {}).get("co_exif_may_anh"))):
+            extra_multi.append((
+                "ANH_KHONG_EXIF",
+                "can_than",
+                "Ảnh không có EXIF máy ảnh, chưa xác minh được nguồn gốc.",
             ))
         if pre_errors:
             extra_multi.append((

@@ -73,7 +73,14 @@ def _tai_mau_jpeg_sim(
         for q in qualities:
             for s_name, s_flag in sampling_modes:
                 try:
-                    raw_jpg = ma_hoa_anh_mo_phong_jpeg_bytes(mp.anh, quality=int(q), sampling_flag=s_flag)
+                    raw_jpg = ma_hoa_anh_mo_phong_jpeg_bytes(
+                        mp.anh,
+                        quality=int(q),
+                        sampling_flag=s_flag,
+                        ghi_so=True,
+                        duong_dan_ghi_so=f"<so_sanh_kenh:JPEG_Q{q}_{s_name}_seed{5000 + idx}>",
+                        mo_ta_tham_so=f"so_sanh_kenh q={q} sampling={s_name} seed={5000 + idx}",
+                    )
                 except Exception:
                     continue
                 img_dec = cv2.imdecode(np.frombuffer(raw_jpg, dtype=np.uint8), cv2.IMREAD_COLOR)

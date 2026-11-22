@@ -27,12 +27,15 @@ THU_MUC_LOAI_TRU = {
     ".ruff_cache",
 }
 MAU_FILE_LOAI_TRU = ("*.db", "*.db-wal", "*.db-shm", "*.db-*", "*.sqlite3", "*.sqlite", "*.pyc", "*.pyo", "*.zip")
+FILE_TUONG_DOI_LOAI_TRU = {"outputs/so_anh_mo_phong.csv"}
 THU_MUC_CAM_TRONG_ZIP = {".venv", "venv", "env", ".git", "__pycache__", ".pytest_cache"}
 MAU_FILE_CAM_TRONG_ZIP = ("*.db", "*.db-wal", "*.db-shm", "*.sqlite3", "*.sqlite", "*.db-*")
 
 
 def _can_loai_tru(rel_path: Path) -> bool:
     """True nếu đường dẫn tương đối thuộc thư mục/mẫu file cần loại trừ khỏi gói nộp."""
+    if rel_path.as_posix() in FILE_TUONG_DOI_LOAI_TRU:
+        return True
     if any(part in THU_MUC_LOAI_TRU for part in rel_path.parts):
         return True
     name = rel_path.name

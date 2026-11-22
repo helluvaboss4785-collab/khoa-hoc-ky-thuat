@@ -20,12 +20,15 @@ Vật lí & Mô hình mô phỏng:
 """
 from __future__ import annotations
 
+import csv
 import hashlib
 import json
 import math
+import os
 import struct
 import zlib
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
@@ -34,9 +37,92 @@ import numpy as np
 
 from core.optics import CauHinhQuangHoc, delta_y_vi_sai_px
 
+_ROOT = Path(__file__).resolve().parents[1]
+SO_ANH_MO_PHONG_MAC_DINH = _ROOT / "outputs" / "so_anh_mo_phong.csv"
+COT_SO_ANH_MO_PHONG = ("sha256", "thoi_gian", "duong_dan", "mo_ta_tham_so")
 _PNG_SIG = b"\x89PNG\r\n\x1a\n"
 NHAN_NHUNG_PNG_KEY = b"SimulatedImage"
 NHAN_NHUNG_TEXT = "SIMULATED - DU LIEU MO PHONG (salinity-khkt)"
+
+
+def duong_dan_so_anh_mo_phong(so_path: str | Path | None = None) -> Path:
+    """Đường dẫn sổ sha256 ảnh mô phỏng (ưu tiên tham số -> biến môi trường -> mặc định)."""
+    if so_path is not None:
+        return Path(so_path)
+    env_p = os.environ.get("SALINITY_SO_MO_PHONG_PATH", "").strip()
+    if env_p:
+        return Path(env_p)
+    return SO_ANH_MO_PHONG_MAC_DINH
+
+
+def _tao_mo_ta_tham_so(tham_so: Any | None = None, mo_ta_bo_sung: str = "") -> str:
+    parts: list[str] = []
+    if tham_so is not None:
+        parts.append(
+            f"S={getattr(tham_so, 'S_ppt', '')};T={getattr(tham_so, 'T_C', '')};"
+            f"T_tc={getattr(tham_so, 'T_tham_chieu_C', '')};seed={getattr(tham_so, 'seed', '')}"
+        )
+    if mo_ta_bo_sung:
+        parts.append(str(mo_ta_bo_sung))
+    return " | ".join(parts)
+
+
+def ghi_so_anh_mo_phong(
+    raw_bytes: bytes,
+    duong_dan_anh: str | Path,
+    mo_ta_tham_so: str = "",
+    so_path: str | Path | None = None,
+) -> str:
+    """Ghi nhận sha256 ảnh mô phỏng vừa tạo vào `outputs/so_anh_mo_phong.csv`."""
+    sha = hashlib.sha256(raw_bytes).hexdigest()
+    p_so = duong_dan_so_anh_mo_phong(so_path)
+    p_so.parent.mkdir(parents=True, exist_ok=True)
+    need_header = (not p_so.exists()) or p_so.stat().st_size == 0
+    mode = "w" if need_header else "a"
+    enc = "utf-8-sig" if need_header else "utf-8"
+    with open(p_so, mode, encoding=enc, newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(COT_SO_ANH_MO_PHONG))
+        if need_header:
+            w.writeheader()
+        w.writerow({
+            "sha256": sha,
+            "thoi_gian": datetime.now(timezone.utc).isoformat(),
+            "duong_dan": str(duong_dan_anh),
+            "mo_ta_tham_so": str(mo_ta_tham_so),
+        })
+    return sha
+
+
+def tra_cuu_so_anh_mo_phong(
+    raw_bytes_hoac_sha256: bytes | bytearray | str | Path,
+    so_path: str | Path | None = None,
+) -> dict[str, str] | None:
+    """Tra cứu sha256 ảnh trong sổ ảnh mô phỏng; trả dòng khớp hoặc None nếu không thấy."""
+    try:
+        if isinstance(raw_bytes_hoac_sha256, (bytes, bytearray)):
+            sha = hashlib.sha256(bytes(raw_bytes_hoac_sha256)).hexdigest()
+        elif isinstance(raw_bytes_hoac_sha256, Path):
+            sha = hashlib.sha256(raw_bytes_hoac_sha256.read_bytes()).hexdigest()
+        else:
+            txt = str(raw_bytes_hoac_sha256).strip()
+            if len(txt) == 64 and all(ch in "0123456789abcdefABCDEF" for ch in txt):
+                sha = txt.lower()
+            else:
+                sha = hashlib.sha256(Path(txt).read_bytes()).hexdigest()
+    except Exception:
+        return None
+
+    p_so = duong_dan_so_anh_mo_phong(so_path)
+    if not p_so.exists():
+        return None
+    try:
+        with open(p_so, "r", encoding="utf-8-sig", newline="") as f:
+            for row in csv.DictReader(f):
+                if str(row.get("sha256") or "").strip().lower() == sha:
+                    return dict(row)
+    except Exception:
+        return None
+    return None
 
 
 def nhung_nhan_mo_phong_png_bytes(png_bytes: bytes, nhan: str = NHAN_NHUNG_TEXT) -> bytes:
@@ -162,15 +248,22 @@ def ma_hoa_anh_mo_phong_jpeg_bytes(
     quality: int = 90,
     sampling_flag: int | None = None,
     nhan: str = NHAN_NHUNG_TEXT,
+    ghi_so: bool = False,
+    duong_dan_ghi_so: str = "<memory_jpeg>",
+    mo_ta_tham_so: str = "",
+    so_path: str | Path | None = None,
 ) -> bytes:
-    """Mã hóa ảnh NumPy sang JPEG và nhúng bắt buộc đoạn COM 'SIMULATED'."""
+    """Mã hóa ảnh NumPy sang JPEG, nhúng đoạn COM 'SIMULATED' và ghi sổ ảnh mô phỏng khi được yêu cầu."""
     params = [cv2.IMWRITE_JPEG_QUALITY, int(np.clip(quality, 1, 100))]
     if sampling_flag is not None and hasattr(cv2, "IMWRITE_JPEG_SAMPLING_FACTOR"):
         params.extend([cv2.IMWRITE_JPEG_SAMPLING_FACTOR, int(sampling_flag)])
     ok, buf = cv2.imencode(".jpg", img, params)
     if not ok:
         raise RuntimeError("Không thể mã hóa JPEG ảnh mô phỏng.")
-    return nhung_nhan_mo_phong_jpeg_bytes(buf.tobytes(), nhan=nhan)
+    raw_tagged = nhung_nhan_mo_phong_jpeg_bytes(buf.tobytes(), nhan=nhan)
+    if ghi_so:
+        ghi_so_anh_mo_phong(raw_tagged, duong_dan_ghi_so, mo_ta_tham_so=mo_ta_tham_so, so_path=so_path)
+    return raw_tagged
 
 
 @dataclass(frozen=True)
@@ -462,6 +555,11 @@ def luu_anh_mo_phong_png(
         raise RuntimeError(f"Không thể mã hóa PNG ảnh mô phỏng: {p_path}")
     raw_tagged = nhung_nhan_mo_phong_png_bytes(buf.tobytes())
     p_path.write_bytes(raw_tagged)
+    ghi_so_anh_mo_phong(
+        raw_tagged,
+        p_path,
+        mo_ta_tham_so=_tao_mo_ta_tham_so(anh_mp.tham_so, f"png;wm={da_wm}"),
+    )
     meta_out = {"simulated": True, "nhan_nhung": NHAN_NHUNG_TEXT, **anh_mp.metadata, "da_gan_watermark": da_wm}
     p_path.with_suffix(".json").write_text(
         json.dumps(meta_out, ensure_ascii=False, indent=2),
@@ -477,7 +575,7 @@ def luu_anh_mo_phong_jpeg(
     sampling_flag: int | None = None,
     gan_watermark: bool = True,
 ) -> Path:
-    """Lưu ảnh mô phỏng JPEG ra đĩa: nhúng bắt buộc đoạn COM 'SIMULATED' và ghi .json cạnh ảnh."""
+    """Lưu ảnh mô phỏng JPEG ra đĩa: nhúng bắt buộc đoạn COM 'SIMULATED', ghi sổ sha256 và .json cạnh ảnh."""
     p_path = Path(duong_dan)
     p_path.parent.mkdir(parents=True, exist_ok=True)
     img_out = anh_mp.anh.copy()
@@ -487,6 +585,11 @@ def luu_anh_mo_phong_jpeg(
         da_wm = True
     raw_tagged = ma_hoa_anh_mo_phong_jpeg_bytes(img_out, quality=quality, sampling_flag=sampling_flag)
     p_path.write_bytes(raw_tagged)
+    ghi_so_anh_mo_phong(
+        raw_tagged,
+        p_path,
+        mo_ta_tham_so=_tao_mo_ta_tham_so(anh_mp.tham_so, f"jpeg_q={quality};wm={da_wm}"),
+    )
     meta_out = {"simulated": True, "nhan_nhung": NHAN_NHUNG_TEXT, **anh_mp.metadata, "da_gan_watermark": da_wm}
     p_path.with_suffix(".json").write_text(
         json.dumps(meta_out, ensure_ascii=False, indent=2),

@@ -328,6 +328,13 @@ DANH_MUC_GIA_DINH: tuple[MucGiaDinhKhaiBao, ...] = (
         trang_thai="GIA_DINH",
         viec_can_lam="Đảm bảo các điểm hiệu chuẩn phân bố cân bằng, tránh dồn quá nhiều mẫu vào một mức S.",
     ),
+    MucGiaDinhKhaiBao(
+        nhom="nhap_anh",
+        khoa="thu_muc_mo_phong",
+        ten_hien_thi="Danh sách thư mục ảnh mô phỏng bị chặn khi nhập --nguon THUC_TE",
+        trang_thai="GIA_DINH",
+        viec_can_lam="Kiểm tra và bổ sung các thư mục lưu ảnh thử nghiệm/mô phỏng của nhóm vào config.yaml để tránh nhầm nguồn.",
+    ),
 )
 
 
