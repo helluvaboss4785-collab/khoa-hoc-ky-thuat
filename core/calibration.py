@@ -246,6 +246,8 @@ class CauHinhHieuChuan:
     nguong_bien_thien_px_per_mm_phan_tram: float = 2.0
     sai_so_dung_dich_chuan_ppt: float | None = None
     nhiet_do_toi_thieu_phu_C: float | None = None
+    loai_ban_sao_khi_khop: bool = True
+    ti_le_ban_sao_kich_hoat_loai: float = 0.0
     seed: int = 0
 
     @classmethod
@@ -282,6 +284,10 @@ class CauHinhHieuChuan:
             ),
             sai_so_dung_dich_chuan_ppt=float(raw_dd) if raw_dd is not None else None,
             nhiet_do_toi_thieu_phu_C=float(raw_t_phu) if raw_t_phu is not None else None,
+            loai_ban_sao_khi_khop=bool(c.get("loai_ban_sao_khi_khop", mac_dinh.loai_ban_sao_khi_khop)),
+            ti_le_ban_sao_kich_hoat_loai=float(
+                c.get("ti_le_ban_sao_kich_hoat_loai", mac_dinh.ti_le_ban_sao_kich_hoat_loai)
+            ),
             seed=int(c.get("seed", mac_dinh.seed)),
         )
 
@@ -368,8 +374,37 @@ def doc_csv_hieu_chuan(nguon: str | Path | IO[Any]) -> pd.DataFrame:
         base_tc_doc = df[COT_NHIET_DO_TC_DOC].fillna(df[COT_NHIET_DO_TC]) if COT_NHIET_DO_TC_DOC in df.columns else df[COT_NHIET_DO_TC]
         df[COT_NHIET_DO_TC] = base_tc_doc - off_vals
 
+    # X1: Nếu CSV có cột đánh dấu loại bỏ thủ công (`da_loai`), loại bỏ khỏi dữ liệu khớp nhưng giữ thống kê lí do
+    so_loai_tc = 0
+    ly_do_tc: list[str] = []
+    if "da_loai" in df.columns:
+        mask_tc = df["da_loai"].map(
+            lambda v: (
+                bool(v)
+                if isinstance(v, (bool, np.bool_))
+                else (
+                    str(v).strip().lower() in {"1", "true", "yes", "co", "y"}
+                    if pd.notna(v)
+                    else False
+                )
+            )
+        ).to_numpy(dtype=bool)
+        if np.any(mask_tc):
+            so_loai_tc = int(np.count_nonzero(mask_tc))
+            if "ly_do_loai" in df.columns:
+                ly_do_tc = [
+                    str(x).strip()
+                    for x in df.loc[mask_tc, "ly_do_loai"].fillna("")
+                    if str(x).strip()
+                ]
+            saved_attrs = dict(df.attrs)
+            df = df.loc[~mask_tc].reset_index(drop=True)
+            df.attrs.update(saved_attrs)
+    df.attrs["so_dong_da_loai_thu_cong"] = so_loai_tc
+    df.attrs["tom_tat_ly_do_loai"] = ly_do_tc
+
     if len(df) == 0:
-        raise ValueError("Không còn dòng hợp lệ nào (thiếu S, T hoặc Δy).")
+        raise ValueError("Không còn dòng hợp lệ nào (thiếu S, T, Δy hoặc đã bị đánh dấu loại toàn bộ).")
     if (df[COT_DO_MAN] < 0).any():
         raise ValueError("Có độ mặn chuẩn âm – kiểm tra lại dữ liệu.")
     return df
@@ -581,6 +616,8 @@ class MoHinhHieuChuan:
     id_thiet_bi: list[str] = field(default_factory=list)
     id_dien_thoai: list[str] = field(default_factory=list)
     ngay_tao: str = ""
+    so_dong_loai: int = 0
+    so_dong_dung: int = 0
 
     def __post_init__(self) -> None:
         if not self.nguon_du_lieu:
@@ -589,6 +626,8 @@ class MoHinhHieuChuan:
             self.nguon_du_lieu = str(self.nguon_du_lieu).strip().upper()
             if self.la_mo_phong:
                 self.nguon_du_lieu = NHAN_MO_PHONG
+        if self.so_dong_dung == 0 and self.so_diem > 0:
+            self.so_dong_dung = int(self.so_diem)
 
     # --- tính toán ---------------------------------------------------------
     @property
@@ -1226,6 +1265,11 @@ class BaoCaoHieuChuan:
     co_ban_sao_du_lieu: bool = False
     so_dong_ban_sao: int = 0
     chi_tiet_ban_sao: dict[str, Any] = field(default_factory=dict)
+    so_dong_loai: int = 0
+    so_dong_dung: int = 0
+    da_loai_ban_sao_khi_khop: bool = False
+    so_dong_da_loai_thu_cong: int = 0
+    tom_tat_ly_do_loai: list[str] = field(default_factory=list)
 
 
 def chia_train_test(
@@ -1357,9 +1401,61 @@ def dung_duong_chuan(
         canh_bao.append(noi_dung)
         canh_bao_chi_tiet.append({"ma": ma, "cap": cap, "noi_dung": noi_dung})
 
-    # W1: kiểm tra bản sao / nghi ngờ gán nhãn lại (không tự ý xóa dòng khỏi mô hình)
-    info_ban_sao = phat_hien_ban_sao_du_lieu(df)
+    so_loai_tc = int(df.attrs.get("so_dong_da_loai_thu_cong", 0) or 0)
+    ly_do_tc = list(df.attrs.get("tom_tat_ly_do_loai", []) or [])
+    df_lam_viec = df
+    if "da_loai" in df_lam_viec.columns:
+        mask_tc = df_lam_viec["da_loai"].map(
+            lambda v: (
+                bool(v)
+                if isinstance(v, (bool, np.bool_))
+                else (
+                    str(v).strip().lower() in {"1", "true", "yes", "co", "y"}
+                    if pd.notna(v)
+                    else False
+                )
+            )
+        ).to_numpy(dtype=bool)
+        if np.any(mask_tc):
+            so_loai_tc += int(np.count_nonzero(mask_tc))
+            if "ly_do_loai" in df_lam_viec.columns:
+                ly_do_tc.extend(
+                    str(x).strip()
+                    for x in df_lam_viec.loc[mask_tc, "ly_do_loai"].fillna("")
+                    if str(x).strip()
+                )
+            attrs_cu = dict(df_lam_viec.attrs)
+            df_lam_viec = df_lam_viec.loc[~mask_tc].reset_index(drop=True)
+            df_lam_viec.attrs.update(attrs_cu)
+
+    if so_loai_tc > 0:
+        ly_do_txt = "; ".join(dict.fromkeys(ly_do_tc)) if ly_do_tc else "không ghi lí do"
+        _them_cb_hieu_chuan(
+            "DONG_DA_LOAI_THU_CONG",
+            "thong_tin",
+            f"Đã loại {so_loai_tc} lần đo; lí do: {ly_do_txt}.",
+        )
+
+    # W1 + X0(b): kiểm tra bản sao / nghi ngờ gán nhãn lại; khi bật loai_ban_sao_khi_khop thì loại bản sao trước khi khớp
+    info_ban_sao = phat_hien_ban_sao_du_lieu(df_lam_viec)
     info_ban_sao_tom_tat = {k: v for k, v in info_ban_sao.items() if k != "mask_ban_sao"}
+    kich_hoat_loai = bool(
+        ch.loai_ban_sao_khi_khop
+        and info_ban_sao["so_dong_ban_sao"] > 0
+        and info_ban_sao["ti_le_ban_sao"] >= float(ch.ti_le_ban_sao_kich_hoat_loai)
+    )
+    if kich_hoat_loai:
+        mask_bs = np.asarray(info_ban_sao["mask_ban_sao"], dtype=bool)
+        attrs_cu = dict(df_lam_viec.attrs)
+        df_khop = df_lam_viec.loc[~mask_bs].reset_index(drop=True)
+        df_khop.attrs.update(attrs_cu)
+        so_dong_loai = int(info_ban_sao["so_dong_ban_sao"])
+        so_dong_dung = int(len(df_khop))
+    else:
+        df_khop = df_lam_viec
+        so_dong_loai = 0
+        so_dong_dung = int(len(df_khop))
+
     if info_ban_sao["co_ban_sao"]:
         extra_nghi = "; nghi ngờ gán nhãn lại" if info_ban_sao["co_nghi_ngo_gan_nhan_lai"] else ""
         dong_vd = (
@@ -1367,14 +1463,20 @@ def dung_duong_chuan(
             if info_ban_sao["dong_nghi_ngo_dau_tien"]
             else ""
         )
+        if kich_hoat_loai:
+            hanh_dong_txt = (
+                f"Đã tự động loại {so_dong_loai} dòng bản sao (giữ dòng đầu mỗi nhóm trùng) và khớp đường chuẩn trên {so_dong_dung} dòng độc lập."
+            )
+        else:
+            hanh_dong_txt = "Đường chuẩn vẫn khớp trên toàn bộ dữ liệu đầu vào; hãy kiểm tra và loại bản sao thủ công."
         _them_cb_hieu_chuan(
             "DU_LIEU_CO_BAN_SAO",
             "nghiem_trong",
             f"Phát hiện {info_ban_sao['so_dong_ban_sao']} dòng bản sao trong {info_ban_sao['so_dong_tong']} dòng"
-            f"{extra_nghi}{dong_vd}. Đường chuẩn vẫn khớp trên toàn bộ dữ liệu đầu vào; hãy kiểm tra và loại bản sao thủ công.",
+            f"{extra_nghi}{dong_vd}. {hanh_dong_txt}",
         )
 
-    nguon_df = xac_dinh_nguon_du_lieu(df)
+    nguon_df = xac_dinh_nguon_du_lieu(df_khop)
     if nguon_df == NHAN_MO_PHONG:
         _them_cb_hieu_chuan("MO_PHONG", "can_than", f"{NHAN_CHUA_HIEU_CHUAN}: đường chuẩn này dựng từ dữ liệu mô phỏng.")
     elif nguon_df != NHAN_THUC_TE:
@@ -1383,7 +1485,7 @@ def dung_duong_chuan(
             "can_than",
             f"{NHAN_CHUA_XAC_NHAN_NGUON}: thiếu cột nguon_du_lieu hoặc có dòng chưa ghi rõ THUC_TE.",
         )
-    if bool(df.attrs.get("gia_dinh_can_bang_nhiet", COT_NHIET_DO_TC not in df.columns)):
+    if bool(df_khop.attrs.get("gia_dinh_can_bang_nhiet", COT_NHIET_DO_TC not in df_khop.columns)):
         _them_cb_hieu_chuan(
             "GIA_DINH_CAN_BANG_NHIET",
             "can_than",
@@ -1395,8 +1497,8 @@ def dung_duong_chuan(
             "thong_tin",
             "Đường chuẩn theo pixel chỉ đúng cho đúng một cấu hình camera và khoảng cách màn.",
         )
-    if COT_PX_PER_MM in df.columns and len(df) > 0:
-        px_arr = pd.to_numeric(df[COT_PX_PER_MM], errors="coerce").to_numpy(float)
+    if COT_PX_PER_MM in df_khop.columns and len(df_khop) > 0:
+        px_arr = pd.to_numeric(df_khop[COT_PX_PER_MM], errors="coerce").to_numpy(float)
         valid_px = np.isfinite(px_arr) & (px_arr > 0.0)
         if np.any(valid_px) and not np.all(valid_px) and don_vi_y != "mm":
             _them_cb_hieu_chuan(
@@ -1405,7 +1507,7 @@ def dung_duong_chuan(
                 "Dữ liệu CSV trộn lẫn dòng có và không có px_per_mm: hãy bổ sung đủ thang chuẩn hoặc tách riêng bộ ảnh.",
             )
         if don_vi_y == "px" and int(np.count_nonzero(valid_px)) >= 2:
-            df_px = df.loc[valid_px].copy()
+            df_px = df_khop.loc[valid_px].copy()
             df_px["_px_val"] = px_arr[valid_px]
             grp_cols = [c for c in (COT_ID_THIET_BI, COT_ID_DIEN_THOAI) if c in df_px.columns]
             groups = df_px.groupby(grp_cols, dropna=False) if grp_cols else [((), df_px)]
@@ -1416,7 +1518,7 @@ def dung_duong_chuan(
                 mean_px = float(np.mean(vals_px))
                 pct_var = (float(np.max(vals_px) - np.min(vals_px)) / mean_px) * 100.0 if mean_px > 0 else 0.0
                 if pct_var > float(ch.nguong_bien_thien_px_per_mm_phan_tram):
-                    s_ref_max = max(float(df[COT_DO_MAN].max()), 1.0)
+                    s_ref_max = max(float(df_khop[COT_DO_MAN].max()), 1.0)
                     err_est_ppt = (pct_var / 100.0) * s_ref_max
                     nhan_nhom = f"nhóm {grp_key}" if grp_cols else "bộ dữ liệu"
                     _them_cb_hieu_chuan(
@@ -1427,11 +1529,11 @@ def dung_duong_chuan(
                         f"ước lượng có thể gây sai lệch tới ±{err_est_ppt:.2f} ‰ ở {s_ref_max:g} ‰. "
                         "Hãy chuyển sang don_vi_y='mm' hoặc cố định lại khoảng cách chụp.",
                     )
-    if df.attrs.get("so_dong_bi_loai", 0):
-        _them_cb_hieu_chuan("DONG_BI_LOAI", "thong_tin", f"Đã loại {df.attrs['so_dong_bi_loai']} dòng thiếu dữ liệu.")
-    if _so_muc(df[COT_DO_MAN].to_numpy(float), 0.01) < 3:
+    if df_khop.attrs.get("so_dong_bi_loai", 0):
+        _them_cb_hieu_chuan("DONG_BI_LOAI", "thong_tin", f"Đã loại {df_khop.attrs['so_dong_bi_loai']} dòng thiếu dữ liệu.")
+    if _so_muc(df_khop[COT_DO_MAN].to_numpy(float), 0.01) < 3:
         _them_cb_hieu_chuan("IT_MUC_S", "can_than", "Cần ít nhất 3 mức độ mặn chuẩn; nên dùng 5–8 mức phủ hết dải cần đo.")
-    nhom_all = _lay_nhom_me_pha(df)
+    nhom_all = _lay_nhom_me_pha(df_khop)
     if nhom_all is None:
         _them_cb_hieu_chuan(
             "THIEU_MA_ME_PHA",
@@ -1440,10 +1542,10 @@ def dung_duong_chuan(
             "nằm cả ở train và test nên sai số test bị đánh giá thấp.",
         )
 
-    if len(df) >= 8:
-        df_train, df_test = chia_train_test(df, ch.ti_le_test, ch.seed)
+    if len(df_khop) >= 8:
+        df_train, df_test = chia_train_test(df_khop, ch.ti_le_test, ch.seed)
     else:
-        df_train, df_test = df, df.iloc[0:0]
+        df_train, df_test = df_khop, df_khop.iloc[0:0]
         canh_bao.append("Quá ít điểm (< 8) nên không tách được tập test; chỉ báo cáo sai số trong mẫu.")
 
     S = df_train[COT_DO_MAN].to_numpy(float)
@@ -1476,7 +1578,11 @@ def dung_duong_chuan(
                  f"đủ {ch.nguong_cai_thien_bac2:.0%}, nên chọn bậc 1 đơn giản hơn.")
 
     mh_train = tao_mo_hinh(df_train, bac_chon, don_vi_y=don_vi_y)
-    mh_full = tao_mo_hinh(df, bac_chon, don_vi_y=don_vi_y)
+    mh_full = tao_mo_hinh(df_khop, bac_chon, don_vi_y=don_vi_y)
+    mh_full.so_dong_loai = so_dong_loai
+    mh_full.so_dong_dung = so_dong_dung
+    mh_train.so_dong_loai = so_dong_loai
+    mh_train.so_dong_dung = int(len(df_train))
     if not mh_full.co_bu_nhiet and not mh_full.co_bu_chenh_T:
         canh_bao.append("Dữ liệu chỉ có một mức nhiệt độ: đường chuẩn KHÔNG bù nhiệt được.")
     dai_T = float(mh_full.T_max - mh_full.T_min)
@@ -1494,7 +1600,7 @@ def dung_duong_chuan(
         bang_test = pd.DataFrame()
         rmse_test_px = rmse_test_ppt = float("nan")
 
-    bang_all = _bang_sai_so(mh_full, df, ch.he_so_phu_k)
+    bang_all = _bang_sai_so(mh_full, df_khop, ch.he_so_phu_k)
     theo_muc = (
         bang_all.groupby(COT_DO_MAN)
         .agg(so_diem=(COT_DELTA_Y, "size"),
@@ -1516,6 +1622,11 @@ def dung_duong_chuan(
         co_ban_sao_du_lieu=bool(info_ban_sao["co_ban_sao"]),
         so_dong_ban_sao=int(info_ban_sao["so_dong_ban_sao"]),
         chi_tiet_ban_sao=info_ban_sao_tom_tat,
+        so_dong_loai=so_dong_loai,
+        so_dong_dung=so_dong_dung,
+        da_loai_ban_sao_khi_khop=kich_hoat_loai,
+        so_dong_da_loai_thu_cong=so_loai_tc,
+        tom_tat_ly_do_loai=ly_do_tc,
     )
 
 

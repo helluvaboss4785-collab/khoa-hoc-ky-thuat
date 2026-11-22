@@ -408,7 +408,9 @@ def xuat_bo_bao_cao(
     md_lines.extend([
         "## 1. Tóm tắt mô hình đường chuẩn từ dữ liệu đầu vào",
         "",
-        f"- Nguồn dữ liệu hiệu chuẩn: `{mh.nguon_du_lieu}` (số điểm tổng: `{mh.so_diem}`, train: `{len(bc.df_train)}`, test: `{len(bc.df_test)}`)",
+        f"- Nguồn dữ liệu hiệu chuẩn: `{mh.nguon_du_lieu}` (số điểm dùng khớp: `{mh.so_diem}`, train: `{len(bc.df_train)}`, test: `{len(bc.df_test)}`)",
+        f"- Dòng bản sao đã loại khi khớp: `{bc.so_dong_loai}` | Dòng dùng khớp: `{bc.so_dong_dung}`"
+        + (f" | Đã loại thủ công: `{bc.so_dong_da_loai_thu_cong}` lần đo (lí do: {'; '.join(dict.fromkeys(bc.tom_tat_ly_do_loai)) or 'không ghi'})" if bc.so_dong_da_loai_thu_cong > 0 else ""),
         f"- Bậc đa thức chọn: `{bc.bac_chon}` (`don_vi_y = {getattr(mh, 'don_vi_y', 'px')}`)",
         f"- Hệ số xác định `R²`: `{mh.R2:.6f}` | `s_res`: `{mh.s_res_px:.4f} {getattr(mh, 'don_vi_y', 'px')}`",
         (

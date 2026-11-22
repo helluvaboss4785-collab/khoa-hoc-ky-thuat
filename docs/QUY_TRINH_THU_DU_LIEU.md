@@ -51,6 +51,7 @@ Hai nhiệt kế phổ thông có thể lệch hệ thống với nhau ±0,3 đ�
    - Khi thu ở trạng thái cân bằng nhiệt, nên dùng chức năng đo đa khung để theo dõi tốc độ trôi `Δy(t)` và chờ ổn định (các ngưỡng `xu_ly_anh.*` và `hieu_chuan.thoi_gian_on_dinh_toi_thieu_phut` trong `config.yaml` cũng là *gợi ý khởi điểm* cần đối chứng trên bình thật).
    - Khảo sát nhiều mức nhiệt mẫu phủ dải thực tế ao/phòng (`thiet_ke_thi_nghiem.so_muc_nhiet_toi_thieu = 3`, `thiet_ke_thi_nghiem.bien_do_nhiet_toi_thieu_C = 6.0` °C — *gợi ý khởi điểm, nhóm điều chỉnh cùng giáo viên hướng dẫn*).
 3. **Thiết lập camera điện thoại:**
+   - **Định dạng ảnh (iPhone/Android):** Chụp ở định dạng **JPEG** hoặc **PNG**. Không tải trực tiếp ảnh **HEIC/HEIF** hay **WebP** (phần mềm sẽ nhận diện chữ kí byte và từ chối với mã `ANH_KHONG_HO_TRO_DINH_DANG`). Trên iPhone: vào **Cài đặt > Camera > Định dạng > Tương thích nhất (JPEG)**, hoặc xuất ảnh sang JPEG/PNG trước khi đưa vào xử lí.
    - Gắn điện thoại lên giá đỡ cố định, căn tâm vạch gần vùng giữa khung hình (`xu_ly_anh.nguong_lech_tam_meo_ti_le`).
    - **Bắt buộc khóa phơi sáng (AE) và khóa lấy nét (AF)** ở ứng dụng camera thủ công, ghi nhận `khoa_ae_af = 1` và kiểm không cho vạch bị chói trắng bẹt đỉnh.
    - Chụp lặp tại mỗi ô `(S × mức T)` tối thiểu `thiet_ke_thi_nghiem.so_lan_lap_toi_thieu_moi_o = 3` ảnh và phân bố đều giữa các mức độ mặn (`thiet_ke_thi_nghiem.ti_le_toi_da_moi_muc = 0.4` — *gợi ý khởi điểm, nhóm điều chỉnh cùng giáo viên hướng dẫn*).

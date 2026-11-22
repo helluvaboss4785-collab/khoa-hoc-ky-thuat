@@ -64,6 +64,8 @@ hieu_chuan:                      # Tham số dựng đường chuẩn (Cột m�
   sai_so_dung_dich_chuan_ppt: null  # bất định chuẩn của dung dịch NaCl chuẩn (‰) - để null khi chưa khai báo
   nhiet_do_toi_thieu_phu_C: null    # dải nhiệt độ tối thiểu cần phủ khi hiệu chuẩn (°C) - để người dùng đặt
   dai_man_muc_tieu_ppt: [0.0, 35.0]  # GIẢ ĐỊNH, cần thay bằng giá trị đo được
+  loai_ban_sao_khi_khop: true       # GIẢ ĐỊNH, cần thay bằng giá trị đo được (loại dòng bản sao khi khớp đường chuẩn và CV)
+  ti_le_ban_sao_kich_hoat_loai: 0.0 # GIẢ ĐỊNH, cần thay bằng giá trị đo được (ngưỡng tỉ lệ bản sao kích hoạt loại khi bật cờ)
   nhiet_ke_cheo:
     so_cap_toi_thieu: 6             # GIẢ ĐỊNH, cần thay bằng giá trị đo được
     so_muc_nhiet_toi_thieu: 2       # GIẢ ĐỊNH, cần thay bằng giá trị đo được

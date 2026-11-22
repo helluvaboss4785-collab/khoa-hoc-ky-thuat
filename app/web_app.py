@@ -50,11 +50,13 @@ from core import thresholds as th
 from core import trang_thai_cau_hinh
 from core.measure import (
     AnhKhongHopLeError,
+    AnhKhongHoTroDinhDangError,
     KetQuaDoDeltaY,
     KhongTimThayVachError,
     chuyen_anh_xam,
     do_delta_y_da_khung_hinh,
     do_delta_y_tu_anh,
+    giai_ma_anh_tu_bytes,
     phan_tich_can_bang_nhiet,
 )
 from sim.synth import (
@@ -724,10 +726,7 @@ def _validate_and_decode_image_bytes(
             f"Dung lượng ảnh ({len(raw) / (1024 * 1024):.2f} MB) vượt quá giới hạn {lim_mb:g} MB."
         )
 
-    arr = np.frombuffer(raw, dtype=np.uint8)
-    img = cv2.imdecode(arr, cv2.IMREAD_COLOR) if arr.size > 0 else None
-    if img is None or img.size == 0:
-        raise AnhKhongHopLeError("Không giải mã được định dạng ảnh tải lên.")
+    img = giai_ma_anh_tu_bytes(raw)
 
     h_img, w_img = img.shape[:2]
     mp_val = (h_img * w_img) / 1_000_000.0
@@ -1238,6 +1237,13 @@ async def api_measure(request: Request) -> JSONResponse:
             str(exc),
             exc,
         )
+    except AnhKhongHoTroDinhDangError as exc:
+        return _json_err_typed(
+            415,
+            "ANH_KHONG_HO_TRO_DINH_DANG",
+            str(exc),
+            exc,
+        )
     except AnhKhongHopLeError as exc:
         return _json_err_typed(
             400,
@@ -1617,6 +1623,8 @@ async def api_measure_multi(request: Request) -> JSONResponse:
                     raw_idx_map.append(idx)
                 except AnhQuaLonError:
                     raise
+                except AnhKhongHoTroDinhDangError:
+                    raise
                 except AnhKhongHopLeError as exc_dec:
                     pre_errors.append((idx, str(exc_dec)))
 
@@ -1866,6 +1874,8 @@ async def api_measure_multi(request: Request) -> JSONResponse:
         })
     except AnhQuaLonError as exc:
         return _json_err_typed(413, "ANH_QUA_LON", str(exc), exc)
+    except AnhKhongHoTroDinhDangError as exc:
+        return _json_err_typed(415, "ANH_KHONG_HO_TRO_DINH_DANG", str(exc), exc)
     except AnhKhongHopLeError as exc:
         return _json_err_typed(400, "ANH_KHONG_HOP_LE", f"Chuỗi ảnh tải lên không hợp lệ: {exc}", exc)
     except KhongTimThayVachError as exc:
@@ -2177,6 +2187,9 @@ async def api_calibrate(request: Request) -> JSONResponse:
             "canh_bao_chi_tiet": bc.canh_bao_chi_tiet,
             "co_ban_sao_du_lieu": bc.co_ban_sao_du_lieu,
             "so_dong_ban_sao": bc.so_dong_ban_sao,
+            "so_dong_loai": bc.so_dong_loai,
+            "so_dong_dung": bc.so_dong_dung,
+            "da_loai_ban_sao_khi_khop": bc.da_loai_ban_sao_khi_khop,
             "kiem_tra_thiet_ke": kiem_tra_tk,
             "sai_so_theo_muc": bc.sai_so_theo_muc.round(4).to_dict(orient="records"),
             "plot_data": {

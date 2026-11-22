@@ -3,10 +3,10 @@ W0,W0_so_anh_mo_phong_chan_cat_metadata,"cli_ret=2, csv=False, web_la_mp=True",c
 W0,W0_chan_thu_muc_mo_phong_outputs,"cli_ret=2, csv=False",cli=2 & khong ghi CSV,DAT,MO_PHONG
 W0,W0_exif_va_khai_bao_nguon_cli_web,"no_decl_ret=3, decl_ret=0, web_warn=True, so_xl=True","ret=3->0, web_can_than, ghi_so",DAT,MO_PHONG
 W1,W1_phat_hien_ban_sao_va_lap_sau_khu_trung,"co_bs=True, n_bs=3, warn=True, lap_st=chua_dat",3 loai trung & lap_st=chua_dat,DAT,MO_PHONG
-W1,W1_bao_cao_trung_lap_va_bi_danh_cot,"idx_dup=113, idx_sec1=368, alias_hop_le=True",muc canh bao dau md & alias OK,DAT,MO_PHONG
+W1,W1_bao_cao_trung_lap_va_bi_danh_cot,"idx_dup=113, idx_sec1=381, alias_hop_le=True",muc canh bao dau md & alias OK,DAT,MO_PHONG
 W2,W2_doi_chieu_quan_fry_va_ghi_chu_tu_khai,"no_const_doc=True, bad_tb=1, same_vn=1, ok=0, trung_ma=True",doc sach & siet format/ten/tu khai,DAT,MO_PHONG
-W3,W3_san_phan_giai_r_0.01C,"sig_old=0.0138, sig_new=0.0141 (1.03x), RMS=0.0145, cov_old=92.5%, cov_new=93.2% [90.4-95.3%], warn=0/400",cov_new=93.2%,DAT,MO_PHONG
-W3,W3_san_phan_giai_r_0.10C,"sig_old=0.0192, sig_new=0.0312 (1.63x), RMS=0.0205, cov_old=90.2%, cov_new=99.8% [98.6-100.0%], warn=16/400",cov_new=99.8%,DAT,MO_PHONG
-W3,W3_san_phan_giai_r_0.50C,"sig_old=0.0574, sig_new=0.1414 (2.46x), RMS=0.1123, cov_old=66.2%, cov_new=97.2% [95.1-98.5%], warn=400/400",cov_new=97.2%,DAT,MO_PHONG
+W3,W3_san_phan_giai_r_0.01C,"sig_old=0.0138, sig_new=0.0141 (1.03x), RMS=0.0145, cov_old=92.5%, cov_new=93.2% [90.4-95.3%], warn=0/400, chưa phân biệt được với 95% (khoảng Wilson 95% chứa 95%)",cov_new=93.2% [90.4-95.3%],KHONG_DAT,MO_PHONG
+W3,W3_san_phan_giai_r_0.10C,"sig_old=0.0192, sig_new=0.0312 (1.63x), RMS=0.0205, cov_old=90.2%, cov_new=99.8% [98.6-100.0%], warn=16/400",cov_new=99.8% [98.6-100.0%],DAT,MO_PHONG
+W3,W3_san_phan_giai_r_0.50C,"sig_old=0.0574, sig_new=0.1414 (2.46x), RMS=0.1123, cov_old=66.2%, cov_new=97.2% [95.1-98.5%], warn=400/400",cov_new=97.2% [95.1-98.5%],DAT,MO_PHONG
 W3,W3_doc_tuyen_tinh_va_san_T,"phu_thuoc=True, max_res=0.0404C, min_sig=0.0994 >= sigma_pg=0.0913",max_res=0.0404C,DAT,MO_PHONG
-W4,W4_dong_goi_bat_sh_nop_bai,"files=True, warn_md=True, warn_out=True, cli_ok=True, zip_mb=0.57",0.57 MB < 20 MB,DAT,MO_PHONG
+W4,W4_dong_goi_bat_sh_nop_bai,"files=True, warn_md=True, warn_out=True, cli_ok=True, zip_mb=0.58",0.58 MB < 20 MB,DAT,MO_PHONG

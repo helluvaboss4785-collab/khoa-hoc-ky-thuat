@@ -362,18 +362,24 @@ def _danh_gia_w3(add_row: Any) -> None:
         lo_new, hi_new = khoang_tin_cay_wilson(cov_new, n_trials)
         p_new = cov_new / float(n_trials)
         p_old = cov_old / float(n_trials)
+        # Áp tiêu chí gốc (độ phủ ±2σ >= 95%) cho cả 3 mức độ phân giải; không nới tiêu chí
         if r_step == 0.01:
-            dat = (m_new <= 1.5 * m_old) and (p_new >= p_old)
+            dat = (p_new >= 0.95) and (m_new <= 1.5 * m_old)
         elif r_step == 0.1:
             dat = p_new >= 0.95
         else:
             dat = (p_new >= 0.95) and (p_new > p_old) and (n_warn == n_trials)
 
+        wilson_str = f"[{lo_new*100:.1f}-{hi_new*100:.1f}%]"
+        ghi_chu_wilson = ""
+        if not dat and (lo_new <= 0.95 <= hi_new):
+            ghi_chu_wilson = ", chưa phân biệt được với 95% (khoảng Wilson 95% chứa 95%)"
+
         add_row(
             "W3",
             f"W3_san_phan_giai_r_{r_step:.2f}C",
-            f"sig_old={m_old:.4f}, sig_new={m_new:.4f} ({m_new/m_old:.2f}x), RMS={rms:.4f}, cov_old={p_old*100:.1f}%, cov_new={p_new*100:.1f}% [{lo_new*100:.1f}-{hi_new*100:.1f}%], warn={n_warn}/{n_trials}",
-            f"cov_new={p_new*100:.1f}%",
+            f"sig_old={m_old:.4f}, sig_new={m_new:.4f} ({m_new/m_old:.2f}x), RMS={rms:.4f}, cov_old={p_old*100:.1f}%, cov_new={p_new*100:.1f}% {wilson_str}, warn={n_warn}/{n_trials}{ghi_chu_wilson}",
+            f"cov_new={p_new*100:.1f}% {wilson_str}",
             dat,
         )
 

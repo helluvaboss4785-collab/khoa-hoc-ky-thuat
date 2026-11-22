@@ -21,7 +21,11 @@
 
 1. Bật tia laser vạch đỏ (650 nm, $\le 1\text{ mW}$) chiếu vuông góc qua lăng kính hai ngăn tới màn hứng mờ.
 2. Che bớt ánh nắng hoặc đèn chói trực tiếp vào màn hứng để hai vạch sáng nổi rõ trên nền tối.
-3. Đặt điện thoại lên giá đỡ cố định, giữ camera song song và thẳng góc với màn hứng:
+2. **Định dạng ảnh trên điện thoại (tránh lỗi HEIC / HEIF / WebP):**
+   - Phần mềm hỗ trợ tốt ảnh **JPEG / PNG** (và BMP/TIFF). Điện thoại iPhone mặc định thường lưu định dạng **HEIC** hoặc một số ứng dụng xuất **WebP** không được OpenCV hỗ trợ trực tiếp (hệ thống sẽ báo lỗi `ANH_KHONG_HO_TRO_DINH_DANG`).
+   - **Trên iPhone:** vào **Cài đặt > Camera > Định dạng > Tương thích nhất (JPEG)** trước khi chụp.
+   - Hoặc chuyển/xuất ảnh sang **JPEG/PNG** rồi tải lên ứng dụng.
+3. **Đặt điện thoại lên giá đỡ cố định**, giữ camera song song và thẳng góc với màn hứng:
    - Nếu muốn quy đổi theo đơn vị mm, đặt một **thước chuẩn** trên màn hứng cùng mặt phẳng hai vạch và dùng mục **Thang chuẩn (px/mm)** trên ứng dụng.
    - **Bật khóa phơi sáng và lấy nét (AE/AF lock)** trên camera trước khi chụp, rồi tích ô **"Đã khóa AE/AF"** trên giao diện.
    - Chỉnh vị trí sao cho hai vạch rõ nét nhưng **không bị lóa trắng bệt (bão hòa)** và nằm gần vùng trung tâm khung ảnh.

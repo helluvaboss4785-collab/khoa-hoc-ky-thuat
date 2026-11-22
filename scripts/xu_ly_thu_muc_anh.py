@@ -35,10 +35,17 @@ if str(ROOT) not in sys.path:
 
 from core import calibration as cal  # noqa: E402
 from core import thang  # noqa: E402
-from core.measure import AnhKhongHopLeError, KhongTimThayVachError, do_delta_y_tu_anh  # noqa: E402
+from core.measure import (  # noqa: E402
+    AnhKhongHopLeError,
+    AnhKhongHoTroDinhDangError,
+    KhongTimThayVachError,
+    do_delta_y_tu_anh,
+    giai_ma_anh_tu_bytes,
+    nhan_dien_dinh_dang_anh_bytes,
+)
 from sim.synth import doc_nhan_mo_phong, tra_cuu_so_anh_mo_phong  # noqa: E402
 
-DUOI_ANH_HOP_LE = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
+DUOI_ANH_HOP_LE = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp", ".heic", ".heif"}
 MAU_TEN_FILE_RE = re.compile(r"^(\d+(?:\.\d+)?)_(\d+(?:\.\d+)?)_(\d+)$")
 SO_ANH_DA_XU_LY_MAC_DINH = ROOT / "data" / "so_anh_da_xu_ly.csv"
 COT_SO_ANH_DA_XU_LY = ("sha256", "nguon", "thoi_gian", "ten_file")
@@ -422,8 +429,14 @@ def xu_ly_thu_muc_anh(
             if (nguon == "THUC_TE" and not exif_co_bool)
             else ""
         )
+        dinh_dang_raw = nhan_dien_dinh_dang_anh_bytes(raw_bytes)
+        if dinh_dang_raw in ("HEIC/HEIF", "HEIC", "HEIF", "WebP"):
+            raise AnhKhongHoTroDinhDangError(dinh_dang_raw)
         arr = np.frombuffer(raw_bytes, dtype=np.uint8)
         img_bgr = cv2.imdecode(arr, cv2.IMREAD_COLOR) if arr.size > 0 else None
+        if (img_bgr is None or img_bgr.size == 0) and img_path.suffix.lower() in {".heic", ".heif", ".webp"}:
+            ext_fmt = "WebP" if img_path.suffix.lower() == ".webp" else "HEIC/HEIF"
+            raise AnhKhongHoTroDinhDangError(ext_fmt)
 
         meta_dict = meta or {}
         t_tc_raw = meta_dict.get("nhiet_do_tham_chieu_C")
@@ -622,6 +635,9 @@ def main() -> None:
     except LoiThieuExifAnhThucTeError as exc:
         print(f"LOI_THIEU_EXIF: {exc}", file=sys.stderr)
         sys.exit(3)
+    except AnhKhongHoTroDinhDangError as exc:
+        print(f"LOI_DINH_DANG_ANH: {exc}", file=sys.stderr)
+        sys.exit(4)
     except Exception as exc:
         print(f"LOI: {exc}", file=sys.stderr)
         sys.exit(2)

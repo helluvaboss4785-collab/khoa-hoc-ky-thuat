@@ -72,12 +72,19 @@ def test_w1_bo_72_dong_sach_va_nhan_ba_thanh_216_dong(tmp_path: Path):
     assert kq_1lap["tom_tat"]["min_lap_moi_o"] == 1
     assert _map_muc(kq_1lap)["so_lan_lap_moi_o"]["trang_thai"] == "chua_dat"
 
-    # dung_duong_chuan vẫn khớp đủ 216 dòng nhưng bật cờ DU_LIEU_CO_BAN_SAO
+    # X0(b): mặc định loai_ban_sao_khi_khop=True loại 144 bản sao và chỉ khớp trên 72 dòng gốc; khi tắt cờ vẫn khớp 216 dòng
     bc = cal.dung_duong_chuan(df_216, cal.CauHinhHieuChuan())
-    assert bc.mo_hinh.so_diem == 216
+    assert bc.mo_hinh.so_diem == 72
+    assert bc.so_dong_loai == 144
+    assert bc.so_dong_dung == 72
+    assert bc.da_loai_ban_sao_khi_khop is True
     assert bc.co_ban_sao_du_lieu is True
     assert bc.so_dong_ban_sao == 144
     assert any(c["ma"] == "DU_LIEU_CO_BAN_SAO" and c["cap"] == "nghiem_trong" for c in bc.canh_bao_chi_tiet)
+
+    bc_giu = cal.dung_duong_chuan(df_216, cal.CauHinhHieuChuan(loai_ban_sao_khi_khop=False))
+    assert bc_giu.mo_hinh.so_diem == 216
+    assert bc_giu.da_loai_ban_sao_khi_khop is False
 
     # Xuất báo cáo có mục "Cảnh báo dữ liệu trùng lặp" ở đầu
     p_csv = tmp_path / "cal_216.csv"

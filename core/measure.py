@@ -37,6 +37,72 @@ class AnhKhongHopLeError(ValueError):
     """Ảnh đầu vào rỗng, sai định dạng hoặc không giải mã được."""
 
 
+class AnhKhongHoTroDinhDangError(AnhKhongHopLeError):
+    """Ảnh có định dạng chưa hỗ trợ trực tiếp (HEIC/HEIF/WebP)."""
+
+    def __init__(self, dinh_dang: str, message: str | None = None) -> None:
+        self.dinh_dang = dinh_dang
+        if message is None:
+            message = (
+                f"Định dạng ảnh {dinh_dang} không được hỗ trợ trực tiếp. "
+                "Trên iPhone: Cài đặt > Camera > Định dạng > Tương thích nhất (JPEG). "
+                "Hoặc xuất ảnh sang JPEG/PNG rồi tải lên."
+            )
+        super().__init__(message)
+
+
+_HEIC_BRANDS = {
+    b"heic", b"heix", b"hevc", b"hevx",
+    b"mif1", b"msf1", b"heif", b"heim", b"heis", b"avic", b"avif",
+}
+
+
+def nhan_dien_dinh_dang_anh_bytes(raw_bytes: bytes) -> str | None:
+    """Nhận diện định dạng ảnh qua chữ kí byte đầu tệp (không phụ thuộc thư viện ngoài)."""
+    if not raw_bytes:
+        return None
+    if len(raw_bytes) >= 12 and raw_bytes[4:8] == b"ftyp":
+        box_len = int.from_bytes(raw_bytes[:4], "big")
+        end_box = min(len(raw_bytes), max(12, box_len)) if box_len > 0 else min(len(raw_bytes), 64)
+        major = raw_bytes[8:12].lower()
+        brands = [major]
+        pos = 16
+        while pos + 4 <= end_box:
+            brands.append(raw_bytes[pos : pos + 4].lower())
+            pos += 4
+        if any(b in _HEIC_BRANDS for b in brands):
+            if any(b in {b"heic", b"heix", b"hevc", b"hevx"} for b in brands):
+                return "HEIC/HEIF"
+            return "HEIF"
+    if len(raw_bytes) >= 12 and raw_bytes[:4] == b"RIFF" and raw_bytes[8:12] == b"WEBP":
+        return "WebP"
+    if raw_bytes.startswith(b"\xff\xd8\xff"):
+        return "JPEG"
+    if raw_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "PNG"
+    if raw_bytes.startswith(b"BM"):
+        return "BMP"
+    if raw_bytes.startswith((b"II*\x00", b"MM\x00*")):
+        return "TIFF"
+    return None
+
+
+def giai_ma_anh_tu_bytes(raw_bytes: bytes) -> np.ndarray:
+    """Giải mã mảng byte ảnh sang BGR; phát hiện rõ HEIC/HEIF/WebP trước/sau cv2.imdecode."""
+    if not raw_bytes:
+        raise AnhKhongHopLeError("Dữ liệu ảnh trống.")
+    dinh_dang = nhan_dien_dinh_dang_anh_bytes(raw_bytes)
+    if dinh_dang in ("HEIC/HEIF", "HEIC", "HEIF", "WebP"):
+        raise AnhKhongHoTroDinhDangError(dinh_dang)
+    arr = np.frombuffer(raw_bytes, dtype=np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR) if arr.size > 0 else None
+    if img is None or img.size == 0:
+        if dinh_dang in ("HEIC/HEIF", "HEIC", "HEIF", "WebP"):
+            raise AnhKhongHoTroDinhDangError(dinh_dang)
+        raise AnhKhongHopLeError("Không giải mã được định dạng ảnh tải lên.")
+    return img
+
+
 class KhongTimThayVachError(ValueError):
     """Không tự động tìm thấy đủ 2 vạch laser rõ ràng trên ảnh."""
 
