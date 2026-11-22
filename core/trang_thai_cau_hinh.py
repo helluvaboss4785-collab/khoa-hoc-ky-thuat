@@ -9,6 +9,7 @@ Nguyên tắc:
 from __future__ import annotations
 
 import json
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,15 @@ from core.nhiet_ke import FILE_HIEU_CHUAN_NHIET_KE_MAC_DINH, tai_hieu_chuan_cheo
 
 CONFIG_MAC_DINH = Path(__file__).resolve().parents[1] / "config.yaml"
 XAC_NHAN_QF_MAC_DINH = Path(__file__).resolve().parents[1] / "data" / "xac_nhan_quan_fry.json"
+GHI_CHU_GIOI_HAN_QUAN_FRY = (
+    "Xác nhận do người dùng tự khai, hệ thống không kiểm chứng độc lập nội dung bài báo gốc"
+)
+
+
+def _chuan_hoa_ten_r7(ten: str) -> str:
+    s = " ".join(str(ten or "").strip().split()).replace("đ", "d").replace("Đ", "D")
+    nfd = unicodedata.normalize("NFD", s)
+    return " ".join("".join(ch for ch in nfd if unicodedata.category(ch) != "Mn").lower().split())
 
 
 @dataclass(frozen=True)
@@ -367,28 +377,32 @@ def phan_tich_xac_nhan_quan_fry(
         "nguoi_xac_nhan_2": "",
         "ngay": "",
         "trich_dan": "",
-        "thong_diep": "Chưa chạy đối chiếu 10 hệ số Quan–Fry với bài gốc (1995).",
+        "trung_chuoi_ma": False,
+        "ghi_chu_gioi_han": GHI_CHU_GIOI_HAN_QUAN_FRY,
+        "thong_diep": f"Chưa chạy đối chiếu 10 hệ số Quan–Fry với bài gốc (1995). ({GHI_CHU_GIOI_HAN_QUAN_FRY})",
     }
     if xac_nhan_path is None:
-        return {**mac_dinh, "thong_diep": "Chưa có đường dẫn file xác nhận đối chiếu."}
+        return {**mac_dinh, "thong_diep": f"Chưa có đường dẫn file xác nhận đối chiếu. ({GHI_CHU_GIOI_HAN_QUAN_FRY})"}
     p = Path(xac_nhan_path)
     if not p.exists():
         return mac_dinh
     try:
         data = json.loads(p.read_text(encoding="utf-8"))
         if not isinstance(data, dict) or not bool(data.get("da_doi_chieu_khop")):
-            return {**mac_dinh, "thong_diep": "File xác nhận Quan–Fry chưa hợp lệ hoặc chưa khớp toàn bộ."}
+            return {**mac_dinh, "thong_diep": f"File xác nhận Quan–Fry chưa hợp lệ hoặc chưa khớp toàn bộ. ({GHI_CHU_GIOI_HAN_QUAN_FRY})"}
         ngay = str(data.get("thoi_gian") or "").strip()
         td = str(data.get("trich_dan") or "").strip()
+        ghi_chu_gl = str(data.get("ghi_chu_gioi_han") or GHI_CHU_GIOI_HAN_QUAN_FRY).strip()
+        trung_chuoi = bool(data.get("trung_chuoi_ma", False))
         if "nguoi_doi_chieu" in data:
             n1 = str(data.get("nguoi_doi_chieu") or "").strip()
             if not n1 or not td:
-                return {**mac_dinh, "thong_diep": "File xác nhận thiếu tên người đối chiếu hoặc trích dẫn bài gốc."}
+                return {**mac_dinh, "thong_diep": f"File xác nhận thiếu tên người đối chiếu hoặc trích dẫn bài gốc. ({ghi_chu_gl})"}
         else:
             # Tương thích định dạng tối giản của kiểm thử R7 cũ, vẫn yêu cầu người xác nhận 2
             n1 = "(bản ghi R7 cũ, chưa ghi tên người 1)"
         n2 = str(data.get("nguoi_xac_nhan_2") or "").strip()
-        if n2 and n2.casefold() != n1.casefold():
+        if n2 and _chuan_hoa_ten_r7(n2) != _chuan_hoa_ten_r7(n1):
             return {
                 "trang_thai": "xac_nhan_2_nguoi",
                 "da_doi_chieu_khop": True,
@@ -397,7 +411,9 @@ def phan_tich_xac_nhan_quan_fry(
                 "nguoi_xac_nhan_2": n2,
                 "ngay": ngay,
                 "trich_dan": td,
-                "thong_diep": f"Đã đối chiếu khớp và có đủ 2 người xác nhận ({n1}; {n2}, {ngay}).",
+                "trung_chuoi_ma": trung_chuoi,
+                "ghi_chu_gioi_han": ghi_chu_gl,
+                "thong_diep": f"Đã đối chiếu khớp (2/2 người: {n1}; {n2}, {ngay}). {ghi_chu_gl}.",
             }
         return {
             "trang_thai": "xac_nhan_1_nguoi",
@@ -407,7 +423,9 @@ def phan_tich_xac_nhan_quan_fry(
             "nguoi_xac_nhan_2": "",
             "ngay": ngay,
             "trich_dan": td,
-            "thong_diep": f"Đã đối chiếu bởi {n1} ({ngay}), chưa có người xác nhận thứ hai.",
+            "trung_chuoi_ma": trung_chuoi,
+            "ghi_chu_gioi_han": ghi_chu_gl,
+            "thong_diep": f"Đã đối chiếu bởi {n1} ({ngay}), chưa có người xác nhận thứ hai (1/2 người). {ghi_chu_gl}.",
         }
     except Exception:
         return {**mac_dinh, "thong_diep": "File xác nhận Quan–Fry bị lỗi định dạng."}

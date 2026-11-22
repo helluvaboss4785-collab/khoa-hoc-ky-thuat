@@ -13,7 +13,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from core.optics import HE_SO_QUAN_FRY_TRONG_MA
-from core.trang_thai_cau_hinh import XAC_NHAN_QF_MAC_DINH, liet_ke_tham_so_chua_xac_nhan
+from core.trang_thai_cau_hinh import (
+    GHI_CHU_GIOI_HAN_QUAN_FRY,
+    XAC_NHAN_QF_MAC_DINH,
+    liet_ke_tham_so_chua_xac_nhan,
+)
+from scripts.kiem_tra_quan_fry import CANH_BAO_TRUNG_CHUOI_MA
 
 
 def _ghi_csv_gia(
@@ -22,11 +27,14 @@ def _ghi_csv_gia(
     bo_qua: set[str] | None = None,
     bo_trang_bang: set[str] | None = None,
     co_cot_trang_bang: bool = True,
+    trang_bang_mac_dinh: str | None = None,
+    chuoi_gia: dict[str, str] | None = None,
 ) -> None:
     """Tạo CSV đối chiếu giả trong tmp_path — dữ liệu giả chỉ kiểm logic."""
     ghi_de = ghi_de or {}
     bo_qua = bo_qua or set()
     bo_trang_bang = bo_trang_bang or set()
+    chuoi_gia = chuoi_gia or {}
     with open(path, "w", encoding="utf-8", newline="") as f:
         w = csv.writer(f)
         if co_cot_trang_bang:
@@ -37,11 +45,17 @@ def _ghi_csv_gia(
             if k in bo_qua:
                 continue
             val = ghi_de.get(k, v)
+            val_str = chuoi_gia.get(k, repr(val))
             if co_cot_trang_bang:
-                tb = "" if k in bo_trang_bang else f"Eq.(1) {k}"
-                w.writerow([k, repr(val), tb])
+                if k in bo_trang_bang:
+                    tb = ""
+                elif trang_bang_mac_dinh is not None:
+                    tb = trang_bang_mac_dinh
+                else:
+                    tb = f"tr. 3478, Eq.(1) {k}"
+                w.writerow([k, val_str, tb])
             else:
-                w.writerow([k, repr(val)])
+                w.writerow([k, val_str])
 
 
 def test_v2_doi_chieu_quan_fry_tu_choi_thieu_va_ba_trang_thai_r7(tmp_path: Path):
@@ -193,3 +207,110 @@ def test_v2_doi_chieu_quan_fry_tu_choi_thieu_va_ba_trang_thai_r7(tmp_path: Path)
     )
     assert proc_thieu.returncode != 0
     assert "a9" in (proc_thieu.stdout + proc_thieu.stderr)
+
+
+def test_w2_siet_dinh_dang_trang_bang_trich_dan_ten_va_trung_chuoi_ma(tmp_path: Path):
+    """W2: chặn xác nhận hình thức (trang_bang='x', trich_dan='x', tên ngắn/trùng dấu); cảnh báo trùng chuỗi mã; docs không lộ 10 giá trị."""
+    # 1. Docs không còn chứa bảng lộ sẵn 10 hằng số của mã
+    doc_txt = (ROOT / "docs" / "DOI_CHIEU_QUAN_FRY.md").read_text(encoding="utf-8")
+    assert "1.31405" not in doc_txt
+    assert "0.0001779" not in doc_txt
+    assert "1145500.0" not in doc_txt
+    assert "core/optics.py" in doc_txt
+
+    # 2. CSV đối chiếu hình thức: trang_bang='x', trich_dan='x', hai tên 'An'/'Binh' -> từ chối, nêu đủ lỗi
+    csv_hinh_thuc = tmp_path / "qf_hinh_thuc.csv"
+    _ghi_csv_gia(csv_hinh_thuc, trang_bang_mac_dinh="x")
+    out_never = tmp_path / "never.json"
+    p_ht = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "kiem_tra_quan_fry.py"),
+            "--csv", str(csv_hinh_thuc),
+            "--luu-xac-nhan",
+            "--nguoi-doi-chieu", "An",
+            "--nguoi-xac-nhan-2", "Binh",
+            "--trich-dan", "x",
+            "--file-xac-nhan", str(out_never),
+        ],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    assert p_ht.returncode != 0 and not out_never.exists()
+    out_ht = p_ht.stdout + p_ht.stderr
+    for k in HE_SO_QUAN_FRY_TRONG_MA:
+        assert k in out_ht
+    assert "--trich-dan" in out_ht
+    assert "quá ngắn" in out_ht
+
+    # 3. Hai tên chỉ khác dấu / khoảng trắng / hoa thường ("Nguyễn An" vs "nguyen an") -> từ chối
+    csv_hop_le = tmp_path / "qf_hop_le.csv"
+    _ghi_csv_gia(csv_hop_le, trang_bang_mac_dinh="tr. 3478, Bảng 2")
+    p_trung_dau = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "kiem_tra_quan_fry.py"),
+            "--csv", str(csv_hop_le),
+            "--luu-xac-nhan",
+            "--nguoi-doi-chieu", "Nguyễn An",
+            "--nguoi-xac-nhan-2", "nguyen  an",
+            "--trich-dan", "Quan & Fry (1995), Applied Optics 34(18), tr. 3477-3483",
+            "--file-xac-nhan", str(out_never),
+        ],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    assert p_trung_dau.returncode != 0 and not out_never.exists()
+
+    # 4. Chuỗi giá trị trùng hệt cách mã biểu diễn -> vẫn lưu được khi đủ trích dẫn/trang_bang, nhưng đặt cờ trung_chuoi_ma=True & in cảnh báo
+    out_trung_ma = tmp_path / "qf_trung_ma.json"
+    p_tm = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "kiem_tra_quan_fry.py"),
+            "--csv", str(csv_hop_le),
+            "--luu-xac-nhan",
+            "--nguoi-doi-chieu", "Nguyen Van An",
+            "--nguoi-xac-nhan-2", "Tran Thi Binh",
+            "--trich-dan", "Quan & Fry (1995), Applied Optics 34(18), tr. 3477-3483",
+            "--file-xac-nhan", str(out_trung_ma),
+        ],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    assert p_tm.returncode == 0, p_tm.stdout + p_tm.stderr
+    assert CANH_BAO_TRUNG_CHUOI_MA in p_tm.stdout
+    d_tm = json.loads(out_trung_ma.read_text(encoding="utf-8"))
+    assert d_tm["trung_chuoi_ma"] is True
+    assert d_tm["ghi_chu_gioi_han"] == GHI_CHU_GIOI_HAN_QUAN_FRY
+
+    # 5. Chuỗi viết lại ở dạng khác (ví dụ 1.779E-4) -> không bật cờ trung_chuoi_ma
+    csv_dang_khac = tmp_path / "qf_dang_khac.csv"
+    _ghi_csv_gia(csv_dang_khac, trang_bang_mac_dinh="tr. 3478, Bảng 2", chuoi_gia={"a1": "1.779E-4"})
+    out_dk = tmp_path / "qf_dang_khac.json"
+    p_dk = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "kiem_tra_quan_fry.py"),
+            "--csv", str(csv_dang_khac),
+            "--luu-xac-nhan",
+            "--nguoi-doi-chieu", "Nguyen Van An",
+            "--trich-dan", "Quan & Fry (1995), Applied Optics 34(18), tr. 3477-3483",
+            "--file-xac-nhan", str(out_dk),
+        ],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    assert p_dk.returncode == 0
+    assert CANH_BAO_TRUNG_CHUOI_MA not in p_dk.stdout
+    d_dk = json.loads(out_dk.read_text(encoding="utf-8"))
+    assert d_dk["trung_chuoi_ma"] is False
+    assert d_dk["ghi_chu_gioi_han"] == GHI_CHU_GIOI_HAN_QUAN_FRY
+
+    # 6. Panel R7 hiển thị đủ 3 trạng thái và nguyên văn ghi_chu_gioi_han
+    for qf_path, exp_state in (
+        (XAC_NHAN_QF_MAC_DINH, "chua_xac_nhan"),
+        (out_dk, "xac_nhan_1_nguoi"),
+        (out_trung_ma, "xac_nhan_2_nguoi"),
+    ):
+        r7 = liet_ke_tham_so_chua_xac_nhan(ROOT / "config.yaml", xac_nhan_quan_fry_path=qf_path)
+        qf_info = r7["xac_nhan_quan_fry"]
+        assert qf_info["trang_thai"] == exp_state
+        assert qf_info["ghi_chu_gioi_han"] == GHI_CHU_GIOI_HAN_QUAN_FRY
+        assert GHI_CHU_GIOI_HAN_QUAN_FRY in qf_info["thong_diep"]

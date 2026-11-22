@@ -7,7 +7,9 @@ import csv
 import hashlib
 import json
 import math
+import re
 import sys
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -17,12 +19,37 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from core.optics import HE_SO_QUAN_FRY_TRONG_MA
-from core.trang_thai_cau_hinh import XAC_NHAN_QF_MAC_DINH
+from core.trang_thai_cau_hinh import GHI_CHU_GIOI_HAN_QUAN_FRY, XAC_NHAN_QF_MAC_DINH
 
 CANH_BAO_KHONG_CHEP_TU_MA = (
     "CẢNH BÁO: Nếu giá trị bạn nhập chép y hệt từ mã hoặc từ tài liệu hướng dẫn "
     "thì đây KHÔNG phải đối chiếu bài gốc."
 )
+CANH_BAO_TRUNG_CHUOI_MA = (
+    "Cả 10 giá trị trùng hệt từng ký tự với chuỗi trong mã; hãy chắc rằng bạn đã đọc từ bài gốc."
+)
+TRANG_BANG_VO_NGHIA = {"x", "xx", "xxx", "na", "n/a", "-", "--", "---", "...", "none", "null", "todo", "tbd", "?"}
+
+
+def _chuan_hoa_ten(ten: str) -> str:
+    """Chuẩn hóa tên người để so sánh trùng: bỏ dấu tiếng Việt (kể cả đ), hạ chữ thường, gom khoảng trắng."""
+    s = " ".join(str(ten or "").strip().split())
+    s = s.replace("đ", "d").replace("Đ", "D")
+    nfd = unicodedata.normalize("NFD", s)
+    khong_dau = "".join(ch for ch in nfd if unicodedata.category(ch) != "Mn")
+    return " ".join(khong_dau.lower().split())
+
+
+def _kiem_tra_dinh_dang_trang_bang(tb: str) -> str | None:
+    """Trả thông báo lỗi nếu `trang_bang` quá ngắn, vô nghĩa hoặc thiếu chữ số; trả None nếu hợp lệ."""
+    s = " ".join(str(tb or "").strip().split())
+    if s.lower() in TRANG_BANG_VO_NGHIA:
+        return f"chuỗi vô nghĩa ({s!r})"
+    if len(s) < 3:
+        return f"quá ngắn ({len(s)} < 3 ký tự)"
+    if not re.search(r"\d", s):
+        return "thiếu ít nhất một chữ số (số trang hoặc số bảng)"
+    return None
 
 
 def doi_chieu_csv_quan_fry(
@@ -72,6 +99,7 @@ def doi_chieu_csv_quan_fry(
 
     bang: list[dict[str, Any]] = []
     loi_he_so: list[str] = []
+    chuoi_nhap_raw: dict[str, str] = {}
 
     if trung:
         loi_he_so.append(f"trùng dòng: {', '.join(sorted(set(trung)))}")
@@ -91,6 +119,7 @@ def doi_chieu_csv_quan_fry(
             continue
 
         raw_str, tb = nhap[k]
+        chuoi_nhap_raw[k] = raw_str
         if not tb:
             loi_he_so.append(f"{k} (thiếu trang_bang trong bài gốc)")
             bang.append({
@@ -142,17 +171,46 @@ def doi_chieu_csv_quan_fry(
     if not khop_tat_ca:
         return False, bang, "KHÔNG KHỚP HỆ SỐ QUAN–FRY: " + "; ".join(loi_he_so)
 
+    trung_chuoi_ma = len(chuoi_nhap_raw) == len(HE_SO_QUAN_FRY_TRONG_MA) and all(
+        chuoi_nhap_raw[k] == repr(ref_val) for k, ref_val in HE_SO_QUAN_FRY_TRONG_MA.items()
+    )
     msg = f"ĐỐI CHIẾU KHỚP 10/10 HỆ SỐ QUAN–FRY (tol_rel={tol:g})."
+    if trung_chuoi_ma:
+        msg += f" CẢNH BÁO: {CANH_BAO_TRUNG_CHUOI_MA}"
+
     if luu_xac_nhan:
-        n1 = str(nguoi_doi_chieu or "").strip()
-        n2 = str(nguoi_xac_nhan_2 or "").strip()
-        td = str(trich_dan or "").strip()
+        loi_luu: list[str] = []
+        for r in bang:
+            err_tb = _kiem_tra_dinh_dang_trang_bang(str(r.get("trang_bang") or ""))
+            if err_tb:
+                loi_luu.append(f"{r['he_so']} (trang_bang {err_tb})")
+
+        n1 = " ".join(str(nguoi_doi_chieu or "").strip().split())
+        n2 = " ".join(str(nguoi_xac_nhan_2 or "").strip().split())
+        n1_norm = _chuan_hoa_ten(n1)
+        n2_norm = _chuan_hoa_ten(n2)
         if not n1:
-            return False, bang, "TỪ CHỐI LƯU XÁC NHẬN: thiếu tên --nguoi-doi-chieu."
+            loi_luu.append("thiếu tên --nguoi-doi-chieu")
+        elif len(n1_norm) < 3:
+            loi_luu.append(f"tên --nguoi-doi-chieu ({n1!r}) quá ngắn (sau chuẩn hóa cần >= 3 ký tự)")
+
+        if n2:
+            if len(n2_norm) < 3:
+                loi_luu.append(f"tên --nguoi-xac-nhan-2 ({n2!r}) quá ngắn (sau chuẩn hóa cần >= 3 ký tự)")
+            if n1_norm and n2_norm == n1_norm:
+                loi_luu.append("--nguoi-xac-nhan-2 phải là người khác với --nguoi-doi-chieu (khác sau chuẩn hóa dấu/hoa thường)")
+
+        td = " ".join(str(trich_dan or "").strip().split())
         if not td:
-            return False, bang, "TỪ CHỐI LƯU XÁC NHẬN: thiếu --trich-dan đầy đủ bài gốc (tác giả, năm, tạp chí, tập, trang/DOI)."
-        if n2 and n2.casefold() == n1.casefold():
-            return False, bang, "TỪ CHỐI LƯU XÁC NHẬN: --nguoi-xac-nhan-2 phải là người khác với --nguoi-doi-chieu."
+            loi_luu.append("thiếu --trich-dan đầy đủ bài gốc")
+        else:
+            if len(td) < 25:
+                loi_luu.append(f"--trich-dan quá ngắn ({len(td)} < 25 ký tự)")
+            if not re.search(r"\b(?:19|20)\d{2}\b", td):
+                loi_luu.append("--trich-dan phải chứa năm xuất bản 4 chữ số (19xx hoặc 20xx)")
+
+        if loi_luu:
+            return False, bang, "TỪ CHỐI LƯU XÁC NHẬN (W2): " + "; ".join(loi_luu) + "."
 
         out_json = Path(file_xac_nhan) if file_xac_nhan is not None else XAC_NHAN_QF_MAC_DINH
         out_json.parent.mkdir(parents=True, exist_ok=True)
@@ -163,6 +221,8 @@ def doi_chieu_csv_quan_fry(
             "nguoi_xac_nhan_2": n2 or None,
             "so_nguoi_xac_nhan": so_nguoi,
             "trich_dan": td,
+            "trung_chuoi_ma": bool(trung_chuoi_ma),
+            "ghi_chu_gioi_han": GHI_CHU_GIOI_HAN_QUAN_FRY,
             "thoi_gian": datetime.now(timezone.utc).isoformat(),
             "sha256_csv": sha256_csv,
             "csv_nguoi_dung": str(p),

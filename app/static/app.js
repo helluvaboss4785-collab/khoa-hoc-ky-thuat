@@ -610,7 +610,8 @@ async function openAssumptionsPanel() {
       const qf = data.xac_nhan_quan_fry;
       qfBox.className = qf.trang_thai === "xac_nhan_2_nguoi" ? "banner-25d ok" : "banner-25d warn";
       const tdStr = qf.trich_dan ? ` | Trích dẫn: ${esc(qf.trich_dan)}` : "";
-      qfBox.innerHTML = `<div class="banner-icon">${qf.so_nguoi_xac_nhan || 0}/2</div><div><b>Đối chiếu Quan–Fry:</b> ${esc(qf.thong_diep)}${tdStr}</div>`;
+      const glStr = qf.ghi_chu_gioi_han ? `<div style="margin-top:4px;font-size:0.78rem;"><em>${esc(qf.ghi_chu_gioi_han)}</em></div>` : "";
+      qfBox.innerHTML = `<div class="banner-icon">${qf.so_nguoi_xac_nhan || 0}/2</div><div><b>Đối chiếu Quan–Fry (${esc(qf.trang_thai || "chua_xac_nhan")}):</b> ${esc(qf.thong_diep)}${tdStr}${glStr}</div>`;
     }
     const tbody = $("#assumptions-tbody");
     if (tbody && Array.isArray(data.danh_sach)) {
