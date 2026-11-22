@@ -64,6 +64,133 @@ COT_NGUON = "nguon_du_lieu"            # (tùy chọn) "THUC_TE" hoặc "MO_PHON
 COT_KHOA_AE_AF = "khoa_ae_af"          # (tùy chọn) 1/0: đã khóa phơi sáng/lấy nét
 COT_OFFSET_NHIET_KE = "offset_nhiet_ke_C"  # (tùy chọn) độ lệch nhiệt kế ngăn tham chiếu − mẫu
 COT_NHIET_DO_TC_DOC = "nhiet_do_tham_chieu_doc_C"  # (tùy chọn) số đọc thô trước khi trừ offset
+COT_SHA256_ANH = "sha256_anh"
+COT_TEN_FILE = "ten_file"
+
+def phat_hien_ban_sao_du_lieu(df_raw: pd.DataFrame) -> dict[str, Any]:
+    """Phát hiện dòng bản sao hoặc nghi ngờ gán nhãn lại trên DataFrame hiệu chuẩn (W1).
+
+    Chỉ kiểm ba dấu hiệu định danh tường minh (KHÔNG dùng heuristic độ phân tán nhỏ để tránh dương tính giả):
+      (a) Dòng trùng hệt toàn bộ cột;
+      (b) Dòng trùng `sha256_anh` (khi có cột), kèm cờ nghi ngờ gán nhãn lại nếu `delta_y_px` khác nhau;
+      (c) Dòng trùng `ten_file` (khi có cột) với `delta_y_px` khác nhau (nghi ngờ gán nhãn lại).
+    """
+    n_tong = int(len(df_raw))
+    if n_tong == 0:
+        return {
+            "co_ban_sao": False,
+            "co_nghi_ngo_gan_nhan_lai": False,
+            "so_dong_tong": 0,
+            "so_dong_ban_sao": 0,
+            "so_dong_sau_loai": 0,
+            "ti_le_ban_sao": 0.0,
+            "so_dong_trung_het": 0,
+            "so_dong_trung_sha256": 0,
+            "so_dong_trung_ten_file_khac_dy": 0,
+            "so_dong_nghi_gan_nhan_lai": 0,
+            "mask_ban_sao": np.zeros(0, dtype=bool),
+            "dong_nghi_ngo_dau_tien": [],
+            "chi_tiet_nghi_ngo": [],
+        }
+
+    df = df_raw.copy()
+    df.columns = [str(c).strip() for c in df.columns]
+
+    dup_exact = df.duplicated(keep="first").to_numpy(dtype=bool)
+    dup_sha = np.zeros(n_tong, dtype=bool)
+    dup_ten_khac_dy = np.zeros(n_tong, dtype=bool)
+    relabel_mask = np.zeros(n_tong, dtype=bool)
+    chi_tiet: list[str] = []
+
+    dy_num = (
+        pd.to_numeric(df[COT_DELTA_Y], errors="coerce").to_numpy(dtype=float)
+        if COT_DELTA_Y in df.columns
+        else None
+    )
+
+    def _dy_khac_nhau(pos_list: list[int]) -> bool:
+        if dy_num is None or len(pos_list) < 2:
+            return False
+        vals = dy_num[pos_list]
+        finite = vals[np.isfinite(vals)]
+        if len(finite) == 0:
+            return False
+        if len(finite) != len(vals):
+            return True
+        return float(np.max(finite) - np.min(finite)) > 1e-6
+
+    def _norm_key_series(col: str, lower: bool = True) -> list[str]:
+        out: list[str] = []
+        for v in df[col]:
+            if pd.isna(v):
+                out.append("")
+                continue
+            s = str(v).strip()
+            up = s.upper()
+            if not s or up in {"NAN", "NONE", "NULL"}:
+                out.append("")
+            else:
+                out.append(s.lower() if lower else s)
+        return out
+
+    if COT_SHA256_ANH in df.columns:
+        sha_keys = _norm_key_series(COT_SHA256_ANH, lower=True)
+        by_sha: dict[str, list[int]] = {}
+        for pos, k in enumerate(sha_keys):
+            if k:
+                by_sha.setdefault(k, []).append(pos)
+        for sha_k, idxs in by_sha.items():
+            if len(idxs) >= 2:
+                for pos in idxs[1:]:
+                    dup_sha[pos] = True
+                if _dy_khac_nhau(idxs):
+                    for pos in idxs:
+                        relabel_mask[pos] = True
+                    chi_tiet.append(
+                        f"sha256_anh={sha_k[:12]}... lặp {len(idxs)} lần với delta_y_px khác nhau (nghi ngờ gán nhãn lại)"
+                    )
+
+    if COT_TEN_FILE in df.columns and dy_num is not None:
+        tf_keys = _norm_key_series(COT_TEN_FILE, lower=False)
+        by_tf: dict[str, list[int]] = {}
+        for pos, k in enumerate(tf_keys):
+            if k:
+                by_tf.setdefault(k, []).append(pos)
+        for tf_k, idxs in by_tf.items():
+            if len(idxs) >= 2 and _dy_khac_nhau(idxs):
+                for pos in idxs[1:]:
+                    dup_ten_khac_dy[pos] = True
+                for pos in idxs:
+                    relabel_mask[pos] = True
+                chi_tiet.append(
+                    f"ten_file='{tf_k}' lặp {len(idxs)} lần với delta_y_px khác nhau (nghi ngờ gán nhãn lại)"
+                )
+
+    mask_ban_sao = dup_exact | dup_sha | dup_ten_khac_dy
+    so_dong_ban_sao = int(np.count_nonzero(mask_ban_sao))
+    co_gan_nhan_lai = bool(np.any(relabel_mask))
+    if np.any(dup_exact) and not chi_tiet:
+        chi_tiet.append(f"{int(np.count_nonzero(dup_exact))} dòng trùng hệt toàn bộ cột")
+
+    dong_nghi_ngo_idxs = np.flatnonzero(mask_ban_sao | relabel_mask)
+    dong_dau_tien = [int(i) + 1 for i in dong_nghi_ngo_idxs[:5]]
+
+    return {
+        "co_ban_sao": so_dong_ban_sao > 0 or co_gan_nhan_lai,
+        "co_nghi_ngo_gan_nhan_lai": co_gan_nhan_lai,
+        "so_dong_tong": n_tong,
+        "so_dong_ban_sao": so_dong_ban_sao,
+        "so_dong_sau_loai": n_tong - so_dong_ban_sao,
+        "ti_le_ban_sao": (so_dong_ban_sao / float(n_tong)) if n_tong else 0.0,
+        "so_dong_trung_het": int(np.count_nonzero(dup_exact)),
+        "so_dong_trung_sha256": int(np.count_nonzero(dup_sha)),
+        "so_dong_trung_ten_file_khac_dy": int(np.count_nonzero(dup_ten_khac_dy)),
+        "so_dong_nghi_gan_nhan_lai": int(np.count_nonzero(relabel_mask)),
+        "mask_ban_sao": mask_ban_sao,
+        "dong_nghi_ngo_dau_tien": dong_dau_tien,
+        "chi_tiet_nghi_ngo": chi_tiet,
+    }
+
 
 COT_BAT_BUOC = [
     COT_DO_MAN, COT_NHIET_DO, COT_DELTA_Y, COT_DO_DUC,
@@ -1096,6 +1223,9 @@ class BaoCaoHieuChuan:
     df_test: pd.DataFrame
     canh_bao: list[str] = field(default_factory=list)
     canh_bao_chi_tiet: list[dict[str, str]] = field(default_factory=list)
+    co_ban_sao_du_lieu: bool = False
+    so_dong_ban_sao: int = 0
+    chi_tiet_ban_sao: dict[str, Any] = field(default_factory=dict)
 
 
 def chia_train_test(
@@ -1226,6 +1356,23 @@ def dung_duong_chuan(
     def _them_cb_hieu_chuan(ma: str, cap: str, noi_dung: str) -> None:
         canh_bao.append(noi_dung)
         canh_bao_chi_tiet.append({"ma": ma, "cap": cap, "noi_dung": noi_dung})
+
+    # W1: kiểm tra bản sao / nghi ngờ gán nhãn lại (không tự ý xóa dòng khỏi mô hình)
+    info_ban_sao = phat_hien_ban_sao_du_lieu(df)
+    info_ban_sao_tom_tat = {k: v for k, v in info_ban_sao.items() if k != "mask_ban_sao"}
+    if info_ban_sao["co_ban_sao"]:
+        extra_nghi = "; nghi ngờ gán nhãn lại" if info_ban_sao["co_nghi_ngo_gan_nhan_lai"] else ""
+        dong_vd = (
+            f" (ví dụ dòng {', '.join(str(x) for x in info_ban_sao['dong_nghi_ngo_dau_tien'])})"
+            if info_ban_sao["dong_nghi_ngo_dau_tien"]
+            else ""
+        )
+        _them_cb_hieu_chuan(
+            "DU_LIEU_CO_BAN_SAO",
+            "nghiem_trong",
+            f"Phát hiện {info_ban_sao['so_dong_ban_sao']} dòng bản sao trong {info_ban_sao['so_dong_tong']} dòng"
+            f"{extra_nghi}{dong_vd}. Đường chuẩn vẫn khớp trên toàn bộ dữ liệu đầu vào; hãy kiểm tra và loại bản sao thủ công.",
+        )
 
     nguon_df = xac_dinh_nguon_du_lieu(df)
     if nguon_df == NHAN_MO_PHONG:
@@ -1366,6 +1513,9 @@ def dung_duong_chuan(
         RMSE_test_px=rmse_test_px, RMSE_test_ppt=rmse_test_ppt,
         sai_so_theo_muc=theo_muc, bang_test=bang_test,
         df_train=df_train, df_test=df_test, canh_bao=canh_bao, canh_bao_chi_tiet=canh_bao_chi_tiet,
+        co_ban_sao_du_lieu=bool(info_ban_sao["co_ban_sao"]),
+        so_dong_ban_sao=int(info_ban_sao["so_dong_ban_sao"]),
+        chi_tiet_ban_sao=info_ban_sao_tom_tat,
     )
 
 

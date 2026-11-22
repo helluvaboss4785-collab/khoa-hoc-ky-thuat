@@ -1775,6 +1775,11 @@ async function runCalibrate(activate = false) {
     } else {
       $("#t4-model-warning").innerHTML = `<div class="banner-25d warn"><div class="banner-icon">!</div><div><b>CHƯA XÁC NHẬN NGUỒN DỮ LIỆU:</b> File CSV thiếu cột <code>nguon_du_lieu=THUC_TE</code> nên KHÔNG được gắn nhãn đo thật.</div></div>`;
     }
+    const cbBanSao = (data.canh_bao_chi_tiet || []).find((c) => c.ma === "DU_LIEU_CO_BAN_SAO");
+    if (cbBanSao || data.co_ban_sao_du_lieu) {
+      const msgBs = cbBanSao ? cbBanSao.noi_dung : `Phát hiện ${data.so_dong_ban_sao || 0} dòng bản sao trong dữ liệu hiệu chuẩn.`;
+      $("#t4-model-warning").innerHTML += `<div class="banner-25d bad" style="margin-top:8px;"><div class="banner-icon">!</div><div><b>Cảnh báo dữ liệu trùng lặp:</b> ${escapeHtml(msgBs)}</div></div>`;
+    }
 
     $("#t4-level-table-body").innerHTML = (data.sai_so_theo_muc || []).map((r) => `
       <tr>

@@ -67,11 +67,12 @@ Hai nhiệt kế phổ thông có thể lệch hệ thống với nhau ±0,3 đ�
    python scripts/xu_ly_thu_muc_anh.py --thu-muc data/anh_that --nguon THUC_TE --metadata data/anh_that/metadata.csv
    ```
    Kiểm lại file `*_bao_cao_chat_luong.csv` xem có ảnh nào bị loại do bão hòa, nền chói, SNR thấp (`xu_ly_anh.snr_toi_thieu`) hay thiếu khóa AE/AF không.
-2. **Kiểm tra thiết kế thí nghiệm (`V4`, không chặn dựng đường chuẩn):**
+2. **Kiểm tra thiết kế thí nghiệm (`V4` & `W1`, không chặn dựng đường chuẩn):**
    ```bash
    python scripts/kiem_tra_thiet_ke_thi_nghiem.py --csv <csv_hieu_chuan.csv>
    ```
-   (Hoặc kiểm trực tiếp trên Tab 4 của Web App, tích chọn *"Yêu cầu đủ biến thiên chênh nhiệt D"* nếu định học mô hình có số hạng `D`).
+   (Hoặc kiểm trực tiếp trên Tab 4 của Web App, tích chọn *"Yêu cầu đủ biến thiên chênh nhiệt D"* nếu định học mô hình có số hạng `D`).  
+   - **Giới hạn phát hiện bản sao (`W1`):** Công cụ chỉ bắt các dấu hiệu định danh rõ ràng gồm dòng trùng hệt toàn bộ cột, trùng `sha256_anh`, hoặc trùng `ten_file` nhưng khác `delta_y_px` (*nghi ngờ gán nhãn lại*). Hệ thống chủ động **không** dùng heuristic đánh dấu "độ tản mát quá nhỏ bất thường" để tránh báo nhầm dương tính giả khi phép đo lặp thực sự rất ổn định.
 3. **Dựng đường chuẩn & xuất bộ tài liệu báo cáo KHKT:**
    ```bash
    python scripts/dung_duong_chuan.py --csv <csv_hieu_chuan.csv>

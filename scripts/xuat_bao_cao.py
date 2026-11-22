@@ -391,6 +391,20 @@ def xuat_bo_bao_cao(
     if chua_xac_nhan_hc or chua_xac_nhan_ba:
         md_lines.extend([f"> **CẢNH BÁO BẮT BUỘC: {BANNER_MO_PHONG}**", ""])
 
+    so_bs_tk = int(kq_thiet_ke.get("tom_tat", {}).get("so_dong_ban_sao", 0))
+    if bc.co_ban_sao_du_lieu or so_bs_tk > 0:
+        n_bs_in = max(int(bc.so_dong_ban_sao), so_bs_tk)
+        cb_bs_txt = next(
+            (c["noi_dung"] for c in bc.canh_bao_chi_tiet if c.get("ma") == "DU_LIEU_CO_BAN_SAO"),
+            f"Phát hiện {n_bs_in} dòng bản sao trong dữ liệu hiệu chuẩn.",
+        )
+        md_lines.extend([
+            "## Cảnh báo dữ liệu trùng lặp",
+            "",
+            f"> **NGHIÊM TRỌNG (`DU_LIEU_CO_BAN_SAO`):** {cb_bs_txt}",
+            "",
+        ])
+
     md_lines.extend([
         "## 1. Tóm tắt mô hình đường chuẩn từ dữ liệu đầu vào",
         "",
@@ -479,10 +493,6 @@ def xuat_bo_bao_cao(
         "tham_so_gia_dinh_csv": gia_dinh_csv,
         "kiem_tra_thiet_ke_csv": thiet_ke_csv,
         "kiem_tra_thiet_ke": kq_thiet_ke,
-        "tong_hop_bao_cao_md": md_path,
-        "bang_bland_altman_csv": bland_csv,
-        "ngan_sach_sai_so_csv": ngan_sach_csv,
-        "tham_so_gia_dinh_csv": gia_dinh_csv,
         "tong_hop_bao_cao_md": md_path,
     }
 

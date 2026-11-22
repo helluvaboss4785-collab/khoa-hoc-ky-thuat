@@ -329,6 +329,13 @@ DANH_MUC_GIA_DINH: tuple[MucGiaDinhKhaiBao, ...] = (
         viec_can_lam="Đảm bảo các điểm hiệu chuẩn phân bố cân bằng, tránh dồn quá nhiều mẫu vào một mức S.",
     ),
     MucGiaDinhKhaiBao(
+        nhom="thiet_ke_thi_nghiem",
+        khoa="ti_le_ban_sao_toi_da",
+        ten_hien_thi="Tỉ lệ dòng bản sao tối đa cho phép trong bộ hiệu chuẩn",
+        trang_thai="GIA_DINH",
+        viec_can_lam="Giữ 0.0 để mọi dòng trùng hệt, trùng sha256_anh hoặc nghi ngờ gán nhãn lại đều bị phát hiện và làm sạch.",
+    ),
+    MucGiaDinhKhaiBao(
         nhom="nhap_anh",
         khoa="thu_muc_mo_phong",
         ten_hien_thi="Danh sách thư mục ảnh mô phỏng bị chặn khi nhập --nguon THUC_TE",

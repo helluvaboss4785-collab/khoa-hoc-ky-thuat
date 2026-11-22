@@ -2174,6 +2174,9 @@ async def api_calibrate(request: Request) -> JSONResponse:
             "RMSE_test_ppt": bc.RMSE_test_ppt,
             "s_res_train_px": mh_tr.s_res_px,
             "canh_bao": bc.canh_bao,
+            "canh_bao_chi_tiet": bc.canh_bao_chi_tiet,
+            "co_ban_sao_du_lieu": bc.co_ban_sao_du_lieu,
+            "so_dong_ban_sao": bc.so_dong_ban_sao,
             "kiem_tra_thiet_ke": kiem_tra_tk,
             "sai_so_theo_muc": bc.sai_so_theo_muc.round(4).to_dict(orient="records"),
             "plot_data": {

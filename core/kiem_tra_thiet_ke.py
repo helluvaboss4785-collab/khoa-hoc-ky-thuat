@@ -11,6 +11,7 @@ import pandas as pd
 import yaml
 
 from core import calibration as cal
+from core.calibration import phat_hien_ban_sao_du_lieu
 
 CAU_HINH_THIET_KE_MAC_DINH: dict[str, Any] = {
     "so_muc_man_toi_thieu": 6,
@@ -23,6 +24,7 @@ CAU_HINH_THIET_KE_MAC_DINH: dict[str, Any] = {
     "so_muc_D_toi_thieu_neu_hoc_D": 2,
     "chenh_D_toi_thieu_C": 1.0,
     "ti_le_toi_da_moi_muc": 0.4,
+    "ti_le_ban_sao_toi_da": 0.0,
     "dai_man_muc_tieu_ppt": [0.0, 35.0],
 }
 
@@ -51,6 +53,7 @@ def tai_cau_hinh_thiet_ke(config_path: Path | str = cal.CONFIG_MAC_DINH) -> dict
         "so_muc_D_toi_thieu_neu_hoc_D": int(cfg["so_muc_D_toi_thieu_neu_hoc_D"]),
         "chenh_D_toi_thieu_C": float(cfg["chenh_D_toi_thieu_C"]),
         "ti_le_toi_da_moi_muc": float(cfg["ti_le_toi_da_moi_muc"]),
+        "ti_le_ban_sao_toi_da": float(cfg["ti_le_ban_sao_toi_da"]),
         "dai_man_muc_tieu_ppt": list(cfg["dai_man_muc_tieu_ppt"]),
     }
 
@@ -59,13 +62,9 @@ def _chuan_hoa_ten_cot_giu_nguyen_thieu(df: pd.DataFrame) -> pd.DataFrame:
     """Ánh xạ bí danh tên cột sang tên chuẩn nếu cột chuẩn chưa tồn tại (KHÔNG tự điền giá trị mặc định)."""
     out = df.copy()
     out.columns = [str(c).strip() for c in out.columns]
-    for cot_chuan, bi_danh in cal.BI_DANH_COT.items():
-        if cot_chuan in out.columns:
-            continue
-        for alias in bi_danh:
-            if alias in out.columns:
-                out = out.rename(columns={alias: cot_chuan})
-                break
+    for alias, cot_chuan in cal.BI_DANH_COT.items():
+        if alias in out.columns and cot_chuan not in out.columns:
+            out = out.rename(columns={alias: cot_chuan})
     return out
 
 
@@ -377,6 +376,13 @@ def kiem_tra_thiet_ke_thi_nghiem(
     s_vals = s_num.loc[valid_mask].to_numpy(dtype=float)
     t_vals = t_num.loc[valid_mask].to_numpy(dtype=float)
 
+    # W1: phát hiện bản sao và nghi ngờ gán nhãn lại; tách tập sau loại bản sao cho thống kê số lần lặp
+    ban_sao = phat_hien_ban_sao_du_lieu(df_raw)
+    mask_bs = ban_sao["mask_ban_sao"]
+    non_dup_valid_mask = valid_mask.to_numpy(dtype=bool) & (~mask_bs if len(mask_bs) == len(df_raw) else True)
+    s_vals_nodup = s_num.to_numpy(dtype=float)[non_dup_valid_mask]
+    t_vals_nodup = t_num.to_numpy(dtype=float)[non_dup_valid_mask]
+
     s_round = np.round(s_vals, 3)
     s_levels = sorted(set(float(x) for x in s_round))
     n_S = len(s_levels)
@@ -484,17 +490,38 @@ def kiem_tra_thiet_ke_thi_nghiem(
         )
     )
 
-    # 7. Số lần lặp mỗi ô (S × T_level)
+    # 7. Số lần lặp mỗi ô (S × T_level) — tính trên tập SAU KHI loại bản sao (W1), hiển thị cả trước và sau
     req_lap = cfg["so_lan_lap_toi_thieu_moi_o"]
     if len(s_round):
-        cell_counts: dict[tuple[float, int], int] = {}
+        cell_counts_raw: dict[tuple[float, int], int] = {}
         for sv, tc in zip(s_round, t_cids):
+            key = (float(sv), int(tc))
+            cell_counts_raw[key] = cell_counts_raw.get(key, 0) + 1
+        min_lap_truoc = min(cell_counts_raw.values())
+        mean_lap_truoc = float(np.mean(list(cell_counts_raw.values())))
+    else:
+        min_lap_truoc = 0
+        mean_lap_truoc = 0.0
+
+    if len(s_vals_nodup):
+        s_round_nd = np.round(s_vals_nodup, 3)
+        t_cids_nd, n_T_nd = _gom_cum_1d(t_vals_nodup, max_gap=0.8, max_span=1.5)
+        n_S_nd = len(set(float(x) for x in s_round_nd))
+        cell_counts: dict[tuple[float, int], int] = {}
+        for sv, tc in zip(s_round_nd, t_cids_nd):
             key = (float(sv), int(tc))
             cell_counts[key] = cell_counts.get(key, 0) + 1
         min_lap = min(cell_counts.values())
         mean_lap = float(np.mean(list(cell_counts.values())))
         n_cells_thieu = sum(1 for c in cell_counts.values() if c < req_lap)
-        lap_str = f"Tối thiểu {min_lap} lần/ô (TB {mean_lap:.1f}; {len(cell_counts)}/{max(1, n_S * n_T)} ô)"
+        if ban_sao["so_dong_ban_sao"] > 0:
+            lap_str = (
+                f"Tối thiểu {min_lap} lần/ô (TB {mean_lap:.1f} sau loại bản sao; "
+                f"trước loại: {min_lap_truoc} lần/ô, TB {mean_lap_truoc:.1f}; "
+                f"{len(cell_counts)}/{max(1, n_S_nd * n_T_nd)} ô)"
+            )
+        else:
+            lap_str = f"Tối thiểu {min_lap} lần/ô (TB {mean_lap:.1f}; {len(cell_counts)}/{max(1, n_S_nd * n_T_nd)} ô)"
     else:
         min_lap = 0
         n_cells_thieu = 0
@@ -506,8 +533,44 @@ def kiem_tra_thiet_ke_thi_nghiem(
             "Số lần lặp mỗi ô (S × mức T)",
             "dat" if ok_lap else "chua_dat",
             lap_str,
-            f">= {req_lap} ảnh/lần lặp mỗi ô",
-            "" if ok_lap else f"Có {n_cells_thieu} ô dưới {req_lap} lần lặp; chụp lặp lại tối thiểu {req_lap} ảnh mỗi ô để tính bất định lặp lại.",
+            f">= {req_lap} ảnh/lần lặp mỗi ô (sau loại bản sao)",
+            "" if ok_lap else f"Có {n_cells_thieu} ô dưới {req_lap} lần lặp thực (không tính bản sao); chụp lặp lại tối thiểu {req_lap} ảnh độc lập mỗi ô.",
+        )
+    )
+
+    # 8. Bản sao dữ liệu & nghi ngờ gán nhãn lại (W1)
+    req_ti_le_bs = cfg["ti_le_ban_sao_toi_da"]
+    so_bs = int(ban_sao["so_dong_ban_sao"])
+    co_gnl = bool(ban_sao["co_nghi_ngo_gan_nhan_lai"])
+    ti_le_bs = float(ban_sao["ti_le_ban_sao"])
+    ok_bs = (ti_le_bs <= req_ti_le_bs + 1e-9) and (not co_gnl)
+    dong_dau_str = ", ".join(str(x) for x in ban_sao["dong_nghi_ngo_dau_tien"])
+    if ok_bs:
+        bs_val_str = f"0 dòng bản sao ({ban_sao['so_dong_tong']} dòng độc lập)" if so_bs == 0 else f"{so_bs}/{ban_sao['so_dong_tong']} dòng ({ti_le_bs*100:.1f}%)"
+        bs_goi_y = ""
+    else:
+        ly_do_parts = []
+        if so_bs > 0:
+            ly_do_parts.append(f"{so_bs} dòng bản sao ({ti_le_bs*100:.1f}%)")
+        if co_gnl:
+            ly_do_parts.append(f"nghi ngờ gán nhãn lại ({ban_sao['so_dong_nghi_gan_nhan_lai']} dòng cùng sha256_anh/ten_file nhưng delta_y_px khác nhau)")
+        if dong_dau_str:
+            ly_do_parts.append(f"dòng đầu tiên: {dong_dau_str}")
+        bs_val_str = "; ".join(ly_do_parts)
+        chi_tiet_txt = "; ".join(ban_sao["chi_tiet_nghi_ngo"][:3])
+        bs_goi_y = (
+            f"Loại bỏ dòng trùng lặp hoặc tách ảnh đúng tên/sha256 trước khi hiệu chuẩn ({chi_tiet_txt})."
+            if chi_tiet_txt
+            else "Kiểm tra và loại các dòng trùng lặp khỏi bảng CSV."
+        )
+    muc_kiem.append(
+        _muc(
+            "ban_sao_du_lieu",
+            "Bản sao dữ liệu & nghi ngờ gán nhãn lại",
+            "dat" if ok_bs else "chua_dat",
+            bs_val_str,
+            f"Tỉ lệ bản sao <= {req_ti_le_bs*100:.1f}% và không nghi ngờ gán nhãn lại",
+            bs_goi_y,
         )
     )
 
@@ -553,6 +616,10 @@ def kiem_tra_thiet_ke_thi_nghiem(
             "so_muc_nhiet": n_T,
             "bien_do_nhiet_C": round(t_span, 3),
             "min_lap_moi_o": min_lap,
+            "min_lap_moi_o_truoc_loai_ban_sao": min_lap_truoc,
+            "so_dong_ban_sao": so_bs,
+            "so_dong_sau_loai_ban_sao": int(ban_sao["so_dong_sau_loai"]),
+            "co_nghi_ngo_gan_nhan_lai": co_gnl,
             "so_me_pha": n_me,
             "so_muc_D": n_D,
             "bien_do_D_C": round(d_span, 3),
