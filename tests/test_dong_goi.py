@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.dong_goi import kiem_tra_goi_zip, tao_file_zip_nop_bai
+from scripts.dong_goi import canh_bao_out_trong_du_an, kiem_tra_goi_zip, tao_file_zip_nop_bai
 
 
 def test_r10_dong_goi_va_kiem_tra_dat(tmp_path: Path):
@@ -115,3 +115,62 @@ def test_v7_dong_goi_bao_ton_data_json_va_mau_khi_co_nhung_loai_db(tmp_path: Pat
     assert "docs/QUY_TRINH_THU_DU_LIEU.md" in names_b
     assert "data/mau_cap_nhiet_ke.csv" in names_b
     assert not any(".db" in n for n in names_b)
+
+
+def test_w4_nop_bai_va_so_theo_doi(tmp_path: Path):
+    """W4: tồn tại dong_goi.bat, dong_goi.sh, NOP_BAI.md; giữ so_anh_da_xu_ly.csv và loại so_anh_mo_phong.csv."""
+    for fname in ("dong_goi.bat", "dong_goi.sh", "NOP_BAI.md"):
+        assert (ROOT / fname).exists(), f"Thiếu {fname} ở thư mục gốc"
+    nop_bai_txt = (ROOT / "NOP_BAI.md").read_text(encoding="utf-8")
+    assert "KHÔNG nén cả thư mục. Chạy dong_goi.bat" in nop_bai_txt
+
+    fake_proj = tmp_path / "proj_w4"
+    (fake_proj / "core").mkdir(parents=True)
+    (fake_proj / "core" / "m.py").write_text("x = 1\n", encoding="utf-8")
+    (fake_proj / "data").mkdir()
+    (fake_proj / "data" / "so_anh_da_xu_ly.csv").write_text("sha256,ten_file\nabc,img.jpg\n", encoding="utf-8")
+    (fake_proj / "outputs").mkdir()
+    (fake_proj / "outputs" / "so_anh_mo_phong.csv").write_text("sha256,ten_file\nxyz,sim.jpg\n", encoding="utf-8")
+
+    out_zip = tmp_path / "w4_ledger.zip"
+    tao_file_zip_nop_bai(out_zip, fake_proj)
+    dat, vp, _ = kiem_tra_goi_zip(out_zip, gioi_han_mb=20.0)
+    assert dat is True and vp == []
+    with zipfile.ZipFile(out_zip, "r") as zf:
+        names = set(zf.namelist())
+    assert "data/so_anh_da_xu_ly.csv" in names
+    assert "outputs/so_anh_mo_phong.csv" not in names
+
+
+def test_w4_canh_bao_out_trong_du_an_va_dong_goi_bat(tmp_path: Path):
+    """W4: cảnh báo khi --out nằm trong thư mục dự án và chạy thật dong_goi.bat trên Windows."""
+    assert canh_bao_out_trong_du_an(ROOT / "outputs" / "sample.zip", ROOT) is not None
+    assert canh_bao_out_trong_du_an(tmp_path / "outside.zip", ROOT) is None
+
+    inside_zip = ROOT / "outputs" / "_tmp_w4_inside_check.zip"
+    try:
+        proc_in = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "dong_goi.py"), "--out", str(inside_zip), "--kiem-tra"],
+            capture_output=True, text=True, encoding="utf-8",
+        )
+        assert proc_in.returncode == 0, proc_in.stdout + proc_in.stderr
+        assert "CẢNH BÁO" in proc_in.stdout
+        assert "KIỂM TRA ĐẠT" in proc_in.stdout
+        with zipfile.ZipFile(inside_zip, "r") as zf:
+            assert all(not n.endswith(".zip") for n in zf.namelist())
+    finally:
+        inside_zip.unlink(missing_ok=True)
+
+    if sys.platform.startswith("win"):
+        bat_zip = tmp_path / "from_bat.zip"
+        proc_bat = subprocess.run(
+            ["cmd", "/c", str(ROOT / "dong_goi.bat"), "--out", str(bat_zip)],
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        assert proc_bat.returncode == 0, proc_bat.stdout + proc_bat.stderr
+        assert "KIỂM TRA ĐẠT" in proc_bat.stdout
+        assert bat_zip.exists()
+        assert bat_zip.stat().st_size / (1024.0 * 1024.0) < 20.0

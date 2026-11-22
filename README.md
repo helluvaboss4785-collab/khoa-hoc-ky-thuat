@@ -45,6 +45,9 @@
 python -m pip install -r requirements.txt
 ```
 *(Ghi chú: `requirements.txt` đã ghim sẵn `httpx==0.28.1` để chạy trọn vẹn kiểm thử tích hợp ASGI qua Starlette `TestClient` bên cạnh bộ chạy web thực tế).*
+- **Ghi chú môi trường (khi chạy `pytest`):** Với `httpx==0.28.1` và Starlette hiện hành trong `.venv`, quá trình import `TestClient` phát ra đúng 2 cảnh báo deprecation không ảnh hưởng kết quả test hoặc lúc chạy web thực tế:
+  - ``StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.``
+  - `DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.`
 
 ### 2.2. Khởi chạy Web 2.5D & Giới hạn tải lên
 ```bash
@@ -53,10 +56,13 @@ python app/web_app.py
 Truy cập `http://127.0.0.1:8000`.
 - **Giới hạn đầu vào (`config.yaml` mục `gioi_han`):** Mặc định giới hạn mỗi ảnh tối đa `25 MB`, `60 MP` và chuỗi đa khung tối đa `60` ảnh (vượt ngưỡng trả HTTP `413` mã `ANH_QUA_LON`; file hỏng/không phải ảnh trả HTTP `400` mã `ANH_KHONG_HOP_LE`). Tên file tải lên được làm sạch, truy vấn SQLite dùng tham số hóa.
 - **Tab 5 (Mô phỏng quang học):** Cho phép chuyển đổi mô hình chiết suất **Tuyến tính** (mặc định, với `dn_dT_moi_do_C = -1.1e-4` tại `quang_hoc.nhiet_do_chuan_chiet_suat_C`) hoặc **Quan–Fry** ($\lambda$ cấu hình được) kèm cảnh báo tự động khi vượt dải hiệu lực Quan–Fry. *(Lưu ý: `quang_hoc.nhiet_do_chuan_chiet_suat_C` là nhiệt độ chuẩn của công thức chiết suất nước ngọt, khác với cột CSV `nhiet_do_tham_chieu_C` vốn là nhiệt độ ngăn nước cất tham chiếu).*
-- **Đóng gói mã nguồn sạch để nộp bài (R10):** Chỉ đóng gói và nộp bài bằng lệnh dưới đây (tự động loại trừ `.venv`, `.git`, `__pycache__`, `.pytest_cache`, `*.db*`, `*.zip` và xác nhận dung lượng `< 20 MB`; **tuyệt đối không** nén thủ công cả thư mục dự án):
-  ```bash
-  python scripts/dong_goi.py --kiem-tra
-  ```
+
+> **Đóng gói nộp bài (`R10`, `W4`) — BẮT BUỘC ĐỌC [`NOP_BAI.md`](NOP_BAI.md):**  
+> **KHÔNG nén cả thư mục. Chạy dong_goi.bat** (Windows) hoặc `./dong_goi.sh` (macOS/Linux) hoặc:
+> ```bash
+> python scripts/dong_goi.py --kiem-tra
+> ```
+> Công cụ tự động loại trừ `.venv`, `.git`, `__pycache__`, `.pytest_cache`, `*.db*`, `*.zip`, `outputs/so_anh_mo_phong.csv`, giữ lại `data/xac_nhan_quan_fry.json`, `data/hieu_chuan_nhiet_ke.json`, `data/so_anh_da_xu_ly.csv` (khi có) và kiểm dung lượng `< 20 MB`.
 
 ---
 

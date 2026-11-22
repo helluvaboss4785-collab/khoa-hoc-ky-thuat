@@ -95,6 +95,21 @@ def kiem_tra_goi_zip(
     return len(vi_pham) == 0, vi_pham, size_mb
 
 
+def canh_bao_out_trong_du_an(out_path: Path, root: Path = ROOT) -> str | None:
+    """Trả về thông báo cảnh báo nếu `--out` nằm bên trong thư mục dự án `root`."""
+    try:
+        out_res = out_path.resolve()
+        root_res = root.resolve()
+        if out_res.is_relative_to(root_res):
+            return (
+                f"[CẢNH BÁO] Đường dẫn --out ({out_res}) nằm bên trong thư mục dự án ({root_res}); "
+                "nên lưu file .zip ra thư mục cha (bỏ --out) để tránh nhầm lẫn khi nộp bài."
+            )
+    except Exception:
+        return None
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
@@ -118,6 +133,10 @@ def main(argv: list[str] | None = None) -> int:
     else:
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         out_path = ROOT.parent / f"khkt_do_man_vi_sai_{stamp}.zip"
+
+    msg_canh_bao = canh_bao_out_trong_du_an(out_path, ROOT)
+    if msg_canh_bao:
+        print(msg_canh_bao)
 
     out, dem = tao_file_zip_nop_bai(out_path, ROOT)
     size_mb = out.stat().st_size / (1024.0 * 1024.0)
