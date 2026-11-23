@@ -47,6 +47,7 @@ from core import ong_kinh
 from core import optics as op
 from core import thang
 from core import thresholds as th
+from core import thu_du_lieu
 from core import trang_thai_cau_hinh
 from core.measure import (
     AnhKhongHopLeError,
@@ -58,6 +59,11 @@ from core.measure import (
     do_delta_y_tu_anh,
     giai_ma_anh_tu_bytes,
     phan_tich_can_bang_nhiet,
+)
+from scripts.xu_ly_thu_muc_anh import (
+    LoiAnhMoPhongGanNhanThucTeError,
+    LoiThieuExifAnhThucTeError,
+    LoiXungDotNhanAnhError,
 )
 from sim.synth import (
     ThamSoMoPhong,
@@ -2630,6 +2636,197 @@ async def api_kiem_tra_thiet_ke(request: Request) -> JSONResponse:
         return _json_err(f"Lỗi kiểm tra thiết kế thí nghiệm: {exc}")
 
 
+async def api_thu_du_lieu_trang_thai(request: Request) -> JSONResponse:
+    """Trả danh sách phiên, dữ liệu đã thu và tiến độ thiết kế thí nghiệm V4 (X1)."""
+    try:
+        muon_hoc_D = _as_bool(request.query_params.get("muon_hoc_D"), False)
+        don_vi_y = str(request.query_params.get("don_vi_y") or "px").strip().lower()
+        phien_list = thu_du_lieu.lay_danh_sach_phien()
+        df_raw = thu_du_lieu._doc_bang_thu_du_lieu_raw()
+        tien_do = thu_du_lieu.tinh_tien_do_thu_du_lieu(
+            config_path=CONFIG_PATH,
+            muon_hoc_D=muon_hoc_D,
+            don_vi_y=don_vi_y,
+        )
+        rows = df_raw.astype(object).fillna("").to_dict(orient="records")
+        return _json_ok({
+            "phien_list": phien_list,
+            "rows": rows,
+            "tien_do": tien_do,
+            "hieu_chuan_nhiet_ke": load_thermometer_cross_cal()[1],
+        })
+    except Exception as exc:
+        return _json_err(f"Lỗi đọc trạng thái thu dữ liệu: {exc}")
+
+
+async def api_thu_du_lieu_phien(request: Request) -> JSONResponse:
+    """Tạo hoặc cập nhật phiên thu dữ liệu hiệu chuẩn (X1)."""
+    try:
+        body = await request.json()
+        px_raw = body.get("px_per_mm")
+        px_val = float(px_raw) if (px_raw is not None and str(px_raw).strip() != "") else None
+        kc_raw = body.get("khoang_cach_thang_mm")
+        kc_val = float(kc_raw) if (kc_raw is not None and str(kc_raw).strip() != "") else None
+        rec = thu_du_lieu.tao_phien_thu_du_lieu(
+            ma_me_pha=str(body.get("ma_me_pha") or ""),
+            id_thiet_bi=str(body.get("id_thiet_bi") or ""),
+            id_dien_thoai=str(body.get("id_dien_thoai") or ""),
+            nguoi_do=str(body.get("nguoi_do") or ""),
+            px_per_mm=px_val,
+            diem_thang_1=body.get("diem_thang_1"),
+            diem_thang_2=body.get("diem_thang_2"),
+            khoang_cach_thang_mm=kc_val,
+            nguon_du_lieu=str(body.get("nguon_du_lieu") or "THUC_TE"),
+            phien_id=body.get("phien_id"),
+        )
+        return _json_ok({"ok": True, "phien": rec, "phien_list": thu_du_lieu.lay_danh_sach_phien()})
+    except ValueError as exc:
+        return _json_err_typed(400, "DAU_VAO_KHONG_HOP_LE", str(exc), exc)
+    except Exception as exc:
+        return _json_err(f"Không thể tạo phiên thu dữ liệu: {exc}")
+
+
+async def api_thu_du_lieu_ghi(request: Request) -> JSONResponse:
+    """Ghi một lần đo vào bộ dữ liệu hiệu chuẩn có hướng dẫn (X1)."""
+    raw_bytes: bytes | None = None
+    ten_file = "anh_do.png"
+    body: dict[str, Any] = {}
+    content_type = str(request.headers.get("content-type", "")).lower()
+    if "multipart/form-data" in content_type:
+        try:
+            form = await request.form()
+            up_file = form.get("file") or form.get("image")
+            if up_file is not None and hasattr(up_file, "read"):
+                raw_bytes = await up_file.read()
+                ten_file = getattr(up_file, "filename", None) or "upload.png"
+            for k_f, v_f in form.items():
+                if k_f not in ("file", "image") and not hasattr(v_f, "read"):
+                    body[k_f] = v_f
+        except Exception:
+            return _json_err("Dữ liệu multipart gửi lên không hợp lệ.", 400)
+    else:
+        try:
+            body = await request.json()
+        except Exception:
+            return _json_err("Dữ liệu JSON gửi lên không hợp lệ.", 400)
+        ten_file = str(body.get("ten_file") or body.get("file_name") or "anh_do.png")
+        b64 = body.get("image_base64")
+        if isinstance(b64, str) and b64.strip():
+            raw_b64 = b64.split(",", 1)[1] if "," in b64 else b64
+            try:
+                raw_bytes = base64.b64decode(raw_b64.strip(), validate=False)
+            except Exception as exc:
+                return _json_err_typed(400, "ANH_KHONG_HOP_LE", "Không giải mã được dữ liệu ảnh base64.", exc)
+
+    if not raw_bytes:
+        return _json_err_typed(400, "ANH_KHONG_HOP_LE", "Chưa cung cấp ảnh để ghi nhận lần đo.")
+
+    lim = load_limits_config()
+    max_bytes = max(int(round(float(lim.get("dung_luong_anh_MB", 25.0)) * 1024 * 1024)), 1)
+    if len(raw_bytes) > max_bytes:
+        return _json_err_typed(413, "ANH_QUA_LON", f"Dung lượng ảnh vượt quá giới hạn {lim.get('dung_luong_anh_MB', 25.0):g} MB.")
+
+    try:
+        phien_arg: Any = body.get("phien_id") or {
+            "phien_id": body.get("phien_id") or "",
+            "ma_me_pha": body.get("ma_me_pha") or "",
+            "id_thiet_bi": body.get("id_thiet_bi") or "",
+            "id_dien_thoai": body.get("id_dien_thoai") or "",
+            "nguoi_do": body.get("nguoi_do") or "",
+            "px_per_mm": body.get("px_per_mm"),
+            "nguon_du_lieu": body.get("nguon_du_lieu") or "THUC_TE",
+        }
+        if isinstance(phien_arg, dict) and not phien_arg.get("phien_id"):
+            phien_arg = thu_du_lieu.tao_phien_thu_du_lieu(
+                ma_me_pha=str(body.get("ma_me_pha") or ""),
+                id_thiet_bi=str(body.get("id_thiet_bi") or ""),
+                id_dien_thoai=str(body.get("id_dien_thoai") or ""),
+                nguoi_do=str(body.get("nguoi_do") or ""),
+                px_per_mm=_parse_opt_float(body.get("px_per_mm")),
+                nguon_du_lieu=str(body.get("nguon_du_lieu") or "THUC_TE"),
+            )
+
+        t_mau = _parse_opt_float(body.get("nhiet_do_C"))
+        t_tc = _parse_opt_float(body.get("nhiet_do_tham_chieu_C"))
+        s_val = _parse_opt_float(body.get("do_man_chuan_ppt"))
+        m_muoi = _parse_opt_float(body.get("khoi_luong_muoi_g"))
+        m_nuoc = _parse_opt_float(body.get("khoi_luong_nuoc_g"))
+        px_ov = _parse_opt_float(body.get("px_per_mm"))
+
+        roi_tc_t = None
+        roi_mau_t = None
+        if isinstance(body.get("roi_tc"), (list, tuple)) and len(body["roi_tc"]) == 4:
+            roi_tc_t = tuple(int(v) for v in body["roi_tc"])
+        if isinstance(body.get("roi_mau"), (list, tuple)) and len(body["roi_mau"]) == 4:
+            roi_mau_t = tuple(int(v) for v in body["roi_mau"])
+
+        kq = thu_du_lieu.ghi_lan_do_thu_du_lieu(
+            raw_bytes=raw_bytes,
+            ten_file=ten_file,
+            phien=phien_arg,
+            nhiet_do_C=t_mau,
+            nhiet_do_tham_chieu_C=t_tc,
+            do_man_chuan_ppt=s_val,
+            khoi_luong_muoi_g=m_muoi,
+            khoi_luong_nuoc_g=m_nuoc,
+            khoa_ae_af=_as_bool(body.get("khoa_ae_af"), False),
+            khai_bao_nguon_anh=str(body.get("khai_bao_nguon_anh") or ""),
+            nguoi_khai_bao=str(body.get("nguoi_khai_bao") or ""),
+            ghi_chu=str(body.get("ghi_chu") or ""),
+            px_per_mm_override=px_ov,
+            roi_tc=roi_tc_t,
+            roi_mau=roi_mau_t,
+            config_path=CONFIG_PATH,
+            hieu_chuan_nhiet_ke_path=FILE_HIEU_CHUAN_NHIET_KE,
+        )
+        tien_do = thu_du_lieu.tinh_tien_do_thu_du_lieu(config_path=CONFIG_PATH)
+        return _json_ok({"ok": True, **kq, "tien_do": tien_do})
+    except AnhKhongHoTroDinhDangError as exc:
+        return _json_err_typed(415, "ANH_KHONG_HO_TRO_DINH_DANG", str(exc), exc)
+    except AnhKhongHopLeError as exc:
+        return _json_err_typed(400, "ANH_KHONG_HOP_LE", str(exc), exc)
+    except LoiAnhMoPhongGanNhanThucTeError as exc:
+        return _json_err_typed(422, "ANH_MO_PHONG_BI_CHAN", str(exc), exc)
+    except LoiXungDotNhanAnhError as exc:
+        return _json_err_typed(422, "XUNG_DOT_NGUON_ANH", str(exc), exc)
+    except LoiThieuExifAnhThucTeError as exc:
+        return _json_err_typed(422, "THIEU_EXIF_CHUA_KHAI_BAO", str(exc), exc)
+    except thu_du_lieu.LoiTrungAnhThuDuLieuError as exc:
+        return _json_err_typed(409, "ANH_TRUNG_SHA256", str(exc), exc)
+    except KhongTimThayVachError as exc:
+        return _json_err_typed(422, "KHONG_TIM_THAY_VACH", str(exc), exc)
+    except ValueError as exc:
+        return _json_err_typed(400, "DAU_VAO_KHONG_HOP_LE", str(exc), exc)
+
+
+async def api_thu_du_lieu_loai_bo(request: Request) -> JSONResponse:
+    """Đánh dấu loại bỏ một lần đo (không xóa dòng) kèm lí do bắt buộc (X1)."""
+    try:
+        body = await request.json()
+        row = thu_du_lieu.danh_dau_loai_bo_lan_do(
+            ly_do_loai=str(body.get("ly_do_loai") or ""),
+            sha256_anh=body.get("sha256_anh"),
+            row_index=body.get("row_index"),
+        )
+        tien_do = thu_du_lieu.tinh_tien_do_thu_du_lieu(config_path=CONFIG_PATH)
+        return _json_ok({"ok": True, "row": row, "tien_do": tien_do})
+    except ValueError as exc:
+        return _json_err_typed(400, "DAU_VAO_KHONG_HOP_LE", str(exc), exc)
+    except Exception as exc:
+        return _json_err(f"Lỗi khi đánh dấu loại bỏ: {exc}")
+
+
+async def api_thu_du_lieu_csv(request: Request) -> Response:
+    """Xuất CSV thu dữ liệu hiệu chuẩn (nạp thẳng được bằng doc_csv_hieu_chuan)."""
+    df = thu_du_lieu._doc_bang_thu_du_lieu_raw()
+    csv_bytes = df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+    return Response(
+        content=csv_bytes,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="du_lieu_hieu_chuan_thuc.csv"'},
+    )
+
+
 class CacheHeaderMiddleware:
     """ASGI middleware nhẹ thêm Cache-Control chuẩn cho tài nguyên tĩnh và API."""
 
@@ -2690,6 +2887,11 @@ routes = [
     Route("/api/config/optics", endpoint=api_config_optics, methods=["POST"]),
     Route("/api/config/species", endpoint=api_config_species, methods=["POST"]),
     Route("/api/trang-thai-cau-hinh", endpoint=api_trang_thai_cau_hinh, methods=["GET"]),
+    Route("/api/thu-du-lieu/trang-thai", endpoint=api_thu_du_lieu_trang_thai, methods=["GET"]),
+    Route("/api/thu-du-lieu/phien", endpoint=api_thu_du_lieu_phien, methods=["POST"]),
+    Route("/api/thu-du-lieu/ghi", endpoint=api_thu_du_lieu_ghi, methods=["POST"]),
+    Route("/api/thu-du-lieu/loai-bo", endpoint=api_thu_du_lieu_loai_bo, methods=["POST"]),
+    Route("/api/thu-du-lieu/csv", endpoint=api_thu_du_lieu_csv, methods=["GET"]),
     Mount("/static", app=StaticFiles(directory=str(STATIC_DIR)), name="static"),
 ]
 

@@ -49,6 +49,7 @@ function esc(val) {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
+const escapeHtml = esc;
 
 function fmt(val, digits = 2, fallback = "--") {
   if (val === null || val === undefined || Number.isNaN(Number(val))) return fallback;
@@ -2170,6 +2171,148 @@ function drawBaCharts(data) {
   });
 }
 
+function renderGuidedCollectionState(data) {
+  if (!data) return;
+  const sel = $("#t7-session-select");
+  const sessions = Array.isArray(data.phien_list) ? data.phien_list : [];
+  if (sel) {
+    const prev = sel.value;
+    sel.innerHTML = `<option value="">-- Tạo phiên mới từ ô bên dưới --</option>` + sessions.map((s) => (
+      `<option value="${esc(s.phien_id)}">${esc(s.phien_id)} (${esc(s.ma_me_pha)} • ${esc(s.id_dien_thoai)})</option>`
+    )).join("");
+    if (prev && sessions.some((s) => s.phien_id === prev)) sel.value = prev;
+    else if (sessions.length) sel.value = sessions[sessions.length - 1].phien_id;
+  }
+
+  const td = data.tien_do || {};
+  const goiY = td.goi_y_tiep_theo;
+  const sugBox = $("#t7-suggestion-box");
+  if (sugBox) {
+    const gyTxt = goiY ? goiY.thong_diep : "Đã đủ số lần lặp mục tiêu trên toàn bộ lưới S × T.";
+    const loaiTxt = td.so_dong_da_loai > 0 ? ` | Đã loại minh bạch: ${td.so_dong_da_loai} lần đo` : "";
+    sugBox.innerHTML = `<b>Tổng: ${td.tong_dong || 0} dòng</b> (${td.so_dong_doc_lap || 0} độc lập${loaiTxt}). ${esc(gyTxt)}`;
+  }
+
+  const progSum = $("#t7-progress-summary");
+  if (progSum && td.kiem_tra_thiet_ke) {
+    const tk = td.kiem_tra_thiet_ke;
+    const tt = tk.tom_tat || {};
+    progSum.textContent = `Số mẻ pha: ${tt.so_me_pha || 0} | Mức S: ${tt.so_muc_man || 0} | Mức T: ${tt.so_muc_nhiet || 0} | Ô còn thiếu: ${(td.o_con_thieu || []).length}`;
+  }
+
+  const progBody = $("#t7-progress-body");
+  if (progBody) {
+    progBody.innerHTML = (td.luoi_o || []).map((o) => `
+      <tr>
+        <td><b>${fmt(o.S_ppt, 1)}</b></td>
+        <td>${fmt(o.T_C, 1)}</td>
+        <td>${o.so_lan_lap}</td>
+        <td>${o.muc_tieu_lap}</td>
+        <td>${o.con_thieu}</td>
+        <td><span class="status-pill ${o.dat ? "pill-ok" : "pill-warn"}">${o.dat ? "ĐỦ" : "THIẾU"}</span></td>
+      </tr>
+    `).join("");
+  }
+
+  const rowsBody = $("#t7-rows-body");
+  if (rowsBody) {
+    const rows = Array.isArray(data.rows) ? data.rows : [];
+    rowsBody.innerHTML = rows.map((r, idx) => {
+      const daLoai = String(r.da_loai || "").toLowerCase() === "true";
+      const stHtml = daLoai
+        ? `<span class="status-pill pill-bad">ĐÃ LOẠI</span><br><small>${esc(r.ly_do_loai)}</small>`
+        : `<span class="status-pill pill-ok">HỢP LỆ</span>`;
+      const btnHtml = daLoai
+        ? "—"
+        : `<button type="button" class="btn-25d btn-sm t7-btn-reject" data-sha="${esc(r.sha256_anh)}" data-idx="${idx}">Đánh dấu loại bỏ</button>`;
+      return `
+        <tr style="${daLoai ? "opacity:0.62;" : ""}">
+          <td>${idx + 1}</td>
+          <td>${esc(r.phien_id)}<br><small>${esc(r.ma_me_pha)}</small></td>
+          <td><b>${fmt(r.do_man_chuan_ppt, 2)}</b></td>
+          <td>${fmt(r.nhiet_do_C, 2)} / ${fmt(r.nhiet_do_tham_chieu_C, 2)}</td>
+          <td>${fmt(r.delta_y_px, 3)}</td>
+          <td>${esc(r.nguon_du_lieu)}<br><small>EXIF: ${esc(r.exif_co)}</small></td>
+          <td>${stHtml}</td>
+          <td>${btnHtml}</td>
+        </tr>
+      `;
+    }).join("");
+  }
+}
+
+async function loadGuidedCollectionState() {
+  try {
+    const data = await apiGet("/api/thu-du-lieu/trang-thai", "t7_state");
+    renderGuidedCollectionState(data);
+  } catch (err) {
+    if (!isAbortError(err)) toast(`Lỗi tải trạng thái thu dữ liệu: ${err.message}`);
+  }
+}
+
+async function createGuidedSession() {
+  try {
+    const data = await apiPost("/api/thu-du-lieu/phien", {
+      ma_me_pha: $("#t7-ma-me")?.value || "",
+      id_thiet_bi: $("#t7-id-tb")?.value || "",
+      id_dien_thoai: $("#t7-id-dt")?.value || "",
+      nguoi_do: $("#t7-nguoi-do")?.value || "",
+      px_per_mm: $("#t7-px-per-mm")?.value || null,
+      nguon_du_lieu: "THUC_TE",
+    });
+    toast(`Đã lưu phiên ${data.phien.phien_id}`);
+    await loadGuidedCollectionState();
+    if ($("#t7-session-select")) $("#t7-session-select").value = data.phien.phien_id;
+  } catch (err) {
+    toast(`Lỗi tạo phiên: ${err.message}`);
+  }
+}
+
+async function recordGuidedMeasurement() {
+  const fileEl = $("#t7-file-img");
+  const file = fileEl?.files?.[0];
+  if (!file) {
+    toast("Vui lòng chọn ảnh vạch laser trước khi ghi lần đo.");
+    return;
+  }
+  const fd = new FormData();
+  fd.append("file", file);
+  const pid = $("#t7-session-select")?.value || "";
+  if (pid) fd.append("phien_id", pid);
+  else {
+    fd.append("ma_me_pha", $("#t7-ma-me")?.value || "");
+    fd.append("id_thiet_bi", $("#t7-id-tb")?.value || "");
+    fd.append("id_dien_thoai", $("#t7-id-dt")?.value || "");
+    fd.append("nguoi_do", $("#t7-nguoi-do")?.value || "");
+    if ($("#t7-px-per-mm")?.value) fd.append("px_per_mm", $("#t7-px-per-mm").value);
+    fd.append("nguon_du_lieu", "THUC_TE");
+  }
+  if ($("#t7-s-ppt")?.value !== "") fd.append("do_man_chuan_ppt", $("#t7-s-ppt").value);
+  if ($("#t7-m-muoi")?.value !== "") fd.append("khoi_luong_muoi_g", $("#t7-m-muoi").value);
+  if ($("#t7-m-nuoc")?.value !== "") fd.append("khoi_luong_nuoc_g", $("#t7-m-nuoc").value);
+  fd.append("nhiet_do_C", $("#t7-t-mau")?.value || "");
+  fd.append("nhiet_do_tham_chieu_C", $("#t7-t-tc")?.value || "");
+  fd.append("khoa_ae_af", $("#t7-khoa-ae")?.checked ? "true" : "false");
+  fd.append("khai_bao_nguon_anh", $("#t7-kb-nguon")?.value || "");
+  fd.append("nguoi_khai_bao", $("#t7-kb-nguoi")?.value || "");
+  fd.append("ghi_chu", $("#t7-ghi-chu")?.value || "");
+
+  try {
+    const res = await fetch("/api/thu-du-lieu/ghi", {
+      method: "POST",
+      headers: { "X-Ho-So": encodeURIComponent(STATE.hoSo || "mac_dinh") },
+      body: fd,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    toast(`Đã ghi lần đo: Δy = ${fmt(data.delta_y_px, 3)} px`);
+    if (fileEl) fileEl.value = "";
+    await loadGuidedCollectionState();
+  } catch (err) {
+    toast(`Từ chối ghi lần đo: ${err.message}`, 4500);
+  }
+}
+
 /* ==========================================================================
    Điều Khiển Chuyển Tab, Camera & Sự Kiện Giao Diện
    ========================================================================== */
@@ -2193,6 +2336,9 @@ function switchTab(tabId) {
     if (tabId === "tab-6") {
       if (STATE.baLast) drawBaCharts(STATE.baLast);
       else runBlandAltman("sample");
+    }
+    if (tabId === "tab-7") {
+      loadGuidedCollectionState();
     }
   });
 }
@@ -2994,6 +3140,44 @@ function bindEvents() {
     const reader = new FileReader();
     reader.onload = () => runBlandAltman("csv", String(reader.result || ""));
     reader.readAsText(f, "utf-8");
+  });
+
+  // Tab 7: Thu dữ liệu có hướng dẫn (X1)
+  $("#t7-btn-create-session")?.addEventListener("click", createGuidedSession);
+  $("#t7-btn-record")?.addEventListener("click", recordGuidedMeasurement);
+  $("#t7-btn-send-tab4")?.addEventListener("click", async () => {
+    try {
+      const res = await fetch("/api/thu-du-lieu/csv");
+      if (!res.ok) throw new Error("Không tải được CSV thu thập.");
+      const csvTxt = await res.text();
+      STATE.calibMode = "csv";
+      STATE.calibFileName = "du_lieu_hieu_chuan_thuc.csv";
+      STATE.calibCsvText = csvTxt;
+      switchTab("tab-4");
+      runCalibrate(false);
+    } catch (err) {
+      toast(err.message);
+    }
+  });
+  $("#t7-rows-body")?.addEventListener("click", async (ev) => {
+    const btn = ev.target.closest(".t7-btn-reject");
+    if (!btn) return;
+    const lyDo = window.prompt("Nhập lí do loại bỏ lần đo này (bắt buộc, dòng vẫn giữ lại minh bạch):");
+    if (!lyDo || !lyDo.trim()) {
+      toast("Phải nhập lí do loại bỏ.");
+      return;
+    }
+    try {
+      await apiPost("/api/thu-du-lieu/loai-bo", {
+        sha256_anh: btn.dataset.sha,
+        row_index: Number(btn.dataset.idx),
+        ly_do_loai: lyDo.trim(),
+      });
+      toast("Đã đánh dấu loại bỏ (dòng vẫn giữ nguyên trong CSV).");
+      await loadGuidedCollectionState();
+    } catch (err) {
+      toast(`Lỗi đánh dấu loại bỏ: ${err.message}`);
+    }
   });
 
   window.addEventListener("resize", () => {

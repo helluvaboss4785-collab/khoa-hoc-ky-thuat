@@ -119,6 +119,7 @@
         <button type="button" class="tab-btn-25d pro-only" data-tab="tab-4">Hiệu Chuẩn</button>
         <button type="button" class="tab-btn-25d pro-only" data-tab="tab-5">Mô Phỏng</button>
         <button type="button" class="tab-btn-25d pro-only" data-tab="tab-6">Đối Chứng</button>
+        <button type="button" class="tab-btn-25d pro-only" data-tab="tab-7">Thu Dữ Liệu</button>
       </nav>
 
       <!-- ================================================================
@@ -1135,6 +1136,152 @@
         <div id="t6-conclusion-box" class="banner-25d ok">
           <div class="banner-icon">Σ</div>
           <div>Kết luận thống kê Bland–Altman sẽ hiển thị tại đây.</div>
+        </div>
+      </section>
+
+      <!-- ================================================================
+           TAB 7: THU DỮ LIỆU HIỆU CHUẨN CÓ HƯỚNG DẪN (X1)
+           ================================================================ -->
+      <section id="tab-7" class="tab-pane">
+        <div class="grid-12" style="margin-bottom:14px;">
+          <div class="col-4">
+            <div class="chassis-panel-25d">
+              <div class="step-badge-title"><span class="step-num-25d">1</span> Phiên thu dữ liệu thực nghiệm</div>
+              <div class="control-group">
+                <div class="control-label"><span>Chọn phiên có sẵn</span></div>
+                <select id="t7-session-select" class="select-25d"></select>
+              </div>
+              <div class="control-group">
+                <div class="control-label"><span>Mã mẻ pha (ma_me_pha)</span></div>
+                <input type="text" id="t7-ma-me" class="input-25d" placeholder="vd: ME_01" />
+              </div>
+              <div class="control-row-2">
+                <div class="control-group">
+                  <div class="control-label"><span>Mã thiết bị</span></div>
+                  <input type="text" id="t7-id-tb" class="input-25d" placeholder="vd: TB_01" />
+                </div>
+                <div class="control-group">
+                  <div class="control-label"><span>Mã điện thoại</span></div>
+                  <input type="text" id="t7-id-dt" class="input-25d" placeholder="vd: DT_01" />
+                </div>
+              </div>
+              <div class="control-row-2">
+                <div class="control-group">
+                  <div class="control-label"><span>Người đo</span></div>
+                  <input type="text" id="t7-nguoi-do" class="input-25d" placeholder="Họ tên học sinh" />
+                </div>
+                <div class="control-group">
+                  <div class="control-label"><span>Thang px/mm (tùy chọn)</span></div>
+                  <input type="number" id="t7-px-per-mm" class="input-25d" step="0.01" placeholder="vd: 20.0" />
+                </div>
+              </div>
+              <button type="button" id="t7-btn-create-session" class="btn-25d btn-teal-25d btn-full">
+                + Tạo / Lưu phiên thu dữ liệu
+              </button>
+            </div>
+          </div>
+
+          <div class="col-8">
+            <div class="chassis-panel-25d">
+              <div class="step-badge-title"><span class="step-num-25d">2</span> Ghi nhận một lần đo (Bắt buộc đủ 2 nhiệt độ)</div>
+              <div class="control-row-2">
+                <div class="control-group">
+                  <div class="control-label"><span>Độ mặn chuẩn trực tiếp (‰)</span></div>
+                  <input type="number" id="t7-s-ppt" class="input-25d" step="0.1" min="0" placeholder="Để trống nếu tính từ khối lượng" />
+                </div>
+                <div class="control-group">
+                  <div class="control-label"><span>Hoặc tính từ khối lượng: Muối (g) / Nước (g)</span></div>
+                  <div style="display:flex; gap:6px;">
+                    <input type="number" id="t7-m-muoi" class="input-25d" step="0.01" min="0" placeholder="Muối (g)" />
+                    <input type="number" id="t7-m-nuoc" class="input-25d" step="0.1" min="0.1" placeholder="Nước (g)" />
+                  </div>
+                </div>
+              </div>
+              <div class="control-row-2">
+                <div class="control-group">
+                  <div class="control-label"><span>Nhiệt độ mẫu T_mẫu (°C) *</span></div>
+                  <input type="number" id="t7-t-mau" class="input-25d" step="0.05" placeholder="vd: 25.0" />
+                </div>
+                <div class="control-group">
+                  <div class="control-label"><span>Nhiệt độ ngăn tham chiếu T_tc (°C) *</span></div>
+                  <input type="number" id="t7-t-tc" class="input-25d" step="0.05" placeholder="Bắt buộc nhập" />
+                </div>
+              </div>
+              <div class="control-row-2">
+                <div class="control-group">
+                  <div class="control-label"><span>Chọn ảnh vạch laser gốc (JPEG/PNG) *</span></div>
+                  <input type="file" id="t7-file-img" accept="image/*" class="input-25d" />
+                </div>
+                <div class="control-group">
+                  <div class="control-label"><span>Ghi chú / Khóa AE-AF</span></div>
+                  <div style="display:flex; gap:8px; align-items:center;">
+                    <input type="text" id="t7-ghi-chu" class="input-25d" placeholder="Ghi chú thêm" />
+                    <label style="white-space:nowrap; font-size:0.8rem;"><input type="checkbox" id="t7-khoa-ae" /> Khóa AE/AF</label>
+                  </div>
+                </div>
+              </div>
+              <div class="control-row-2">
+                <div class="control-group">
+                  <div class="control-label"><span>Khai báo nguồn (nếu ảnh thiếu EXIF)</span></div>
+                  <input type="text" id="t7-kb-nguon" class="input-25d" placeholder="vd: Điện thoại trường học, JPEG xuất qua cáp" />
+                </div>
+                <div class="control-group">
+                  <div class="control-label"><span>Người chịu trách nhiệm khai báo</span></div>
+                  <input type="text" id="t7-kb-nguoi" class="input-25d" placeholder="Họ tên người xác nhận" />
+                </div>
+              </div>
+              <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+                <button type="button" id="t7-btn-record" class="btn-25d btn-primary-25d">Đo Δy &amp; Ghi lần đo</button>
+                <a href="/api/thu-du-lieu/csv" class="btn-25d btn-sm">Tải CSV thu thập</a>
+                <button type="button" id="t7-btn-send-tab4" class="btn-25d btn-navy-25d btn-sm">Chuyển sang Tab Hiệu Chuẩn</button>
+              </div>
+              <div id="t7-status-banner" class="banner-25d info" style="margin-top:10px;">
+                <div class="banner-icon">i</div>
+                <div id="t7-suggestion-box">Tạo hoặc chọn phiên thu dữ liệu để bắt đầu ghi nhận ảnh thật.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="chassis-panel-25d" style="margin-bottom:14px;">
+          <div class="step-badge-title"><span class="step-num-25d">3</span> Tiến độ theo thiết kế thí nghiệm (V4) &amp; Các ô còn thiếu</div>
+          <div id="t7-progress-summary" style="font-size:0.84rem; color:#334155; margin-bottom:8px;"></div>
+          <div class="table-scroll-25d" style="max-height:220px;">
+            <table class="data-table-25d">
+              <thead>
+                <tr>
+                  <th>S chuẩn (‰)</th>
+                  <th>Mức T (°C)</th>
+                  <th>Số lần lặp độc lập</th>
+                  <th>Mục tiêu</th>
+                  <th>Còn thiếu</th>
+                  <th>Trạng thái</th>
+                </tr>
+              </thead>
+              <tbody id="t7-progress-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="chassis-panel-25d">
+          <div class="step-badge-title"><span class="step-num-25d">4</span> Danh sách các lần đo đã ghi (Không xóa dòng — Đánh dấu loại bỏ minh bạch)</div>
+          <div class="table-scroll-25d" style="max-height:280px;">
+            <table class="data-table-25d">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Phiên / Mẻ</th>
+                  <th>S (‰)</th>
+                  <th>T_mẫu / T_tc (°C)</th>
+                  <th>Δy (px)</th>
+                  <th>Nguồn / EXIF</th>
+                  <th>Trạng thái</th>
+                  <th>Thao tác</th>
+                </tr>
+              </thead>
+              <tbody id="t7-rows-body"></tbody>
+            </table>
+          </div>
         </div>
       </section>
     </main>
