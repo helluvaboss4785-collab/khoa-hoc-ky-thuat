@@ -506,6 +506,30 @@ def xuat_bo_bao_cao(
     if kq_chuyen.get("canh_bao_chi_tiet"):
         md_lines.append("")
 
+    # X5: Đối chiếu ngân sách sai số thực nghiệm với lí thuyết
+    from core.so_sanh_ngan_sach import bang_doi_chieu_df, so_sanh_ngan_sach_sai_so
+
+    kq_doi_chieu = so_sanh_ngan_sach_sai_so(df, don_vi_y=don_vi_y, config_path=cfg_path)
+    df_doi_chieu = bang_doi_chieu_df(kq_doi_chieu)
+    doi_chieu_csv = out_path / "doi_chieu_ngan_sach.csv"
+    df_doi_chieu.to_csv(doi_chieu_csv, index=False, encoding="utf-8-sig")
+
+    md_lines.extend([
+        "## 7. Đối chiếu ngân sách sai số thực nghiệm với lí thuyết",
+        "",
+        f"- Tổng thực nghiệm 1σ = **{kq_doi_chieu['sigma_tong_thuc_nghiem_ppt']:.4f} ‰**, "
+        f"Tổng lí thuyết RSS = **{kq_doi_chieu['sigma_tong_ly_thuyet_ppt']:.4f} ‰** "
+        f"(tỉ lệ **{kq_doi_chieu['ty_le_thuc_tren_ly_thuyet']:.2f}×**, ngưỡng cảnh báo {kq_doi_chieu['he_so_canh_bao']:.2f}×).",
+        "- Chi tiết xem [doi_chieu_ngan_sach.csv](doi_chieu_ngan_sach.csv).",
+        "",
+        _df_to_markdown_table(df_doi_chieu),
+        "",
+    ])
+    for cb in kq_doi_chieu.get("canh_bao_chi_tiet", []):
+        md_lines.append(f"- **Cảnh báo ({cb['ma']}):** {cb['thong_diep']}")
+    if kq_doi_chieu.get("canh_bao_chi_tiet"):
+        md_lines.append("")
+
     md_path = out_path / "tong_hop_bao_cao.md"
     md_path.write_text("\n".join(md_lines), encoding="utf-8")
 
@@ -525,6 +549,7 @@ def xuat_bo_bao_cao(
         "kiem_tra_thiet_ke": kq_thiet_ke,
         "chuyen_duong_chuan_csv": chuyen_csv,
         "chuyen_duong_chuan_png": chuyen_png,
+        "doi_chieu_ngan_sach_csv": doi_chieu_csv,
         "tong_hop_bao_cao_md": md_path,
     }
 

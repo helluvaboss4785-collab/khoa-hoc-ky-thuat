@@ -33,6 +33,9 @@ can_bang_nhiet:                  # GIẢ ĐỊNH, cần thay bằng giá trị �
 chuyen_duong_chuan:              # GIẢ ĐỊNH, cần thay bằng giá trị đo được
   nguong_RMS_ppt: 0.5            # ngưỡng RMS (‰) cảnh báo không chuyển được đường chuẩn - GIẢ ĐỊNH, cần thay bằng giá trị đo được
 
+ngan_sach_so_sanh:               # GIẢ ĐỊNH, cần thay bằng giá trị đo được
+  he_so_canh_bao: 1.5            # tỉ lệ sai số thực nghiệm / lí thuyết vượt ngưỡng này sẽ bật cảnh báo - GIẢ ĐỊNH, cần thay bằng giá trị đo được
+
 xu_ly_anh:                       # Tham số thuật toán tìm tâm và đánh giá chất lượng ảnh
   nguong_bao_hoa: 250            # mức xám coi là bão hòa (trên thang 0-255)
   ti_le_bao_hoa_toi_da: 0.02     # tỉ lệ cột bão hòa cục bộ bắt đầu cảnh báo cẩn thận (2%)
