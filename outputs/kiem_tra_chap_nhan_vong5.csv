@@ -9,4 +9,4 @@ W3,W3_san_phan_giai_r_0.01C,"sig_old=0.0138, sig_new=0.0141 (1.03x), RMS=0.0145,
 W3,W3_san_phan_giai_r_0.10C,"sig_old=0.0192, sig_new=0.0312 (1.63x), RMS=0.0205, cov_old=90.2%, cov_new=99.8% [98.6-100.0%], warn=16/400",cov_new=99.8% [98.6-100.0%],DAT,MO_PHONG
 W3,W3_san_phan_giai_r_0.50C,"sig_old=0.0574, sig_new=0.1414 (2.46x), RMS=0.1123, cov_old=66.2%, cov_new=97.2% [95.1-98.5%], warn=400/400",cov_new=97.2% [95.1-98.5%],DAT,MO_PHONG
 W3,W3_doc_tuyen_tinh_va_san_T,"phu_thuoc=True, max_res=0.0404C, min_sig=0.0994 >= sigma_pg=0.0913",max_res=0.0404C,DAT,MO_PHONG
-W4,W4_dong_goi_bat_sh_nop_bai,"files=True, warn_md=True, warn_out=True, cli_ok=True, zip_mb=0.58",0.58 MB < 20 MB,DAT,MO_PHONG
+W4,W4_dong_goi_bat_sh_nop_bai,"files=True, warn_md=True, warn_out=True, cli_ok=True, zip_mb=0.66",0.66 MB < 20 MB,DAT,MO_PHONG

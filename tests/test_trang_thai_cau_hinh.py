@@ -126,3 +126,37 @@ def test_v6_xac_nhan_hai_nguoi_quan_fry_va_hieu_chuan_cheo_roi_danh_sach(tmp_pat
     assert "hieu_chuan.hieu_chuan_cheo_nhiet_ke" not in mas
     assert "quan_fry.he_so_quan_fry_1995" not in mas
     assert "quan_fry.xac_nhan_doc_lap_nguoi_2" not in mas
+
+
+def test_x7_tam_khoa_moi_va_danh_dau_do_duoc(tmp_path: Path, monkeypatch) -> None:
+    """X7: đủ 8 khóa giả định X0–X5 trong DANH_MUC_GIA_DINH và đổi trạng thái ĐO ĐƯỢC khi có tham_so_do_duoc.json."""
+    from core.troi_laser import ghi_tham_so_do_duoc
+
+    res_truoc = tt.liet_ke_tham_so_chua_xac_nhan()
+    mas = {it["ma"]: it for it in res_truoc["danh_sach"]}
+    for ma in (
+        "hieu_chuan.loai_ban_sao_khi_khop",
+        "hieu_chuan.ti_le_ban_sao_kich_hoat_loai",
+        "phan_tich_sai_so.so_khung_toi_thieu_troi",
+        "phan_tich_sai_so.thoi_luong_toi_thieu_phut",
+        "can_bang_nhiet.nguong_D_C",
+        "can_bang_nhiet.so_diem_toi_thieu_lan_do",
+        "chuyen_duong_chuan.nguong_RMS_ppt",
+        "ngan_sach_so_sanh.he_so_canh_bao",
+    ):
+        assert ma in mas
+
+    ts_p = tmp_path / "ts_do_duoc.json"
+    monkeypatch.setenv("SALINITY_THAM_SO_DO_DUOC_PATH", str(ts_p))
+    ghi_tham_so_do_duoc(
+        {"he_so_triet_chung": 0.02, "sigma_D_khi_da_on_dinh_C": 0.25},
+        nguon="MO_PHONG (chi kiem logic)",
+        nguoi_thuc_hien="Hoc Sinh X7",
+        ngay="2026-11-24",
+    )
+    res_sau = tt.liet_ke_tham_so_chua_xac_nhan()
+    mas_sau = {it["ma"]: it for it in res_sau["danh_sach"]}
+    assert mas_sau["phan_tich_sai_so.he_so_triet_chung"]["trang_thai"] == "ĐO ĐƯỢC"
+    assert mas_sau["phan_tich_sai_so.he_so_triet_chung"]["nguoi_thuc_hien"] == "Hoc Sinh X7"
+    assert mas_sau["phan_tich_sai_so.lech_nhiet_do_hai_ngan_C"]["trang_thai"] == "ĐO ĐƯỢC"
+    assert res_sau["so_tham_so_da_do"] >= 2

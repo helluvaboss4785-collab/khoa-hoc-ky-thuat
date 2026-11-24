@@ -42,7 +42,12 @@ def _can_loai_tru(rel_path: Path) -> bool:
     return any(fnmatch.fnmatch(name, pat) for pat in MAU_FILE_LOAI_TRU)
 
 
-def tao_file_zip_nop_bai(duong_dan_zip: str | Path, goc: Path = ROOT) -> tuple[Path, int]:
+def tao_file_zip_nop_bai(
+    duong_dan_zip: str | Path,
+    goc: Path = ROOT,
+    *,
+    kem_anh_thuc: bool = True,
+) -> tuple[Path, int]:
     """Tạo file zip sạch từ thư mục dự án, trả `(duong_dan_zip, so_file)`."""
     out = Path(duong_dan_zip).resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -56,6 +61,8 @@ def tao_file_zip_nop_bai(duong_dan_zip: str | Path, goc: Path = ROOT) -> tuple[P
                 continue
             rel = p.relative_to(goc_res)
             if _can_loai_tru(rel):
+                continue
+            if not kem_anh_thuc and rel.as_posix().startswith("data/anh_thuc/"):
                 continue
             zf.write(p, arcname=rel.as_posix())
             dem += 1
@@ -126,6 +133,11 @@ def main(argv: list[str] | None = None) -> int:
         default=20.0,
         help="Giới hạn dung lượng tối đa (MB) cho chế độ --kiem-tra (mặc định 20 MB).",
     )
+    parser.add_argument(
+        "--khong-kem-anh",
+        action="store_true",
+        help="Loại trừ thư mục ảnh thực data/anh_thuc/ để giữ gói zip nhẹ khi chỉ nộp mã nguồn & CSV/JSON.",
+    )
     args = parser.parse_args(argv)
 
     if args.out:
@@ -138,7 +150,7 @@ def main(argv: list[str] | None = None) -> int:
     if msg_canh_bao:
         print(msg_canh_bao)
 
-    out, dem = tao_file_zip_nop_bai(out_path, ROOT)
+    out, dem = tao_file_zip_nop_bai(out_path, ROOT, kem_anh_thuc=not args.khong_kem_anh)
     size_mb = out.stat().st_size / (1024.0 * 1024.0)
     print(f"Đã đóng gói {dem} tệp vào: {out} ({size_mb:.2f} MB)")
 

@@ -1,0 +1,9 @@
+﻿tieu_chi,mo_ta,trang_thai,chi_tiet
+X0_loai_ban_sao,Loại 72 bản sao khi khớp đường chuẩn,DAT,"dung=72, loai=72"
+X0_chan_heic_webp,Nhận diện HEIC/HEIF và WebP qua chữ kí byte,DAT,"webp=True, heic=True"
+X2_kappa_troi_chung,Trôi chung 20 px cho κ cao (> 0.95),DAT,kappa=0.9877
+X2_kappa_doc_lap,Trôi độc lập cho κ thấp (≤ 0.2) và chặn chuỗi 5p,DAT,"kappa_doc=-0.9999, ngan=CHUA_DU_DU_LIEU"
+X3_can_bang_nhiet,"Khớp τ≈90s, D_∞≈0.2°C và loại lần < 5 điểm",DAT,"tau=91.1s, loai=1"
+X4_lopo_px_vs_mm,LOPO mm giảm RMS so với px và px bật cờ cảnh báo,DAT,"rms_px=0.692, rms_mm=0.000"
+X5_doi_chieu_ngan_sach,Phóng đại nhiễu kích hoạt SAI_SO_THUC_VUOT_LY_THUYET,DAT,ty_le=5.40x
+X6_X7_tai_lieu_va_r7,Tài liệu phỏng vấn và đủ 8 khóa giả định X0–X5 trong R7,DAT,"doc=True, so_muc_r7=62"

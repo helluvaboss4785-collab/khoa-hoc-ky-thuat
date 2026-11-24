@@ -472,3 +472,38 @@ Lệnh tái lập: `.venv\Scripts\python.exe scripts/kiem_tra_chap_nhan_vong5.py
 
 
 
+
+
+---
+
+# VÒNG 6 (X0–X7) — CÔNG CỤ THU & PHÂN TÍCH DỮ LIỆU THẬT, SỬA LỖI CÒN SÓT VÀ TÀI LIỆU PHỎNG VẤN
+
+## 1. Kết quả cơ sở đầu Vòng 6 (`5aafe32`) vs Sau Vòng 6 (`X0–X7`)
+
+| Hạng mục kiểm tra | Cơ sở đầu Vòng 6 (`5aafe32`) | Sau Vòng 6 (`X0–X7`) | Lệnh tái lập |
+| :--- | :---: | :---: | :--- |
+| Bộ kiểm thử `pytest tests -q` | `149 passed, 1 skipped` | *(được kiểm chứng ở bước cuối X7)* | `.\.venv\Scripts\python.exe -m pytest tests -q` |
+| Nghiệm thu Vòng 2 (`MO_PHONG`) | `13/13 DAT` | `13/13 DAT` | `.\.venv\Scripts\python.exe scripts/kiem_tra_chap_nhan_vong2.py` |
+| Nghiệm thu Vòng 3 (`MO_PHONG`) | `16/17 DAT` (`R0_E_giam_RMS_vs_B_khong_bi_chan = KHONG_DAT`) | `16/17 DAT` (giữ nguyên) | `.\.venv\Scripts\python.exe scripts/kiem_tra_chap_nhan_vong3.py` |
+| Nghiệm thu Vòng 4 (`MO_PHONG`) | `18/18 DAT` | `18/18 DAT` | `.\.venv\Scripts\python.exe scripts/kiem_tra_chap_nhan_vong4.py` |
+| Nghiệm thu Vòng 5 (`MO_PHONG`) | `11/11 DAT` (do W3 nới tiêu chí) | `10/11 DAT` (`W3_san_phan_giai_r_0.01C = KHONG_DAT`, `cov_new=93.2% [90.4-95.3%]`) | `.\.venv\Scripts\python.exe scripts/kiem_tra_chap_nhan_vong5.py` |
+| Nghiệm thu Vòng 6 (`MO_PHONG`) | *(chưa có)* | `8/8 DAT` -> `outputs/kiem_tra_chap_nhan_vong6.csv` | `.\.venv\Scripts\python.exe scripts/kiem_tra_chap_nhan_vong6.py` |
+
+## 2. Tóm tắt thay đổi theo nhiệm vụ (`X0 → X7`)
+
+- **X0 (`b1dd424`):** Khôi phục tiêu chí gốc `p_new >= 0.95` cho cả 3 mức phân giải trong `scripts/kiem_tra_chap_nhan_vong5.py` (mức `0.01 °C` đạt `93.2%` [Wilson 95%: `90.4–95.3%`], báo thẳng `KHONG_DAT` kèm ghi chú khoảng Wilson chứa 95%); thêm `hieu_chuan.loai_ban_sao_khi_khop` & `ti_le_ban_sao_kich_hoat_loai` trong `config.yaml` + `core/calibration.py` và lọc `da_loai=true`; thêm nhận diện HEIC/HEIF/WebP theo chữ kí byte trả HTTP `415` (`ANH_KHONG_HO_TRO_DINH_DANG`) và CLI mã thoát `4`.
+- **X1 (`b3145c9`):** Thêm `core/thu_du_lieu.py`, 5 endpoint `/api/thu-du-lieu/*`, Tab 7 (*Thu Dữ Liệu*) và `tests/test_x1_thu_du_lieu.py`.
+- **X2 (`edbfd10`):** Thêm `core/troi_laser.py`, `scripts/phan_tich_troi_laser.py`, `GET/POST /api/troi-laser*`, Tab 8 (*Độ Trôi Laser*), cập nhật `core/optics.py` (`ngan_sach_sai_so` ưu tiên đọc `data/tham_so_do_duoc.json` với lớp `KetQuaNganSachSaiSo(dict)` giữ tương thích ngược), và `tests/test_x2_troi_laser.py`.
+- **X3 (`9227e67`):** Thêm `core/can_bang_nhiet.py`, `scripts/phan_tich_can_bang_nhiet_thuc_nghiem.py`, `GET/POST /api/can-bang-nhiet-thuc-nghiem*`, Tab 9 (*Cân Bằng Nhiệt*), và `tests/test_x3_can_bang_nhiet.py`.
+- **X4 (`4c92075`):** Thêm `core/chuyen_duong_chuan.py`, `scripts/phan_tich_chuyen_duong_chuan.py`, `POST /api/chuyen-duong-chuan`, bảng LOPO/LOBO trong Tab 4 & `scripts/xuat_bao_cao.py`, và `tests/test_x4_chuyen_duong_chuan.py`.
+- **X5 (`e776332`):** Thêm `core/so_sanh_ngan_sach.py`, `scripts/so_sanh_ngan_sach_sai_so.py`, tích hợp bảng đối chiếu vào `scripts/xuat_bao_cao.py`, và `tests/test_x5_ngan_sach_thuc_nghiem.py`.
+- **X6 (`eedd8b9`):** Viết `docs/GIAI_THICH_CHO_PHONG_VAN.md` (5 mục, ví dụ số `seed=42`, 10 Q&A) và `tests/test_x6_tai_lieu_phong_van.py` kiểm AST/config & tái lập số học ≤ `1e-6`.
+- **X7:** Mở rộng `core/trang_thai_cau_hinh.py` (8 khóa mới + hiển thị trạng thái `"ĐO ĐƯỢC"` từ `data/tham_so_do_duoc.json`), thêm `--khong-kem-anh` vào `scripts/dong_goi.py`, tạo `scripts/kiem_tra_chap_nhan_vong6.py`, cập nhật tài liệu & báo cáo.
+
+## 3. Ghi chú điều chỉnh test cũ & giả định thận trọng
+
+1. **Test cũ đã cập nhật ở X0(b):** `tests/test_ban_sao_du_lieu_w1.py` (dòng 75–84) được cập nhật để kiểm tra cả hai chế độ tường minh: `loai_ban_sao_khi_khop=True` mặc định (`mo_hinh.so_diem == 72`, `so_dong_loai == 144`) và `loai_ban_sao_khi_khop=False` (`mo_hinh.so_diem == 216`).
+2. **Giả định thận trọng:**
+   - Mọi tham số đo được từ X2 (`1 − κ_lo`) và X3 (`sigma_D_khi_chua_do_C`, `sigma_D_khi_da_on_dinh_C`) chỉ ghi vào `data/tham_so_do_duoc.json` khi người dùng chỉ định tường minh `--ap-dung --nguoi-thuc-hien`, không tự động sửa `config.yaml` và không tạo sẵn file kết quả trong `data/`.
+   - Dùng circular block-bootstrap cho $\kappa$ để bảo đảm đầu mút chuỗi trôi không bị thiếu mẫu, và dùng cận dưới 95% $\kappa_{\text{lo}}$ (`1 − κ_lo`) làm hệ số lọt bảo thủ.
+   - Mọi kết quả định lượng ở trên đều đo trên dữ liệu **MÔ PHỎNG**; chưa có kết luận về độ chính xác của thiết bị thật.

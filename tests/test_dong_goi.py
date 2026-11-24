@@ -174,3 +174,30 @@ def test_w4_canh_bao_out_trong_du_an_va_dong_goi_bat(tmp_path: Path):
         assert "KIỂM TRA ĐẠT" in proc_bat.stdout
         assert bat_zip.exists()
         assert bat_zip.stat().st_size / (1024.0 * 1024.0) < 20.0
+
+
+def test_x7_dong_goi_du_lieu_thuc_va_co_khong_kem_anh(tmp_path: Path):
+    """X7: gói nộp bài giữ du_lieu_hieu_chuan_thuc.csv, data/*.json, anh_thuc/ và hỗ trợ --khong-kem-anh."""
+    fake_proj = tmp_path / "proj_x7"
+    (fake_proj / "core").mkdir(parents=True)
+    (fake_proj / "core" / "m.py").write_text("x = 1\n", encoding="utf-8")
+    (fake_proj / "data" / "anh_thuc" / "P1").mkdir(parents=True)
+    (fake_proj / "data" / "du_lieu_hieu_chuan_thuc.csv").write_text("do_man_chuan_ppt\n0\n", encoding="utf-8")
+    (fake_proj / "data" / "tham_so_do_duoc.json").write_text('{"tham_so":{}}', encoding="utf-8")
+    (fake_proj / "data" / "anh_thuc" / "P1" / "img1.jpg").write_bytes(b"jpgbytes")
+
+    z_full = tmp_path / "x7_full.zip"
+    tao_file_zip_nop_bai(z_full, fake_proj, kem_anh_thuc=True)
+    with zipfile.ZipFile(z_full, "r") as zf:
+        names = set(zf.namelist())
+    assert "data/du_lieu_hieu_chuan_thuc.csv" in names
+    assert "data/tham_so_do_duoc.json" in names
+    assert "data/anh_thuc/P1/img1.jpg" in names
+
+    z_no_img = tmp_path / "x7_no_img.zip"
+    tao_file_zip_nop_bai(z_no_img, fake_proj, kem_anh_thuc=False)
+    with zipfile.ZipFile(z_no_img, "r") as zf:
+        names_no = set(zf.namelist())
+    assert "data/du_lieu_hieu_chuan_thuc.csv" in names_no
+    assert "data/tham_so_do_duoc.json" in names_no
+    assert "data/anh_thuc/P1/img1.jpg" not in names_no

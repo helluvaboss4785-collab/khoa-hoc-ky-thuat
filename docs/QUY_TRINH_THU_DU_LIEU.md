@@ -93,3 +93,27 @@ Hai nhiệt kế phổ thông có thể lệch hệ thống với nhau ±0,3 đ�
 4. **TUYỆT ĐỐI KHÔNG** lấy các chỉ số từ bộ ảnh/dữ liệu **MÔ PHỎNG** (ví dụ sai số sub-pixel trên ảnh giả lập hay độ phủ mô phỏng) để ghi trong báo cáo hoặc thuyết trình thành *"độ chính xác đo thực tế của thiết bị"*.
 5. **TUYỆT ĐỐI KHÔNG** chọn lọc seed riêng cho ra số đẹp, không xóa bớt điểm ngoại lai thật mà không có bằng chứng chất lượng ảnh, và không nới lỏng các tiêu chí kiểm thử để làm cho bảng nghiệm thu chuyển sang ĐẠT giả tạo.
 6. **TUYỆT ĐỐI KHÔNG** dùng tay không hiệu chuẩn chéo hai nhiệt kế rồi giả định `T_mẫu = T_tc`, và **không** đo điểm `0 °C` bằng cách kẹp đầu đo trực tiếp lên đá cục/đá khô.
+
+
+---
+
+## Thứ tự thực nghiệm chuẩn từ đầu đến cuối (Vòng 6)
+
+Nhóm thực nghiệm thực hiện tuần tự 5 bước sau (không nhảy cóc):
+
+1. **Hiệu chuẩn chéo hai nhiệt kế (`V1`):** Đo cặp đọc ở ít nhất 3 mức nhiệt (nước đá tan ~0 °C, nhiệt độ phòng, ~35–40 °C), chạy `python scripts/hieu_chuan_cheo_nhiet_ke.py --csv <file_cap_nhiet_ke.csv> --nguon THUC_TE --nguoi-thuc-hien "<tên>"` để tạo `data/hieu_chuan_nhiet_ke.json`.
+2. **Đo độ trôi laser & mức triệt nhiễu chung $\kappa$ (`X2`):** Đổ nước cất $0\,‰$ vào CẢ HAI ngăn, chụp liên tục $\ge 60$ khung trong $\ge 20$ phút, chạy:
+   ```bash
+   python scripts/phan_tich_troi_laser.py --thu-muc <thu_muc_anh_troi> --nguon THUC_TE --nguoi-thuc-hien "<tên>" --ap-dung
+   ```
+3. **Đo cân bằng nhiệt hai ngăn sau khi đổ mẫu (`X3`):** Đổ mẫu lệch nhiệt vào ngăn mẫu, ghi cặp $(t, T_{\text{mẫu}}, T_{\text{tc}})$ cho nhiều lần đổ, chạy:
+   ```bash
+   python scripts/phan_tich_can_bang_nhiet_thuc_nghiem.py --csv <file_cbn.csv> --nguon THUC_TE --nguoi-thuc-hien "<tên>" --ap-dung
+   ```
+4. **Thu dữ liệu hiệu chuẩn có hướng dẫn (`X1`) & kiểm chuyển đường chuẩn (`X4`–`X5`):** Dùng **Tab 7 (Thu Dữ Liệu)** thu đủ lưới 24 ô ($8$ mức $S \times 3$ mức $T \times 3$ lần lặp, $\ge 2$ mẻ pha, nếu dùng nhiều điện thoại phải đo `px_per_mm`), rồi kiểm tra:
+   ```bash
+   python scripts/phan_tich_chuyen_duong_chuan.py --csv data/du_lieu_hieu_chuan_thuc.csv
+   python scripts/so_sanh_ngan_sach_sai_so.py --csv data/du_lieu_hieu_chuan_thuc.csv
+   ```
+5. **Đối chiếu khúc xạ kế chuẩn & xuất báo cáo:** Đo song song mẫu nước thật bằng thiết bị của nhóm và khúc xạ kế chuẩn, kiểm tra Bland–Altman (Tab 6) và chạy `scripts/xuat_bao_cao.py --csv data/du_lieu_hieu_chuan_thuc.csv`.
+6. **Đóng gói nộp bài (`X7`):** Dùng `dong_goi.bat` (hoặc `python scripts/dong_goi.py --kiem-tra`; thêm `--khong-kem-anh` nếu thư mục `data/anh_thuc/` quá lớn).

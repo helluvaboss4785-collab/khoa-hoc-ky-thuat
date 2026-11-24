@@ -161,3 +161,15 @@ Kết quả chạy thực tế tại $S = 20{,}0\,‰$, $T = 25{,}0\,^\circ\text
 | Nén JPEG (`chat_luong_jpeg`) | `70` / `50` | 100/100 | 100% | 0.0043 / 0.0059 | 0.0029 / 0.0041 | 0.0086 / 0.0113 | 0.0119 / 0.0154 |
 
 *\*Tại `gradient_nen_y = 90.0`, phép trừ nền hình thái vẫn định vị đúng tâm hai vạch (`RMS = 0.0052 px`, `max = 0.0151 px`), nhưng cộng hưởng nền cao + biên độ gốc `200` làm đỉnh vạch mẫu thực sự chạm bão hòa `255` nên cổng chất lượng bật đúng cả `NEN_KHONG_DEU` lẫn `BAO_HOA_NGHIEM_TRONG`.*
+
+
+---
+
+## 6. CÔNG CỤ THỰC NGHIỆM & PHÂN TÍCH VÒNG 6 (`X0–X7`)
+
+- **Chế độ thu dữ liệu hiệu chuẩn có hướng dẫn (`X1`):** Tab 7 (*Thu Dữ Liệu*) và [`core/thu_du_lieu.py`](core/thu_du_lieu.py) lưu ảnh gốc vào `data/anh_thuc/<phien_id>/`, ghi `data/du_lieu_hieu_chuan_thuc.csv`, ép đủ hai nhiệt độ $T_{\text{mẫu}}$ và $T_{\text{tc}}$, tính độ mặn từ cân muối–nước, chặn ảnh trùng SHA-256, chặn định dạng HEIC/HEIF/WebP (`HTTP 415` / CLI mã `4`) và đánh dấu `da_loai=true` minh bạch thay vì xóa dòng.
+- **Đo độ trôi laser & mức triệt nhiễu chung $\kappa$ (`X2`):** Tab 8 (*Độ Trôi Laser*), [`core/troi_laser.py`](core/troi_laser.py) và [`scripts/phan_tich_troi_laser.py`](scripts/phan_tich_troi_laser.py) phân tích chuỗi ảnh nước cất hai ngăn ($\ge 60$ khung, $\ge 20$ phút), cảnh báo warm-up và lưu bảo thủ $1 - \kappa_{\text{lo}}$ vào `data/tham_so_do_duoc.json` khi người dùng truyền `--ap-dung --nguoi-thuc-hien`.
+- **Cân bằng nhiệt hai ngăn sau khi đổ mẫu (`X3`):** Tab 9 (*Cân Bằng Nhiệt*), [`core/can_bang_nhiet.py`](core/can_bang_nhiet.py) và [`scripts/phan_tich_can_bang_nhiet_thuc_nghiem.py`](scripts/phan_tich_can_bang_nhiet_thuc_nghiem.py) khớp $D(t) = D_\infty + D_0 e^{-t/\tau}$, tính thời gian chờ $t_{\text{chờ}}$ và đề xuất $\sigma_D$ cho `core/optics.py`.
+- **Kiểm tra chuyển đường chuẩn LOPO/LOBO (`X4`):** [`core/chuyen_duong_chuan.py`](core/chuyen_duong_chuan.py) và [`scripts/phan_tich_chuyen_duong_chuan.py`](scripts/phan_tich_chuyen_duong_chuan.py) đối chiếu đơn vị `px` và `mm` giữa các điện thoại và mẻ pha.
+- **Đối chiếu ngân sách sai số thực nghiệm vs lí thuyết (`X5`):** [`core/so_sanh_ngan_sach.py`](core/so_sanh_ngan_sach.py) và [`scripts/so_sanh_ngan_sach_sai_so.py`](scripts/so_sanh_ngan_sach_sai_so.py) phân rã phương sai ANOVA và cảnh báo `SAI_SO_THUC_VUOT_LY_THUYET`.
+- **Tài liệu phỏng vấn KHKT (`X6`):** Xem [`docs/GIAI_THICH_CHO_PHONG_VAN.md`](docs/GIAI_THICH_CHO_PHONG_VAN.md) (có kiểm thử tự động khớp AST và ví dụ số `seed=42`).

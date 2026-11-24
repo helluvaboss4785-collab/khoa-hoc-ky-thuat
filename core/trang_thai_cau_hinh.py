@@ -359,6 +359,62 @@ DANH_MUC_GIA_DINH: tuple[MucGiaDinhKhaiBao, ...] = (
         trang_thai="GIA_DINH",
         viec_can_lam="Kiểm tra độ chia nhỏ nhất thực tế của cả 2 nhiệt kế; nếu thô hơn ngưỡng này phần mềm bật cảnh báo và nâng sàn σ_pg.",
     ),
+    MucGiaDinhKhaiBao(
+        nhom="hieu_chuan",
+        khoa="loai_ban_sao_khi_khop",
+        ten_hien_thi="Tự động loại dòng bản sao trùng hệt khi khớp đường chuẩn",
+        trang_thai="GIA_DINH",
+        viec_can_lam="Giữ true để tránh trùng lặp dữ liệu làm sai lệch bậc tự do và CV; chỉ tắt khi cần phân tích nhạy cảm.",
+    ),
+    MucGiaDinhKhaiBao(
+        nhom="hieu_chuan",
+        khoa="ti_le_ban_sao_kich_hoat_loai",
+        ten_hien_thi="Ngưỡng tỉ lệ bản sao tối thiểu để kích hoạt loại bỏ khi khớp",
+        trang_thai="GIA_DINH",
+        viec_can_lam="Giữ 0.0 để loại bỏ bất kỳ bản sao nào khi phát hiện trùng lặp.",
+    ),
+    MucGiaDinhKhaiBao(
+        nhom="phan_tich_sai_so",
+        khoa="so_khung_toi_thieu_troi",
+        ten_hien_thi="Số khung hình tối thiểu cho thí nghiệm đo độ trôi laser (X2)",
+        trang_thai="GIA_DINH",
+        viec_can_lam="Chụp ít nhất 60 ảnh liên tục hai ngăn nước cất (hoặc tăng nếu muốn KTC 95% của κ hẹp hơn).",
+    ),
+    MucGiaDinhKhaiBao(
+        nhom="phan_tich_sai_so",
+        khoa="thoi_luong_toi_thieu_phut",
+        ten_hien_thi="Thời lượng tối thiểu của chuỗi đo độ trôi laser (phút)",
+        trang_thai="GIA_DINH",
+        viec_can_lam="Đo tối thiểu 20 phút để phân biệt trôi nhiệt thật với nhiễu ngẫu nhiên ngắn hạn và warm-up.",
+    ),
+    MucGiaDinhKhaiBao(
+        nhom="can_bang_nhiet",
+        khoa="nguong_D_C",
+        ten_hien_thi="Ngưỡng |D − D_∞| để coi hai ngăn đã cân bằng nhiệt (°C)",
+        trang_thai="GIA_DINH",
+        viec_can_lam="Chọn theo mục tiêu sai số do nhiệt độ cho phép sau khi đổ mẫu (mặc định 0.3 °C).",
+    ),
+    MucGiaDinhKhaiBao(
+        nhom="can_bang_nhiet",
+        khoa="so_diem_toi_thieu_lan_do",
+        ten_hien_thi="Số điểm thời gian tối thiểu mỗi lần đổ mẫu cân bằng nhiệt",
+        trang_thai="GIA_DINH",
+        viec_can_lam="Ghi ít nhất 5 mốc thời gian sau khi đổ mẫu để khớp được đường cong hàm mũ 3 tham số.",
+    ),
+    MucGiaDinhKhaiBao(
+        nhom="chuyen_duong_chuan",
+        khoa="nguong_RMS_ppt",
+        ten_hien_thi="Ngưỡng RMS ngoài nhóm (‰) để cảnh báo không chuyển được đường chuẩn",
+        trang_thai="GIA_DINH",
+        viec_can_lam="Đặt theo sai số chấp nhận được khi dùng chung đường chuẩn giữa các điện thoại/mẻ pha.",
+    ),
+    MucGiaDinhKhaiBao(
+        nhom="ngan_sach_so_sanh",
+        khoa="he_so_canh_bao",
+        ten_hien_thi="Hệ số cảnh báo tỉ lệ sai số thực nghiệm / ngân sách lí thuyết",
+        trang_thai="GIA_DINH",
+        viec_can_lam="Đặt ngưỡng phát hiện khi độ phân tán thực nghiệm vượt đáng kể dự toán lí thuyết.",
+    ),
 )
 
 
@@ -546,8 +602,39 @@ def liet_ke_tham_so_chua_xac_nhan(
             ),
         })
 
+    try:
+        from core.troi_laser import doc_tham_so_do_duoc
+
+        ts_dd_full = doc_tham_so_do_duoc()
+        ts_dd = ts_dd_full.get("tham_so") or {}
+    except Exception:
+        ts_dd = {}
+
+    anh_xa_do_duoc = {
+        "phan_tich_sai_so.he_so_triet_chung": ("he_so_triet_chung",),
+        "phan_tich_sai_so.lech_nhiet_do_hai_ngan_C": ("sigma_D_khi_da_on_dinh_C", "sigma_D_khi_chua_do_C"),
+        "phan_tich_sai_so.sai_so_tim_tam_px": ("sai_so_tim_tam_px",),
+        "phan_tich_sai_so.sai_so_goc_A_do": ("sai_so_goc_A_do",),
+    }
+    so_da_do = 0
+    for muc in danh_sach:
+        ma_muc = muc.get("ma", "")
+        for ten_ts in anh_xa_do_duoc.get(ma_muc, ()):
+            du_lieu_ts = ts_dd.get(ten_ts)
+            if isinstance(du_lieu_ts, dict) and "gia_tri" in du_lieu_ts:
+                muc["trang_thai"] = "ĐO ĐƯỢC"
+                muc["gia_tri_hien_tai"] = du_lieu_ts["gia_tri"]
+                muc["nguon"] = du_lieu_ts.get("nguon", "ĐO ĐƯỢC")
+                muc["nguoi_thuc_hien"] = du_lieu_ts.get("nguoi_thuc_hien", "")
+                muc["ngay"] = du_lieu_ts.get("ngay", "")
+                so_da_do += 1
+                break
+
+    so_chua_xn = sum(1 for m in danh_sach if m.get("trang_thai") != "ĐO ĐƯỢC")
     return {
-        "so_tham_so_chua_xac_nhan": len(danh_sach),
+        "so_tham_so_chua_xac_nhan": so_chua_xn,
+        "so_tham_so_da_do": so_da_do,
         "xac_nhan_quan_fry": qf_info,
+        "tham_so_do_duoc": ts_dd,
         "danh_sach": danh_sach,
     }
