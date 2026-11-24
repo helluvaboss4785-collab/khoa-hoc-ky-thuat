@@ -2953,6 +2953,84 @@ async def api_troi_laser(request: Request) -> JSONResponse:
         return _json_err(f"Lỗi khi phân tích độ trôi laser: {exc}")
 
 
+async def api_can_bang_nhiet_thuc_nghiem_trang_thai(request: Request) -> JSONResponse:
+    """Trả kết quả phân tích cân bằng nhiệt gần nhất và tham số đo được (X3)."""
+    from core import can_bang_nhiet, troi_laser
+
+    p_cbn = can_bang_nhiet.duong_dan_phan_tich_can_bang_nhiet()
+    bao_cao: dict[str, Any] | None = None
+    if p_cbn.exists():
+        try:
+            bao_cao = json.loads(p_cbn.read_text(encoding="utf-8"))
+        except Exception:
+            bao_cao = None
+    return _json_ok({"ok": True, "bao_cao": bao_cao, "tham_so_do_duoc": troi_laser.doc_tham_so_do_duoc()})
+
+
+async def api_can_bang_nhiet_thuc_nghiem(request: Request) -> JSONResponse:
+    """Phân tích cân bằng nhiệt D(t) = D_∞ + D_0·exp(−t/τ) từ CSV hoặc JSON (X3)."""
+    import io
+    import pandas as pd
+    from core import can_bang_nhiet
+
+    ct = (request.headers.get("content-type") or "").lower()
+    nguon_du_lieu = "THUC_TE"
+    nguoi_thuc_hien = ""
+    ngay: str | None = None
+    ap_dung = False
+
+    try:
+        if "multipart/form-data" in ct:
+            form = await request.form()
+            up = form.get("file")
+            if not up or not hasattr(up, "read"):
+                return _json_err_typed(400, "DAU_VAO_KHONG_HOP_LE", "Chưa tải file CSV cân bằng nhiệt.")
+            raw_bytes = await up.read()
+            df = pd.read_csv(io.StringIO(raw_bytes.decode("utf-8-sig")))
+            nguon_du_lieu = str(form.get("nguon_du_lieu") or "THUC_TE")
+            nguoi_thuc_hien = str(form.get("nguoi_thuc_hien") or "")
+            ngay = str(form.get("ngay") or "").strip() or None
+            ap_dung = _as_bool(form.get("ap_dung"), False)
+        else:
+            try:
+                body = await request.json()
+            except Exception:
+                return _json_err("Dữ liệu JSON gửi lên không hợp lệ.", 400)
+            nguon_du_lieu = str(body.get("nguon_du_lieu") or "THUC_TE")
+            nguoi_thuc_hien = str(body.get("nguoi_thuc_hien") or "")
+            ngay = str(body.get("ngay") or "").strip() or None
+            ap_dung = _as_bool(body.get("ap_dung"), False)
+            if isinstance(body.get("csv_text"), str) and body["csv_text"].strip():
+                df = pd.read_csv(io.StringIO(body["csv_text"]))
+            elif isinstance(body.get("rows"), list) and body["rows"]:
+                df = pd.DataFrame(body["rows"])
+            else:
+                return _json_err_typed(400, "DAU_VAO_KHONG_HOP_LE", "Cần truyền file CSV, csv_text hoặc mảng rows.")
+
+        kq = can_bang_nhiet.phan_tich_can_bang_nhiet_tu_df(
+            df,
+            nguon_du_lieu=nguon_du_lieu,
+            nguoi_thuc_hien=nguoi_thuc_hien,
+            ngay=ngay,
+            luu_json=True,
+            config_path=CONFIG_PATH,
+        )
+        tham_so_da_luu: dict[str, Any] | None = None
+        if ap_dung:
+            tham_so_da_luu = can_bang_nhiet.ap_dung_can_bang_nhiet_vao_tham_so(
+                kq,
+                nguoi_thuc_hien=nguoi_thuc_hien,
+                ngay=ngay,
+            )
+        return _json_ok({"ok": True, "ket_qua": kq, "tham_so_do_duoc": tham_so_da_luu})
+    except can_bang_nhiet.LoiCanBangNhietKhongHopLeError as exc:
+        return _json_err_typed(422, "CHUA_DU_DU_LIEU", str(exc), exc)
+    except ValueError as exc:
+        return _json_err_typed(400, "DAU_VAO_KHONG_HOP_LE", str(exc), exc)
+    except Exception as exc:
+        return _json_err(f"Lỗi khi phân tích cân bằng nhiệt: {exc}")
+
+
 class CacheHeaderMiddleware:
     """ASGI middleware nhẹ thêm Cache-Control chuẩn cho tài nguyên tĩnh và API."""
 
@@ -3020,6 +3098,8 @@ routes = [
     Route("/api/thu-du-lieu/csv", endpoint=api_thu_du_lieu_csv, methods=["GET"]),
     Route("/api/troi-laser/trang-thai", endpoint=api_troi_laser_trang_thai, methods=["GET"]),
     Route("/api/troi-laser", endpoint=api_troi_laser, methods=["POST"]),
+    Route("/api/can-bang-nhiet-thuc-nghiem/trang-thai", endpoint=api_can_bang_nhiet_thuc_nghiem_trang_thai, methods=["GET"]),
+    Route("/api/can-bang-nhiet-thuc-nghiem", endpoint=api_can_bang_nhiet_thuc_nghiem, methods=["POST"]),
     Mount("/static", app=StaticFiles(directory=str(STATIC_DIR)), name="static"),
 ]
 

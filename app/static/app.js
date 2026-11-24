@@ -2542,6 +2542,175 @@ async function applyLastDriftParam() {
 }
 
 /* ==========================================================================
+   Tab 9: Phân Tích Cân Bằng Nhiệt Hai Ngăn Sau Khi Đổ Mẫu (X3)
+   ========================================================================== */
+function drawThermalEqChart(kq) {
+  const valid = kq?.cac_lan_do_hop_le || [];
+  if (!valid.length) {
+    drawXYChart($("#canvas-t9-curve"), $("#tip-t9-curve"), { series: [], emptyText: "Chưa có lần đo hợp lệ để vẽ." });
+    return;
+  }
+  const first = valid[0];
+  const tArr = first.t_giay || [];
+  const dArr = first.D_C || [];
+  const fitArr = first.D_khop_C || [];
+  drawXYChart($("#canvas-t9-curve"), $("#tip-t9-curve"), {
+    title: `${first.ma_lan_do}: τ = ${fmt(first.tau_giay, 1)}s, D_∞ = ${fmt(first.D_inf_C, 3)} °C`,
+    xLabel: "Thời gian sau đổ mẫu (giây)",
+    yLabel: "D(t) = T_mẫu − T_tc (°C)",
+    series: [
+      {
+        type: "scatter",
+        color: "#0284c7",
+        label: "D(t) quan sát",
+        points: tArr.map((t, i) => ({ x: t, y: dArr[i] })),
+      },
+      {
+        type: "line",
+        color: "#e5383b",
+        width: 2.3,
+        label: "Khớp mũ D_∞ + D_0·e^(−t/τ)",
+        points: tArr.map((t, i) => ({ x: t, y: fitArr[i] })),
+      },
+    ],
+  });
+}
+
+function renderThermalEq(kq, thamSoDoDuoc) {
+  STATE.cbnLast = kq;
+  if (thamSoDoDuoc && thamSoDoDuoc.tham_so) STATE.measuredParams = thamSoDoDuoc.tham_so;
+
+  const stBanner = $("#t9-status-banner");
+  const applyBtn = $("#t9-btn-apply");
+  if (!kq) {
+    if (applyBtn) applyBtn.disabled = true;
+    return;
+  }
+  const hopLe = Boolean(kq.hop_le && kq.trang_thai === "HOP_LE");
+  const labelMp = String(kq.nguon_du_lieu || "").toUpperCase() === "MO_PHONG" ? " [MÔ PHỎNG — chỉ kiểm thử]" : "";
+  if (stBanner) {
+    stBanner.className = `banner-25d ${hopLe ? "ok" : "warn"}`;
+    stBanner.innerHTML = `<div class="banner-icon">${hopLe ? "✓" : "!"}</div><div><b>${esc(kq.trang_thai)}</b>${esc(labelMp)} — Hợp lệ ${kq.so_lan_do_hop_le}/${kq.so_lan_do_tong} lần đổ. ${(kq.canh_bao || []).map(esc).join(" | ")}</div>`;
+  }
+  if ($("#t9-kpi-tau")) $("#t9-kpi-tau").textContent = hopLe ? fmt(kq.median_tau_giay, 1) : "--";
+  if ($("#t9-kpi-tau-p90")) $("#t9-kpi-tau-p90").textContent = `P90 τ: ${hopLe ? fmt(kq.p90_tau_giay, 1) : "--"} s`;
+  if ($("#t9-kpi-tcho")) $("#t9-kpi-tcho").textContent = hopLe ? fmt(kq.p90_t_cho_giay, 1) : "--";
+  if ($("#t9-kpi-tcho-med")) $("#t9-kpi-tcho-med").textContent = `Median t_chờ: ${hopLe ? fmt(kq.median_t_cho_giay, 1) : "--"} s`;
+  if ($("#t9-kpi-dinf")) $("#t9-kpi-dinf").textContent = hopLe ? fmt(kq.D_inf_trung_binh_C, 3) : "--";
+  if ($("#t9-kpi-counts")) $("#t9-kpi-counts").textContent = `Hợp lệ: ${kq.so_lan_do_hop_le} | Loại: ${kq.so_lan_do_bi_loai}`;
+  if ($("#t9-kpi-sigmad")) $("#t9-kpi-sigmad").textContent = hopLe ? fmt(kq.sigma_D_khi_da_on_dinh_C, 3) : "--";
+  if ($("#t9-kpi-sigmad-raw")) $("#t9-kpi-sigmad-raw").textContent = `Khi chưa ổn định: ${hopLe ? fmt(kq.sigma_D_khi_chua_do_C, 3) : "--"} °C`;
+  if (applyBtn) applyBtn.disabled = !hopLe;
+
+  const tbody = $("#t9-rows-body");
+  if (tbody) {
+    const okRows = (kq.cac_lan_do_hop_le || []).map((r) => `
+      <tr>
+        <td><b>${esc(r.ma_lan_do)}</b></td>
+        <td>${r.so_diem}</td>
+        <td>${fmt(r.tau_giay, 1)}</td>
+        <td>${fmt(r.D_inf_C, 3)}</td>
+        <td>${fmt(r.t_cho_giay, 1)}</td>
+        <td><span class="status-pill pill-ok">HỢP LỆ</span></td>
+      </tr>
+    `);
+    const badRows = (kq.danh_sach_loai || []).map((r) => `
+      <tr style="opacity:0.7;">
+        <td>${esc(r.ma_lan_do)}</td>
+        <td>${r.so_diem}</td>
+        <td>—</td><td>—</td><td>—</td>
+        <td><span class="status-pill pill-bad">LOẠI</span><br><small>${esc(r.ly_do_loai)}</small></td>
+      </tr>
+    `);
+    tbody.innerHTML = okRows.concat(badRows).join("");
+  }
+  drawThermalEqChart(kq);
+}
+
+async function loadThermalEqState() {
+  try {
+    const data = await apiGet("/api/can-bang-nhiet-thuc-nghiem/trang-thai", "t9_state");
+    if (data.tham_so_do_duoc?.tham_so) STATE.measuredParams = data.tham_so_do_duoc.tham_so;
+    if (data.bao_cao) renderThermalEq(data.bao_cao, data.tham_so_do_duoc);
+  } catch (err) {
+    if (!isAbortError(err)) toast(`Lỗi tải trạng thái cân bằng nhiệt: ${err.message}`);
+  }
+}
+
+async function runThermalEqFromCsv(apDung = false) {
+  const file = $("#t9-file-csv")?.files?.[0];
+  const nguoi = ($("#t9-nguoi")?.value || "").trim();
+  if (apDung && !nguoi) {
+    toast("Phải nhập họ tên Người thực hiện trước khi áp dụng.");
+    return;
+  }
+  if (!file) {
+    if (apDung && STATE.cbnRows) {
+      try {
+        const data = await apiPost("/api/can-bang-nhiet-thuc-nghiem", {
+          rows: STATE.cbnRows,
+          nguon_du_lieu: STATE.cbnLast?.nguon_du_lieu || "THUC_TE",
+          nguoi_thuc_hien: nguoi,
+          ap_dung: true,
+        });
+        renderThermalEq(data.ket_qua, data.tham_so_do_duoc);
+        toast("Đã áp dụng σ_D vào data/tham_so_do_duoc.json.");
+      } catch (err) {
+        toast(`Lỗi áp dụng: ${err.message}`);
+      }
+      return;
+    }
+    toast("Vui lòng chọn file CSV nhiệt độ sau đổ mẫu.");
+    return;
+  }
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("nguon_du_lieu", $("#t9-nguon")?.value || "THUC_TE");
+  fd.append("nguoi_thuc_hien", nguoi);
+  fd.append("ap_dung", apDung ? "true" : "false");
+  try {
+    const res = await fetch("/api/can-bang-nhiet-thuc-nghiem", { method: "POST", body: fd });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    STATE.cbnRows = null;
+    renderThermalEq(data.ket_qua, data.tham_so_do_duoc);
+    toast(apDung ? "Đã áp dụng σ_D vào tham số đo được." : "Đã hoàn tất phân tích cân bằng nhiệt.");
+  } catch (err) {
+    toast(`Lỗi phân tích cân bằng nhiệt: ${err.message}`, 4500);
+  }
+}
+
+async function runThermalEqDemoSim() {
+  const rows = [];
+  for (let m = 1; m <= 3; m += 1) {
+    const tau = 85 + m * 5;
+    for (let k = 0; k <= 12; k += 1) {
+      const t = k * 30;
+      const noise = 0.04 * Math.sin(k * 2.1 + m);
+      rows.push({
+        ma_lan_do: `LAN_MP_0${m}`,
+        thoi_gian_giay: t,
+        T_mau_C: Number((25.2 + 4.0 * Math.exp(-t / tau) + noise).toFixed(4)),
+        T_tham_chieu_C: 25.0,
+      });
+    }
+  }
+  STATE.cbnRows = rows;
+  try {
+    const data = await apiPost("/api/can-bang-nhiet-thuc-nghiem", {
+      rows,
+      nguon_du_lieu: "MO_PHONG",
+      nguoi_thuc_hien: ($("#t9-nguoi")?.value || "").trim() || "Mô phỏng minh họa",
+      ap_dung: false,
+    });
+    renderThermalEq(data.ket_qua, data.tham_so_do_duoc);
+    toast("Đã chạy mẫu mô phỏng 3 lần đổ mẫu.");
+  } catch (err) {
+    toast(`Lỗi mẫu mô phỏng: ${err.message}`);
+  }
+}
+
+/* ==========================================================================
    Điều Khiển Chuyển Tab, Camera & Sự Kiện Giao Diện
    ========================================================================== */
 function switchTab(tabId) {
@@ -2571,6 +2740,10 @@ function switchTab(tabId) {
     if (tabId === "tab-8") {
       if (STATE.driftLast) drawDriftCharts(STATE.driftLast);
       else loadDriftState();
+    }
+    if (tabId === "tab-9") {
+      if (STATE.cbnLast) drawThermalEqChart(STATE.cbnLast);
+      else loadThermalEqState();
     }
   });
 }
@@ -3417,6 +3590,11 @@ function bindEvents() {
   $("#t8-btn-demo")?.addEventListener("click", () => runDriftDemoSim(false));
   $("#t8-btn-apply")?.addEventListener("click", applyLastDriftParam);
 
+  // Tab 9: Cân bằng nhiệt hai ngăn sau khi đổ mẫu (X3)
+  $("#t9-btn-run")?.addEventListener("click", () => runThermalEqFromCsv(false));
+  $("#t9-btn-demo")?.addEventListener("click", runThermalEqDemoSim);
+  $("#t9-btn-apply")?.addEventListener("click", () => runThermalEqFromCsv(true));
+
   window.addEventListener("resize", () => {
     debounce("win_resize", () => {
       const activeTab = $(".tab-pane.active")?.id;
@@ -3426,6 +3604,7 @@ function bindEvents() {
       if (activeTab === "tab-5" && STATE.opticsLast) drawOpticsCharts(STATE.opticsLast);
       if (activeTab === "tab-6" && STATE.baLast) drawBaCharts(STATE.baLast);
       if (activeTab === "tab-8" && STATE.driftLast) drawDriftCharts(STATE.driftLast);
+      if (activeTab === "tab-9" && STATE.cbnLast) drawThermalEqChart(STATE.cbnLast);
     }, 100);
   }, { passive: true });
 }

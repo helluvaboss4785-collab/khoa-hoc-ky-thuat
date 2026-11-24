@@ -121,6 +121,7 @@
         <button type="button" class="tab-btn-25d pro-only" data-tab="tab-6">Đối Chứng</button>
         <button type="button" class="tab-btn-25d pro-only" data-tab="tab-7">Thu Dữ Liệu</button>
         <button type="button" class="tab-btn-25d pro-only" data-tab="tab-8">Độ Trôi Laser</button>
+        <button type="button" class="tab-btn-25d pro-only" data-tab="tab-9">Cân Bằng Nhiệt</button>
       </nav>
 
       <!-- ================================================================
@@ -1380,6 +1381,111 @@
               <div class="chart-canvas-wrap">
                 <canvas id="canvas-t8-dy"></canvas>
                 <div class="chart-tooltip" id="tip-t8-dy"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================
+           TAB 9: CÂN BẰNG NHIỆT HAI NGĂN SAU ĐỔ MẪU (X3)
+           ================================================================ -->
+      <section id="tab-9" class="tab-pane">
+        <div class="chassis-panel-25d" style="margin-bottom:14px;">
+          <div class="step-badge-title">
+            <span class="step-num-25d">X3</span> Phân Tích Cân Bằng Nhiệt Hai Ngăn Sau Khi Đổ Mẫu D(t) = D<sub>∞</sub> + D<sub>0</sub>·e<sup>−t/τ</sup>
+          </div>
+          <p style="margin:0 0 10px; font-size:0.84rem; color:#475569;">
+            Tải file CSV ghi cặp nhiệt độ (<code>ma_lan_do</code>, <code>thoi_gian_giay</code>, <code>T_mau_C</code>, <code>T_tham_chieu_C</code>)
+            để ước lượng hằng số thời gian τ, độ lệch dừng D<sub>∞</sub>, thời gian chờ ổn định |D − D<sub>∞</sub>| ≤ ngưỡng và đề xuất σ<sub>D</sub>.
+          </p>
+          <div class="grid-12">
+            <div class="col-4">
+              <div class="control-group">
+                <div class="control-label"><span>Chọn file CSV nhiệt độ sau đổ mẫu</span></div>
+                <input type="file" id="t9-file-csv" class="input-25d" accept=".csv,text/csv" />
+              </div>
+              <div class="control-row-2">
+                <div class="control-group">
+                  <div class="control-label"><span>Nguồn dữ liệu</span></div>
+                  <select id="t9-nguon" class="select-25d">
+                    <option value="THUC_TE">THUC_TE (Đo thật)</option>
+                    <option value="MO_PHONG">MO_PHONG (Kiểm thử)</option>
+                  </select>
+                </div>
+                <div class="control-group">
+                  <div class="control-label"><span>Người thực hiện</span></div>
+                  <input type="text" id="t9-nguoi" class="input-25d" placeholder="Họ tên học sinh" />
+                </div>
+              </div>
+              <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+                <button type="button" id="t9-btn-run" class="btn-25d btn-primary-25d">Phân tích CSV</button>
+                <button type="button" id="t9-btn-demo" class="btn-25d btn-sm">Chạy mẫu MÔ PHỎNG</button>
+              </div>
+              <div style="margin-top:8px;">
+                <button type="button" id="t9-btn-apply" class="btn-25d btn-teal-25d" disabled>
+                  Áp dụng σ<sub>D</sub> vào tham số đo được
+                </button>
+              </div>
+            </div>
+            <div class="col-8">
+              <div id="t9-status-banner" class="banner-25d info" style="margin-bottom:10px;">
+                <div class="banner-icon">i</div>
+                <div>Chưa có dữ liệu cân bằng nhiệt. Hãy tải CSV hoặc chạy mẫu mô phỏng.</div>
+              </div>
+              <div class="kpi-grid-25d">
+                <div class="kpi-card-25d tone-teal">
+                  <div class="kpi-label">HẰNG SỐ τ (MEDIAN / P90)</div>
+                  <div class="kpi-value"><span id="t9-kpi-tau">--</span><small>s</small></div>
+                  <div class="kpi-sub" id="t9-kpi-tau-p90">P90 τ: -- s</div>
+                </div>
+                <div class="kpi-card-25d tone-navy">
+                  <div class="kpi-label">THỜI GIAN CHỜ P90</div>
+                  <div class="kpi-value"><span id="t9-kpi-tcho">--</span><small>s</small></div>
+                  <div class="kpi-sub" id="t9-kpi-tcho-med">Median t_chờ: -- s</div>
+                </div>
+                <div class="kpi-card-25d tone-amber">
+                  <div class="kpi-label">ĐỘ LỆCH DỪNG D<sub>∞</sub> TB</div>
+                  <div class="kpi-value"><span id="t9-kpi-dinf">--</span><small>°C</small></div>
+                  <div class="kpi-sub" id="t9-kpi-counts">Hợp lệ / Loại: --</div>
+                </div>
+                <div class="kpi-card-25d tone-crimson">
+                  <div class="kpi-label">ĐỀ XUẤT σ<sub>D</sub> (ỔN ĐỊNH / CHƯA)</div>
+                  <div class="kpi-value"><span id="t9-kpi-sigmad">--</span><small>°C</small></div>
+                  <div class="kpi-sub" id="t9-kpi-sigmad-raw">Khi chưa ổn định: -- °C</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-12">
+          <div class="col-6">
+            <div class="chassis-panel-25d">
+              <div class="step-badge-title"><span class="step-num-25d">1</span> Đường cong suy giảm D(t) &amp; Đường khớp mũ (Lần đo đầu)</div>
+              <div class="chart-canvas-wrap">
+                <canvas id="canvas-t9-curve"></canvas>
+                <div class="chart-tooltip" id="tip-t9-curve"></div>
+              </div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="chassis-panel-25d">
+              <div class="step-badge-title"><span class="step-num-25d">2</span> Chi tiết từng lần đổ mẫu &amp; các lần bị loại</div>
+              <div class="table-scroll-25d" style="max-height:290px; overflow:auto;">
+                <table class="data-table-25d">
+                  <thead>
+                    <tr>
+                      <th>Mã lần</th>
+                      <th>Số điểm</th>
+                      <th>τ (s)</th>
+                      <th>D<sub>∞</sub> (°C)</th>
+                      <th>t<sub>chờ</sub> (s)</th>
+                      <th>Trạng thái</th>
+                    </tr>
+                  </thead>
+                  <tbody id="t9-rows-body"></tbody>
+                </table>
               </div>
             </div>
           </div>
