@@ -1919,6 +1919,67 @@ function drawCalibrationCharts(data) {
   });
 }
 
+function renderTransferCheck(data) {
+  const sumEl = $("#t4-transfer-summary");
+  const warnEl = $("#t4-transfer-warn");
+  const tbody = $("#t4-transfer-body");
+  if (!tbody || !sumEl) return;
+
+  const kq = data?.ket_qua;
+  const rows = Array.isArray(data?.bang_tom_tat) ? data.bang_tom_tat : [];
+  if (!kq) {
+    sumEl.textContent = "Chưa có dữ liệu";
+    sumEl.className = "status-pill pill-wait";
+    tbody.innerHTML = "";
+    return;
+  }
+  const coCanhBao = Boolean(kq.co_canh_bao_khong_chuyen_duoc);
+  sumEl.textContent = kq.trang_thai === "KHONG_DU_NHOM" ? "Chưa đủ ≥2 nhóm" : (coCanhBao ? "Vượt ngưỡng RMS" : "Đạt ngưỡng");
+  sumEl.className = `status-pill ${kq.trang_thai === "KHONG_DU_NHOM" ? "pill-wait" : (coCanhBao ? "pill-warn" : "pill-ok")}`;
+
+  if (warnEl) {
+    const cbs = kq.canh_bao_chi_tiet || [];
+    if (cbs.length) {
+      warnEl.style.display = "flex";
+      warnEl.className = "banner-25d warn";
+      warnEl.innerHTML = `<div class="banner-icon">!</div><div>${cbs.map((c) => esc(c.thong_diep)).join("<br>")}</div>`;
+    } else {
+      warnEl.style.display = "none";
+    }
+  }
+
+  tbody.innerHTML = rows.map((r) => `
+    <tr>
+      <td><b>${esc(r.truc)}</b></td>
+      <td>${esc(r.don_vi_y)}</td>
+      <td>${esc(r.trang_thai)}</td>
+      <td>${r.so_nhom ?? "--"}</td>
+      <td>${r.bias_ppt === null || r.bias_ppt === undefined ? "—" : fmt(r.bias_ppt, 3)}</td>
+      <td>${r.rms_ppt === null || r.rms_ppt === undefined ? "—" : fmt(r.rms_ppt, 3)}</td>
+      <td>${r.ty_le_phu_2sigma === null || r.ty_le_phu_2sigma === undefined ? "—" : `${fmt(100 * r.ty_le_phu_2sigma, 1)}%`}</td>
+    </tr>
+  `).join("");
+}
+
+async function runTransferCheck() {
+  try {
+    const degVal = $("#t4-degree")?.value;
+    const bacEp = degVal === "auto" ? null : Number(degVal);
+    const data = await apiPost("/api/chuyen-duong-chuan", {
+      mode: STATE.calibMode || "sim",
+      csv_text: STATE.calibCsvText || "",
+      bac_ep: bacEp,
+    }, "t4_transfer");
+    renderTransferCheck(data);
+  } catch (err) {
+    if (!isAbortError(err)) toast(`Lỗi kiểm tra LOPO/LOBO: ${err.message}`);
+  }
+}
+
+document.addEventListener("click", (ev) => {
+  if (ev.target?.closest?.("#t4-btn-transfer-check")) runTransferCheck();
+});
+
 /* ==========================================================================
    TAB 5: MÔ PHỎNG QUANG HỌC SNELL & NGÂN SÁCH SAI SỐ RSS
    ========================================================================== */

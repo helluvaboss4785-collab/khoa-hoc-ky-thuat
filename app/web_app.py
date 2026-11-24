@@ -3031,6 +3031,34 @@ async def api_can_bang_nhiet_thuc_nghiem(request: Request) -> JSONResponse:
         return _json_err(f"Lỗi khi phân tích cân bằng nhiệt: {exc}")
 
 
+async def api_chuyen_duong_chuan(request: Request) -> JSONResponse:
+    """Đánh giá khả năng chuyển đường chuẩn giữa điện thoại (LOPO) và mẻ pha (LOBO) (X4)."""
+    import io
+    import pandas as pd
+    from core.chuyen_duong_chuan import bang_tom_tat_chuyen_duong_chuan, phan_tich_chuyen_duong_chuan
+
+    try:
+        body = await request.json()
+    except Exception:
+        return _json_err("Dữ liệu JSON gửi lên không hợp lệ.", 400)
+
+    mode = str(body.get("mode", "sim"))
+    try:
+        if mode == "csv" and isinstance(body.get("csv_text"), str) and body["csv_text"].strip():
+            df = cal.doc_csv_hieu_chuan(io.StringIO(body["csv_text"]))
+        else:
+            df = pd.read_csv(DATA_SIM_CSV) if DATA_SIM_CSV.exists() else cal.doc_csv_hieu_chuan(DATA_SIM_CSV)
+        bac_ep_raw = body.get("bac_ep")
+        bac_ep = int(bac_ep_raw) if bac_ep_raw in (1, 2, "1", "2") else None
+        kq = phan_tich_chuyen_duong_chuan(df, bac_ep=bac_ep, config_path=CONFIG_PATH)
+        bang = bang_tom_tat_chuyen_duong_chuan(kq).where(pd.notna(bang_tom_tat_chuyen_duong_chuan(kq)), None).to_dict(orient="records")
+        return _json_ok({"ok": True, "ket_qua": kq, "bang_tom_tat": bang})
+    except ValueError as exc:
+        return _json_err_typed(400, "DAU_VAO_KHONG_HOP_LE", str(exc), exc)
+    except Exception as exc:
+        return _json_err(f"Lỗi khi phân tích chuyển đường chuẩn: {exc}")
+
+
 class CacheHeaderMiddleware:
     """ASGI middleware nhẹ thêm Cache-Control chuẩn cho tài nguyên tĩnh và API."""
 
@@ -3100,6 +3128,7 @@ routes = [
     Route("/api/troi-laser", endpoint=api_troi_laser, methods=["POST"]),
     Route("/api/can-bang-nhiet-thuc-nghiem/trang-thai", endpoint=api_can_bang_nhiet_thuc_nghiem_trang_thai, methods=["GET"]),
     Route("/api/can-bang-nhiet-thuc-nghiem", endpoint=api_can_bang_nhiet_thuc_nghiem, methods=["POST"]),
+    Route("/api/chuyen-duong-chuan", endpoint=api_chuyen_duong_chuan, methods=["POST"]),
     Mount("/static", app=StaticFiles(directory=str(STATIC_DIR)), name="static"),
 ]
 

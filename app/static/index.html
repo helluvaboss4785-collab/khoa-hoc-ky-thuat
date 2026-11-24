@@ -895,6 +895,35 @@
             </table>
           </div>
         </div>
+
+        <div class="chassis-panel-25d" style="margin-top:14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+            <div class="step-badge-title" style="margin-bottom:0;">
+              <span class="step-num-25d">X4</span> Chuyển Đường Chuẩn Giữa Điện Thoại (LOPO) &amp; Mẻ Pha (LOBO)
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <button type="button" id="t4-btn-transfer-check" class="btn-25d btn-sm">Chạy kiểm tra LOPO / LOBO</button>
+              <span class="status-pill pill-wait" id="t4-transfer-summary">Chưa chạy</span>
+            </div>
+          </div>
+          <div id="t4-transfer-warn" style="display:none; margin-bottom:8px;"></div>
+          <div class="table-scroll-25d">
+            <table class="data-table-25d">
+              <thead>
+                <tr>
+                  <th>Trục kiểm tra</th>
+                  <th>Đơn vị y</th>
+                  <th>Trạng thái</th>
+                  <th>Số nhóm</th>
+                  <th>Bias (‰)</th>
+                  <th>RMS (‰)</th>
+                  <th>Phủ ±2σ</th>
+                </tr>
+              </thead>
+              <tbody id="t4-transfer-body"></tbody>
+            </table>
+          </div>
+        </div>
       </section>
 
       <!-- ================================================================

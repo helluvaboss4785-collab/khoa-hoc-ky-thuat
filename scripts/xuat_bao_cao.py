@@ -478,6 +478,34 @@ def xuat_bo_bao_cao(
         "",
     ])
 
+    # X4: Phân tích chuyển đường chuẩn giữa điện thoại (LOPO) và mẻ pha (LOBO)
+    from core.chuyen_duong_chuan import (
+        bang_tom_tat_chuyen_duong_chuan,
+        phan_tich_chuyen_duong_chuan,
+        ve_bieu_do_chuyen_duong_chuan,
+    )
+
+    kq_chuyen = phan_tich_chuyen_duong_chuan(df, config_path=cfg_path)
+    df_chuyen = bang_tom_tat_chuyen_duong_chuan(kq_chuyen)
+    chuyen_csv = out_path / "chuyen_duong_chuan.csv"
+    df_chuyen.to_csv(chuyen_csv, index=False, encoding="utf-8-sig")
+
+    chuyen_png = out_path / "chuyen_duong_chuan_lopo_lobo.png"
+    ve_bieu_do_chuyen_duong_chuan(kq_chuyen, chuyen_png, mo_phong=chua_xac_nhan_hc)
+
+    md_lines.extend([
+        "## 6. Khả năng chuyển đường chuẩn giữa điện thoại & mẻ pha (LOPO / LOBO)",
+        "",
+        "- Kết quả chi tiết xem [chuyen_duong_chuan.csv](chuyen_duong_chuan.csv) và ![chuyen_duong_chuan_lopo_lobo.png](chuyen_duong_chuan_lopo_lobo.png).",
+        "",
+        _df_to_markdown_table(df_chuyen),
+        "",
+    ])
+    for cb in kq_chuyen.get("canh_bao_chi_tiet", []):
+        md_lines.append(f"- **Cảnh báo ({cb['cap']}):** {cb['thong_diep']}")
+    if kq_chuyen.get("canh_bao_chi_tiet"):
+        md_lines.append("")
+
     md_path = out_path / "tong_hop_bao_cao.md"
     md_path.write_text("\n".join(md_lines), encoding="utf-8")
 
@@ -495,6 +523,8 @@ def xuat_bo_bao_cao(
         "tham_so_gia_dinh_csv": gia_dinh_csv,
         "kiem_tra_thiet_ke_csv": thiet_ke_csv,
         "kiem_tra_thiet_ke": kq_thiet_ke,
+        "chuyen_duong_chuan_csv": chuyen_csv,
+        "chuyen_duong_chuan_png": chuyen_png,
         "tong_hop_bao_cao_md": md_path,
     }
 
