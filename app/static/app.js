@@ -2034,11 +2034,21 @@ async function runOpticsSim() {
 
     if (data.ngan_sach) {
       const ns = data.ngan_sach;
+      const mp = STATE.measuredParams || {};
+      const badge = (isMeasured) => isMeasured
+        ? `<span class="status-pill pill-ok" style="margin-left:6px;">đo được</span>`
+        : `<span class="status-pill pill-warn" style="margin-left:6px;">giả định</span>`;
+      const coNhietDo = Boolean(mp.sigma_D_khi_da_on_dinh_C || mp.sigma_D_khi_chua_do_C);
+      const coTriet = Boolean(mp.he_so_triet_chung);
       $("#t5-rss-body").innerHTML = `
         <tr><td>1. Thuật toán định vị tâm vạch dưới pixel (px)</td><td><b>${fmt(ns.tim_tam, 4)}</b></td></tr>
         <tr><td>2. Chênh lệch nhiệt độ giữa 2 ngăn (°C)</td><td><b>${fmt(ns.nhiet_do, 4)}</b></td></tr>
         <tr><td>3. Sai số gia công góc đỉnh A (độ)</td><td><b>${fmt(ns.goc_A, 4)}</b></td></tr>
         <tr><td>4. Trôi laser &amp; rung camera còn sót sau vi sai</td><td><b>${fmt(ns.troi_laser, 4)}</b></td></tr>
+        <tr><td>1. Thuật toán định vị tâm vạch dưới pixel (px) ${badge(Boolean(mp.sai_so_tim_tam_px))}</td><td><b>${fmt(ns.tim_tam, 4)}</b></td></tr>
+        <tr><td>2. Chênh lệch nhiệt độ giữa 2 ngăn (°C) ${badge(coNhietDo)}</td><td><b>${fmt(ns.nhiet_do, 4)}</b></td></tr>
+        <tr><td>3. Sai số gia công góc đỉnh A (độ) ${badge(Boolean(mp.sai_so_goc_A_do))}</td><td><b>${fmt(ns.goc_A, 4)}</b></td></tr>
+        <tr><td>4. Trôi laser &amp; rung camera còn sót sau vi sai ${badge(coTriet)}</td><td><b>${fmt(ns.troi_laser, 4)}</b></td></tr>
         <tr style="background:#eff6ff;"><td><b>∑ TỔNG HỢP TOÀN PHƯƠNG (RSS 1σ)</b></td><td><b>${fmt(ns.tong_RSS, 4)}</b></td></tr>
       `;
       $("#t5-rss-banner").className = "banner-25d ok";
@@ -2314,6 +2324,224 @@ async function recordGuidedMeasurement() {
 }
 
 /* ==========================================================================
+   Tab 8: Phân Tích Độ Trôi Laser & Mức Triệt Nhiễu Chung κ (X2)
+   ========================================================================== */
+function drawDriftCharts(kq) {
+  if (!kq || !kq.chuoi_thoi_gian) return;
+  const ct = kq.chuoi_thoi_gian;
+  const tArr = ct.thoi_gian_phut || [];
+  const yt = ct.y_tc_px || [];
+  const ym = ct.y_mau_px || [];
+  const dy = ct.delta_y_px || [];
+
+  const y0tc = yt.length ? Number(yt[0]) : 0;
+  const y0mau = ym.length ? Number(ym[0]) : 0;
+  drawXYChart($("#canvas-t8-traces"), $("#tip-t8-traces"), {
+    title: "Dịch chuyển từng vạch (đã trừ mốc t = 0)",
+    xLabel: "Thời gian (phút)",
+    yLabel: "Độ lệch vị trí (px)",
+    series: [
+      {
+        type: "line",
+        color: "#0284c7",
+        width: 2.2,
+        label: "y_tc(t) − y_tc(0)",
+        points: tArr.map((t, i) => ({ x: t, y: Number(yt[i]) - y0tc })),
+      },
+      {
+        type: "line",
+        color: "#e5383b",
+        width: 2.2,
+        label: "y_mẫu(t) − y_mẫu(0)",
+        points: tArr.map((t, i) => ({ x: t, y: Number(ym[i]) - y0mau })),
+      },
+    ],
+  });
+
+  drawXYChart($("#canvas-t8-dy"), $("#tip-t8-dy"), {
+    title: "Hiệu vi sai Δy(t) = y_mẫu(t) − y_tc(t)",
+    xLabel: "Thời gian (phút)",
+    yLabel: "Δy (px)",
+    series: [
+      {
+        type: "line",
+        color: "#0f766e",
+        width: 2.3,
+        label: "Δy(t)",
+        points: tArr.map((t, i) => ({ x: t, y: Number(dy[i]) })),
+      },
+    ],
+  });
+}
+
+function renderDriftAnalysis(kq, thamSoDoDuoc) {
+  STATE.driftLast = kq;
+  if (thamSoDoDuoc && thamSoDoDuoc.tham_so) {
+    STATE.measuredParams = thamSoDoDuoc.tham_so;
+  }
+  const stBanner = $("#t8-status-banner");
+  const wuBanner = $("#t8-warmup-banner");
+  const applyBtn = $("#t8-btn-apply");
+
+  if (!kq) {
+    if (stBanner) {
+      stBanner.className = "banner-25d info";
+      stBanner.innerHTML = `<div class="banner-icon">i</div><div>Chưa có kết quả phân tích độ trôi laser. Hãy tải chuỗi ảnh hoặc chạy thử mẫu mô phỏng.</div>`;
+    }
+    if (wuBanner) wuBanner.style.display = "none";
+    if (applyBtn) applyBtn.disabled = true;
+    return;
+  }
+
+  const hopLe = Boolean(kq.hop_le && kq.trang_thai === "HOP_LE");
+  if (stBanner) {
+    const labelMoPhong = String(kq.nguon_du_lieu || "").toUpperCase() === "MO_PHONG" ? " [MÔ PHỎNG — chỉ kiểm thử thuật toán]" : "";
+    stBanner.className = `banner-25d ${hopLe ? "ok" : "warn"}`;
+    stBanner.innerHTML = `<div class="banner-icon">${hopLe ? "✓" : "!"}</div><div><b>${esc(kq.trang_thai)}</b>${esc(labelMoPhong)} — ${kq.so_khung} khung trong ${fmt(kq.thoi_luong_phut, 1)} phút. ${(kq.canh_bao || []).map(esc).join(" | ")}</div>`;
+  }
+
+  if (wuBanner) {
+    if (kq.canh_bao_warm_up) {
+      wuBanner.style.display = "flex";
+      wuBanner.className = "banner-25d warn";
+      wuBanner.innerHTML = `<div class="banner-icon">!</div><div>${esc(kq.chi_tiet_warm_up?.thong_diep || "Phát hiện bất thường warm-up ở giai đoạn đầu.")}</div>`;
+    } else {
+      wuBanner.style.display = "none";
+    }
+  }
+
+  const ci = kq.ktc_95_kappa || [0, 0];
+  if ($("#t8-kpi-kappa")) $("#t8-kpi-kappa").textContent = fmt(kq.kappa, 3);
+  if ($("#t8-kpi-kappa-ci")) $("#t8-kpi-kappa-ci").textContent = `KTC 95%: [${fmt(ci[0], 3)}, ${fmt(ci[1], 3)}]`;
+  if ($("#t8-kpi-lot")) $("#t8-kpi-lot").textContent = fmt(kq.he_so_lot_bao_thu, 4);
+  if ($("#t8-kpi-r")) $("#t8-kpi-r").textContent = `Tương quan r(y_tc, y_mẫu): ${fmt(kq.he_so_tuong_quan_r, 4)}`;
+  if ($("#t8-kpi-rate")) $("#t8-kpi-rate").textContent = `${fmt(kq.toc_do_troi_tc_px_gio, 2)} / ${fmt(kq.toc_do_troi_mau_px_gio, 2)}`;
+  if ($("#t8-kpi-dy-rate")) $("#t8-kpi-dy-rate").textContent = `Trôi Δy: ${fmt(kq.toc_do_troi_delta_y_px_gio, 2)} px/h`;
+  if ($("#t8-kpi-dur")) $("#t8-kpi-dur").textContent = `${fmt(kq.thoi_luong_phut, 1)}p / ${kq.so_khung}`;
+  if ($("#t8-kpi-state")) $("#t8-kpi-state").textContent = `Trạng thái: ${kq.trang_thai}`;
+  if (applyBtn) applyBtn.disabled = !hopLe;
+
+  drawDriftCharts(kq);
+}
+
+async function loadDriftState() {
+  try {
+    const data = await apiGet("/api/troi-laser/trang-thai", "t8_state");
+    if (data.tham_so_do_duoc && data.tham_so_do_duoc.tham_so) {
+      STATE.measuredParams = data.tham_so_do_duoc.tham_so;
+    }
+    if (data.bao_cao) {
+      renderDriftAnalysis(data.bao_cao, data.tham_so_do_duoc);
+    }
+  } catch (err) {
+    if (!isAbortError(err)) toast(`Lỗi tải trạng thái độ trôi: ${err.message}`);
+  }
+}
+
+async function runDriftFromFiles(apDung = false) {
+  const filesEl = $("#t8-files");
+  const files = filesEl?.files;
+  if (!files || !files.length) {
+    toast("Vui lòng chọn ít nhất 3 ảnh (tối thiểu 60 ảnh trong ≥ 20 phút để áp dụng).");
+    return;
+  }
+  const nguoi = ($("#t8-nguoi")?.value || "").trim();
+  if (apDung && !nguoi) {
+    toast("Phải nhập họ tên Người thực hiện trước khi áp dụng tham số đo được.");
+    return;
+  }
+  const fd = new FormData();
+  for (const f of files) fd.append("files", f);
+  if ($("#t8-dt-giay")?.value) fd.append("buoc_thoi_gian_giay", $("#t8-dt-giay").value);
+  fd.append("nguon_du_lieu", $("#t8-nguon")?.value || "THUC_TE");
+  fd.append("nguoi_thuc_hien", nguoi);
+  fd.append("ap_dung", apDung ? "true" : "false");
+
+  try {
+    const res = await fetch("/api/troi-laser", { method: "POST", body: fd });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    renderDriftAnalysis(data.ket_qua, data.tham_so_do_duoc);
+    toast(apDung ? "Đã áp dụng 1 − κ_lo vào tham số đo được." : "Đã hoàn tất phân tích độ trôi laser.");
+  } catch (err) {
+    toast(`Lỗi phân tích độ trôi: ${err.message}`, 4500);
+  }
+}
+
+async function runDriftDemoSim(apDung = false) {
+  const t = [];
+  const yTc = [];
+  const yMau = [];
+  let s = 13579;
+  const randn = () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    const u1 = Math.max(1e-6, s / 4294967296);
+    s = (s * 1664525 + 1013904223) >>> 0;
+    const u2 = s / 4294967296;
+    return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  };
+  for (let i = 0; i < 65; i += 1) {
+    const tm = (24.0 * i) / 64.0;
+    const common = 18.0 * (tm / 24.0) + 1.5 * Math.sin((tm * Math.PI) / 12.0);
+    t.push(Number(tm.toFixed(4)));
+    yTc.push(Number((210.0 + common + 0.05 * randn()).toFixed(4)));
+    yMau.push(Number((270.0 + common + 0.05 * randn()).toFixed(4)));
+  }
+  const nguoi = ($("#t8-nguoi")?.value || "").trim();
+  if (apDung && !nguoi) {
+    toast("Phải nhập Người thực hiện trước khi áp dụng.");
+    return;
+  }
+  try {
+    const data = await apiPost("/api/troi-laser", {
+      thoi_gian_phut: t,
+      y_tc_px: yTc,
+      y_mau_px: yMau,
+      nguon_du_lieu: "MO_PHONG",
+      nguoi_thuc_hien: nguoi || "Mô phỏng minh họa",
+      ap_dung: apDung,
+    });
+    STATE.driftLastSeries = { thoi_gian_phut: t, y_tc_px: yTc, y_mau_px: yMau, nguon_du_lieu: "MO_PHONG" };
+    renderDriftAnalysis(data.ket_qua, data.tham_so_do_duoc);
+    toast(apDung ? "Đã áp dụng 1 − κ_lo (từ dữ liệu MÔ PHỎNG) vào tham số đo được." : "Đã chạy mẫu mô phỏng chuỗi trôi 24 phút.");
+  } catch (err) {
+    toast(`Lỗi chạy mẫu mô phỏng: ${err.message}`);
+  }
+}
+
+async function applyLastDriftParam() {
+  const nguoi = ($("#t8-nguoi")?.value || "").trim();
+  if (!nguoi) {
+    toast("Phải nhập họ tên Người thực hiện khi áp dụng tham số đo được.");
+    return;
+  }
+  const files = $("#t8-files")?.files;
+  if (files && files.length) {
+    await runDriftFromFiles(true);
+    return;
+  }
+  const src = STATE.driftLast?.chuoi_thoi_gian;
+  if (!src) {
+    toast("Chưa có chuỗi dữ liệu để áp dụng.");
+    return;
+  }
+  try {
+    const data = await apiPost("/api/troi-laser", {
+      thoi_gian_phut: src.thoi_gian_phut,
+      y_tc_px: src.y_tc_px,
+      y_mau_px: src.y_mau_px,
+      nguon_du_lieu: STATE.driftLast?.nguon_du_lieu || "THUC_TE",
+      nguoi_thuc_hien: nguoi,
+      ap_dung: true,
+    });
+    renderDriftAnalysis(data.ket_qua, data.tham_so_do_duoc);
+    toast("Đã lưu 1 − κ_lo vào data/tham_so_do_duoc.json.");
+  } catch (err) {
+    toast(`Từ chối áp dụng: ${err.message}`, 4500);
+  }
+}
+
+/* ==========================================================================
    Điều Khiển Chuyển Tab, Camera & Sự Kiện Giao Diện
    ========================================================================== */
 function switchTab(tabId) {
@@ -2339,6 +2567,10 @@ function switchTab(tabId) {
     }
     if (tabId === "tab-7") {
       loadGuidedCollectionState();
+    }
+    if (tabId === "tab-8") {
+      if (STATE.driftLast) drawDriftCharts(STATE.driftLast);
+      else loadDriftState();
     }
   });
 }
@@ -3180,6 +3412,11 @@ function bindEvents() {
     }
   });
 
+  // Tab 8: Độ trôi laser & mức triệt nhiễu chung κ (X2)
+  $("#t8-btn-run")?.addEventListener("click", () => runDriftFromFiles(false));
+  $("#t8-btn-demo")?.addEventListener("click", () => runDriftDemoSim(false));
+  $("#t8-btn-apply")?.addEventListener("click", applyLastDriftParam);
+
   window.addEventListener("resize", () => {
     debounce("win_resize", () => {
       const activeTab = $(".tab-pane.active")?.id;
@@ -3188,6 +3425,7 @@ function bindEvents() {
       if (activeTab === "tab-4" && STATE.calibLast) drawCalibrationCharts(STATE.calibLast);
       if (activeTab === "tab-5" && STATE.opticsLast) drawOpticsCharts(STATE.opticsLast);
       if (activeTab === "tab-6" && STATE.baLast) drawBaCharts(STATE.baLast);
+      if (activeTab === "tab-8" && STATE.driftLast) drawDriftCharts(STATE.driftLast);
     }, 100);
   }, { passive: true });
 }

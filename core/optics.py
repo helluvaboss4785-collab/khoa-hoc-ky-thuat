@@ -259,7 +259,7 @@ def pixel_moi_phan_nghin(
     return mm_moi_ppt / cfg.pixel_mm
 
 
-def ngan_sach_sai_so(
+def _ngan_sach_sai_so_co_so(
     S_ppt: float,
     T_C: float,
     cfg: CauHinhQuangHoc,
@@ -295,3 +295,140 @@ def ngan_sach_sai_so(
     ket_qua = {"tim_tam": tim_tam, "nhiet_do": nhiet, "goc_A": goc_a, "troi_laser": troi}
     ket_qua["tong_RSS"] = math.sqrt(sum(v * v for v in ket_qua.values()))
     return ket_qua
+
+
+class KetQuaNganSachSaiSo(dict):
+    """Từ điển 5 thành phần ngân sách sai số kèm nguồn gốc từng mục ("đo được" / "giả định").
+
+    Lưu ý tương thích ngược:
+    - Các khóa chuẩn khi duyệt dict/keys()/values()/set(r) vẫn giữ nguyên đúng 5 khóa số
+      {"tim_tam", "nhiet_do", "goc_A", "troi_laser", "tong_RSS"}.
+    - Trường `.nguon` (hoặc truy cập `r["nguon"]`, `r.get("nguon")`) trả dict nguồn gốc từng mục.
+    """
+
+    def __init__(
+        self,
+        gia_tri: dict[str, float],
+        *,
+        nguon: dict[str, str],
+        tham_so_su_dung: dict[str, float],
+    ) -> None:
+        super().__init__(gia_tri)
+        self.nguon = dict(nguon)
+        self.tham_so_su_dung = dict(tham_so_su_dung)
+
+    def __getitem__(self, key: str):  # type: ignore[override]
+        if key == "nguon":
+            return self.nguon
+        if key == "tham_so_su_dung":
+            return self.tham_so_su_dung
+        return super().__getitem__(key)
+
+    def get(self, key: str, default=None):  # type: ignore[override]
+        if key == "nguon":
+            return self.nguon
+        if key == "tham_so_su_dung":
+            return self.tham_so_su_dung
+        return super().get(key, default)
+
+    def to_dict_day_du(self) -> dict[str, object]:
+        """Xuất dict đầy đủ kèm trường 'nguon' và 'tham_so_su_dung' cho JSON/báo cáo."""
+        out: dict[str, object] = dict(self)
+        out["nguon"] = dict(self.nguon)
+        out["tham_so_su_dung"] = dict(self.tham_so_su_dung)
+        return out
+
+
+def ngan_sach_sai_so(
+    S_ppt: float,
+    T_C: float,
+    cfg: CauHinhQuangHoc,
+    sai_so_tim_tam_px: float,
+    lech_nhiet_do_C: float,
+    sai_so_goc_A_do: float,
+    troi_laser_px: float,
+    he_so_triet_chung: float,
+    *,
+    uu_tien_do_duoc: bool = True,
+    tham_so_do_duoc_path: object = None,
+) -> KetQuaNganSachSaiSo:
+    """Tính ngân sách sai số (‰); ưu tiên dùng tham số ĐÃ ĐO ĐƯỢC trong data/tham_so_do_duoc.json nếu có."""
+    nguon = {
+        "tim_tam": "giả định",
+        "nhiet_do": "giả định",
+        "goc_A": "giả định",
+        "troi_laser": "giả định",
+    }
+    tam_dung = float(sai_so_tim_tam_px)
+    t_dung = float(lech_nhiet_do_C)
+    goc_dung = float(sai_so_goc_A_do)
+    troi_dung = float(troi_laser_px)
+    triet_dung = float(he_so_triet_chung)
+
+    if uu_tien_do_duoc:
+        try:
+            from core.troi_laser import doc_tham_so_do_duoc
+
+            tham_so = doc_tham_so_do_duoc(tham_so_do_duoc_path).get("tham_so") or {}
+        except Exception:
+            tham_so = {}
+
+        if isinstance(tham_so.get("he_so_triet_chung"), dict) and "gia_tri" in tham_so["he_so_triet_chung"]:
+            try:
+                val = float(tham_so["he_so_triet_chung"]["gia_tri"])
+                if math.isfinite(val):
+                    triet_dung = val
+                    nguon["troi_laser"] = "đo được"
+            except (TypeError, ValueError):
+                pass
+
+        for khoa_t in ("sigma_D_khi_da_on_dinh_C", "sigma_D_khi_chua_do_C"):
+            muc_t = tham_so.get(khoa_t)
+            if isinstance(muc_t, dict) and "gia_tri" in muc_t:
+                try:
+                    val_t = float(muc_t["gia_tri"])
+                    if math.isfinite(val_t):
+                        t_dung = val_t
+                        nguon["nhiet_do"] = "đo được"
+                        break
+                except (TypeError, ValueError):
+                    pass
+
+        for khoa_cfg, key_nguon, attr_idx in (
+            ("sai_so_tim_tam_px", "tim_tam", 0),
+            ("sai_so_goc_A_do", "goc_A", 2),
+        ):
+            muc = tham_so.get(khoa_cfg)
+            if isinstance(muc, dict) and "gia_tri" in muc:
+                try:
+                    v_m = float(muc["gia_tri"])
+                    if math.isfinite(v_m):
+                        if attr_idx == 0:
+                            tam_dung = v_m
+                        else:
+                            goc_dung = v_m
+                        nguon[key_nguon] = "đo được"
+                except (TypeError, ValueError):
+                    pass
+
+    co_so = _ngan_sach_sai_so_co_so(
+        S_ppt,
+        T_C,
+        cfg,
+        tam_dung,
+        t_dung,
+        goc_dung,
+        troi_dung,
+        triet_dung,
+    )
+    return KetQuaNganSachSaiSo(
+        co_so,
+        nguon=nguon,
+        tham_so_su_dung={
+            "sai_so_tim_tam_px": tam_dung,
+            "lech_nhiet_do_C": t_dung,
+            "sai_so_goc_A_do": goc_dung,
+            "troi_laser_px": troi_dung,
+            "he_so_triet_chung": triet_dung,
+        },
+    )

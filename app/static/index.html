@@ -120,6 +120,7 @@
         <button type="button" class="tab-btn-25d pro-only" data-tab="tab-5">Mô Phỏng</button>
         <button type="button" class="tab-btn-25d pro-only" data-tab="tab-6">Đối Chứng</button>
         <button type="button" class="tab-btn-25d pro-only" data-tab="tab-7">Thu Dữ Liệu</button>
+        <button type="button" class="tab-btn-25d pro-only" data-tab="tab-8">Độ Trôi Laser</button>
       </nav>
 
       <!-- ================================================================
@@ -1281,6 +1282,106 @@
               </thead>
               <tbody id="t7-rows-body"></tbody>
             </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================
+           TAB 8: ĐỘ TRÔI LASER & MỨC TRIỆT NHIỄU CHUNG κ (X2)
+           ================================================================ -->
+      <section id="tab-8" class="tab-pane">
+        <div class="chassis-panel-25d" style="margin-bottom:14px;">
+          <div class="step-badge-title">
+            <span class="step-num-25d">X2</span> Phân Tích Độ Trôi Laser &amp; Hệ Số Triệt Nhiễu Chung κ (Nước Cất Hai Ngăn)
+          </div>
+          <p style="margin:0 0 10px; font-size:0.84rem; color:#475569;">
+            Chụp ≥ 60 khung ảnh trong ≥ 20 phút khi CẢ HAI ngăn cùng chứa nước cất (ΔS = 0) để đo trôi nhiệt,
+            phát hiện bất thường warm-up và ước lượng hệ số triệt nhiễu chung κ = 1 − σ(Δy) / σ<sub>đơn</sub>.
+            Kết quả được lưu riêng thành JSON và chỉ áp dụng <code>1 − κ<sub>lo</sub></code> vào ngân sách sai số khi bạn nhấn nút áp dụng tường minh.
+          </p>
+          <div class="grid-12">
+            <div class="col-4">
+              <div class="control-group">
+                <div class="control-label"><span>Chọn nhiều ảnh chuỗi trôi (PNG/JPG)</span></div>
+                <input type="file" id="t8-files" class="input-25d" accept="image/png,image/jpeg" multiple />
+              </div>
+              <div class="control-row-2">
+                <div class="control-group">
+                  <div class="control-label"><span>Bước thời gian (giây, nếu thiếu EXIF)</span></div>
+                  <input type="number" id="t8-dt-giay" class="input-25d" step="1" value="20" min="1" />
+                </div>
+                <div class="control-group">
+                  <div class="control-label"><span>Nguồn dữ liệu</span></div>
+                  <select id="t8-nguon" class="select-25d">
+                    <option value="THUC_TE">THUC_TE (Ảnh thật)</option>
+                    <option value="MO_PHONG">MO_PHONG (Kiểm thử)</option>
+                  </select>
+                </div>
+              </div>
+              <div class="control-group">
+                <div class="control-label"><span>Người thực hiện (bắt buộc khi áp dụng)</span></div>
+                <input type="text" id="t8-nguoi" class="input-25d" placeholder="Họ tên học sinh thực hiện" />
+              </div>
+              <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+                <button type="button" id="t8-btn-run" class="btn-25d btn-primary-25d">Phân tích chuỗi ảnh</button>
+                <button type="button" id="t8-btn-demo" class="btn-25d btn-sm">Chạy mẫu MÔ PHỎNG</button>
+              </div>
+              <div style="margin-top:8px;">
+                <button type="button" id="t8-btn-apply" class="btn-25d btn-teal-25d" disabled>
+                  Áp dụng 1 − κ<sub>lo</sub> vào tham số đo được
+                </button>
+              </div>
+            </div>
+            <div class="col-8">
+              <div id="t8-status-banner" class="banner-25d info" style="margin-bottom:8px;">
+                <div class="banner-icon">i</div>
+                <div>Chưa có kết quả phân tích độ trôi laser. Hãy tải chuỗi ảnh hoặc chạy thử mẫu mô phỏng.</div>
+              </div>
+              <div id="t8-warmup-banner" style="display:none; margin-bottom:10px;"></div>
+              <div class="kpi-grid-25d">
+                <div class="kpi-card-25d tone-teal">
+                  <div class="kpi-label">HỆ SỐ TRIỆT CHUNG κ</div>
+                  <div class="kpi-value"><span id="t8-kpi-kappa">--</span></div>
+                  <div class="kpi-sub" id="t8-kpi-kappa-ci">KTC 95% block-bootstrap: --</div>
+                </div>
+                <div class="kpi-card-25d tone-navy">
+                  <div class="kpi-label">HỆ SỐ LỌT BẢO THỦ (1 − κ<sub>lo</sub>)</div>
+                  <div class="kpi-value"><span id="t8-kpi-lot">--</span></div>
+                  <div class="kpi-sub" id="t8-kpi-r">Tương quan r(y<sub>tc</sub>, y<sub>mẫu</sub>): --</div>
+                </div>
+                <div class="kpi-card-25d tone-amber">
+                  <div class="kpi-label">TỐC ĐỘ TRÔI (tc / mẫu)</div>
+                  <div class="kpi-value"><span id="t8-kpi-rate">--</span><small>px/h</small></div>
+                  <div class="kpi-sub" id="t8-kpi-dy-rate">Trôi Δy: -- px/h</div>
+                </div>
+                <div class="kpi-card-25d tone-crimson">
+                  <div class="kpi-label">THỜI LƯỢNG / SỐ KHUNG</div>
+                  <div class="kpi-value"><span id="t8-kpi-dur">--</span></div>
+                  <div class="kpi-sub" id="t8-kpi-state">Trạng thái: --</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-12">
+          <div class="col-6">
+            <div class="chassis-panel-25d">
+              <div class="step-badge-title"><span class="step-num-25d">1</span> Độ trôi từng vạch theo thời gian y<sub>tc</sub>(t) &amp; y<sub>mẫu</sub>(t)</div>
+              <div class="chart-canvas-wrap">
+                <canvas id="canvas-t8-traces"></canvas>
+                <div class="chart-tooltip" id="tip-t8-traces"></div>
+              </div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div class="chassis-panel-25d">
+              <div class="step-badge-title"><span class="step-num-25d">2</span> Hiệu vi sai Δy(t) = y<sub>mẫu</sub>(t) − y<sub>tc</sub>(t)</div>
+              <div class="chart-canvas-wrap">
+                <canvas id="canvas-t8-dy"></canvas>
+                <div class="chart-tooltip" id="tip-t8-dy"></div>
+              </div>
+            </div>
           </div>
         </div>
       </section>

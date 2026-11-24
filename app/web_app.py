@@ -2827,6 +2827,132 @@ async def api_thu_du_lieu_csv(request: Request) -> Response:
     )
 
 
+async def api_troi_laser_trang_thai(request: Request) -> JSONResponse:
+    """Trả kết quả phân tích độ trôi laser gần nhất và tham số đo được (X2)."""
+    from core import troi_laser
+
+    p_troi = troi_laser.duong_dan_phan_tich_troi()
+    bao_cao: dict[str, Any] | None = None
+    if p_troi.exists():
+        try:
+            bao_cao = json.loads(p_troi.read_text(encoding="utf-8"))
+        except Exception:
+            bao_cao = None
+    tham_so = troi_laser.doc_tham_so_do_duoc()
+    return _json_ok({
+        "ok": True,
+        "bao_cao": bao_cao,
+        "tham_so_do_duoc": tham_so,
+    })
+
+
+async def api_troi_laser(request: Request) -> JSONResponse:
+    """Phân tích chuỗi ảnh hoặc chuỗi số độ trôi laser (X2) và tùy chọn áp dụng 1−κ_lo."""
+    from core import troi_laser
+    from scripts.xu_ly_thu_muc_anh import LoiAnhMoPhongGanNhanThucTeError
+
+    ct = (request.headers.get("content-type") or "").lower()
+    ap_dung = False
+    nguoi_thuc_hien = ""
+    nguon_du_lieu = "THUC_TE"
+    ngay: str | None = None
+
+    try:
+        if "multipart/form-data" in ct:
+            form = await request.form()
+            uploads = [v for k, v in form.multi_items() if k in ("files", "file") and hasattr(v, "read")]
+            if not uploads:
+                return _json_err_typed(400, "DAU_VAO_KHONG_HOP_LE", "Chưa tải lên ảnh nào cho phân tích độ trôi.")
+            danh_sach_anh: list[tuple[str, bytes]] = []
+            for up in uploads:
+                raw = await up.read()
+                ten = getattr(up, "filename", None) or "khung_troi.png"
+                danh_sach_anh.append((str(ten), raw))
+            buoc_giay = _parse_opt_float(form.get("buoc_thoi_gian_giay"))
+            t_thu_cong: list[float] | None = None
+            t_json_raw = form.get("thoi_gian_phut_json")
+            if isinstance(t_json_raw, str) and t_json_raw.strip():
+                t_thu_cong = [float(v) for v in json.loads(t_json_raw)]
+            nguon_du_lieu = str(form.get("nguon_du_lieu") or "THUC_TE")
+            nguoi_thuc_hien = str(form.get("nguoi_thuc_hien") or "")
+            ngay = str(form.get("ngay") or "").strip() or None
+            ap_dung = _as_bool(form.get("ap_dung"), False)
+            kq = troi_laser.phan_tich_troi_laser_tu_danh_sach_anh(
+                danh_sach_anh,
+                buoc_thoi_gian_giay=buoc_giay,
+                thoi_gian_phut_thu_cong=t_thu_cong,
+                nguon_du_lieu=nguon_du_lieu,
+                nguoi_thuc_hien=nguoi_thuc_hien,
+                ngay=ngay,
+                luu_json=True,
+                config_path=CONFIG_PATH,
+            )
+        else:
+            try:
+                body = await request.json()
+            except Exception:
+                return _json_err("Dữ liệu JSON gửi lên không hợp lệ.", 400)
+            nguon_du_lieu = str(body.get("nguon_du_lieu") or "THUC_TE")
+            nguoi_thuc_hien = str(body.get("nguoi_thuc_hien") or "")
+            ngay = str(body.get("ngay") or "").strip() or None
+            ap_dung = _as_bool(body.get("ap_dung"), False)
+            if body.get("thu_muc"):
+                kq = troi_laser.phan_tich_troi_laser_tu_thu_muc(
+                    str(body["thu_muc"]),
+                    buoc_thoi_gian_giay=_parse_opt_float(body.get("buoc_thoi_gian_giay")),
+                    nguon_du_lieu=nguon_du_lieu,
+                    nguoi_thuc_hien=nguoi_thuc_hien,
+                    ngay=ngay,
+                    luu_json=True,
+                    config_path=CONFIG_PATH,
+                )
+            else:
+                t_phut = body.get("thoi_gian_phut")
+                y_tc = body.get("y_tc_px")
+                y_mau = body.get("y_mau_px")
+                if not (isinstance(t_phut, list) and isinstance(y_tc, list) and isinstance(y_mau, list)):
+                    return _json_err_typed(
+                        400,
+                        "DAU_VAO_KHONG_HOP_LE",
+                        "Cần truyền thu_muc, files hoặc đủ 3 mảng thoi_gian_phut, y_tc_px, y_mau_px.",
+                    )
+                kq = troi_laser.phan_tich_chuoi_troi_laser(
+                    t_phut,
+                    y_tc,
+                    y_mau,
+                    roi_hop_le=body.get("roi_hop_le"),
+                    nguon_du_lieu=nguon_du_lieu,
+                    nguoi_thuc_hien=nguoi_thuc_hien,
+                    ngay=ngay,
+                    config_path=CONFIG_PATH,
+                )
+                out_p = troi_laser.duong_dan_phan_tich_troi()
+                out_p.parent.mkdir(parents=True, exist_ok=True)
+                out_p.write_text(json.dumps(kq, ensure_ascii=False, indent=2), encoding="utf-8")
+                kq["duong_dan_json"] = str(out_p)
+
+        tham_so_da_luu: dict[str, Any] | None = None
+        if ap_dung:
+            tham_so_da_luu = troi_laser.ap_dung_troi_laser_vao_tham_so(
+                kq,
+                nguoi_thuc_hien=nguoi_thuc_hien,
+                ngay=ngay,
+            )
+        return _json_ok({"ok": True, "ket_qua": kq, "tham_so_do_duoc": tham_so_da_luu})
+    except AnhKhongHoTroDinhDangError as exc:
+        return _json_err_typed(415, "ANH_KHONG_HO_TRO_DINH_DANG", str(exc), exc)
+    except AnhKhongHopLeError as exc:
+        return _json_err_typed(400, "ANH_KHONG_HOP_LE", str(exc), exc)
+    except LoiAnhMoPhongGanNhanThucTeError as exc:
+        return _json_err_typed(422, "ANH_MO_PHONG_BI_CHAN", str(exc), exc)
+    except troi_laser.LoiDuLieuTroiKhongDuError as exc:
+        return _json_err_typed(422, "CHUA_DU_DU_LIEU", str(exc), exc)
+    except ValueError as exc:
+        return _json_err_typed(400, "DAU_VAO_KHONG_HOP_LE", str(exc), exc)
+    except Exception as exc:
+        return _json_err(f"Lỗi khi phân tích độ trôi laser: {exc}")
+
+
 class CacheHeaderMiddleware:
     """ASGI middleware nhẹ thêm Cache-Control chuẩn cho tài nguyên tĩnh và API."""
 
@@ -2892,6 +3018,8 @@ routes = [
     Route("/api/thu-du-lieu/ghi", endpoint=api_thu_du_lieu_ghi, methods=["POST"]),
     Route("/api/thu-du-lieu/loai-bo", endpoint=api_thu_du_lieu_loai_bo, methods=["POST"]),
     Route("/api/thu-du-lieu/csv", endpoint=api_thu_du_lieu_csv, methods=["GET"]),
+    Route("/api/troi-laser/trang-thai", endpoint=api_troi_laser_trang_thai, methods=["GET"]),
+    Route("/api/troi-laser", endpoint=api_troi_laser, methods=["POST"]),
     Mount("/static", app=StaticFiles(directory=str(STATIC_DIR)), name="static"),
 ]
 
